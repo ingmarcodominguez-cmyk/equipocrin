@@ -5,7 +5,7 @@ from 'react'
 import { supabase }
 from '../lib/supabase.js'
 
-function AgendaMensual() {
+function AgendaMensualPro() {
 
   const [turnos, setTurnos] =
     useState([])
@@ -183,27 +183,47 @@ const [
     return '#ffffff'
   }
 
-  const año =
-    mesActual.getFullYear()
 
-  const mes =
-    mesActual.getMonth()
+const año =
+  mesActual.getFullYear()
 
-  const primerDia =
+const mes =
+  mesActual.getMonth()
 
-    new Date(
-      año,
-      mes,
+
+
+const primerDia = (() => {
+
+  const fecha = new Date(
+    Date.UTC(
+      mesActual.getFullYear(),
+      mesActual.getMonth(),
       1
-    ).getDay()
+    )
+  )
 
-  const diasMes =
+  const dia = fecha.getUTCDay()
 
-    new Date(
-      año,
-      mes + 1,
-      0
-    ).getDate()
+  return dia === 0 ? 6 : dia - 1
+
+})()
+
+
+
+const diasMes =
+
+  new Date(
+    mesActual.getFullYear(),
+    mesActual.getMonth() + 1,
+    0
+  ).getDate()
+
+
+
+
+
+
+
 
   const dias = []
 
@@ -225,16 +245,19 @@ const [
     dias.push(dia)
   }
 
-  const nombresDias = [
 
-    'Dom',
-    'Lun',
-    'Mar',
-    'Mié',
-    'Jue',
-    'Vie',
-    'Sáb'
-  ]
+const nombresDias = [
+
+  'Lun',
+  'Mar',
+  'Mié',
+  'Jue',
+  'Vie',
+  'Sáb',
+  'Dom'
+]
+
+
 
   
 const nombresMeses = [
@@ -469,17 +492,25 @@ const nombresMeses = [
 
   <button
 
-    onClick={() =>
 
-      setMesActual(
+onClick={() => {
 
-        new Date(
-          año,
-          mes - 1,
-          1
-        )
-      )
-    }
+  setMesActual(
+
+    new Date(
+
+      mesActual.getFullYear(),
+
+      mesActual.getMonth() - 1,
+
+      1
+    )
+  )
+}}
+
+
+
+
   >
 
     ←
@@ -502,17 +533,25 @@ const nombresMeses = [
 
   <button
 
-    onClick={() =>
 
-      setMesActual(
+onClick={() => {
 
-        new Date(
-          año,
-          mes + 1,
-          1
-        )
-      )
-    }
+  setMesActual(
+
+    new Date(
+
+      mesActual.getFullYear(),
+
+      mesActual.getMonth() + 1,
+
+      1
+    )
+  )
+}}
+
+
+
+
   >
 
     →
@@ -523,24 +562,26 @@ const nombresMeses = [
 
 
 
-      <div
+    
+<div className="flex gap-3 mb-6 flex-wrap">
 
-        style={{
 
-          display: 'flex',
-
-          gap: 10,
-
-          marginBottom: 20,
-
-          flexWrap: 'wrap'
-        }}
-      >
 
         <input
 
           placeholder=
             "Buscar paciente"
+
+className="
+  border
+  border-slate-300
+  rounded-xl
+  px-4
+  py-2
+  bg-white
+  shadow-sm
+"
+
 
           value={busquedaPaciente}
 
@@ -552,6 +593,17 @@ const nombresMeses = [
         />
 
         <select
+
+className="
+  border
+  border-slate-300
+  rounded-xl
+  px-4
+  py-2
+  bg-white
+  shadow-sm
+"
+
 
           value={profesionalFiltro}
 
@@ -637,7 +689,10 @@ const nombresMeses = [
 
                 return (
                   <div
-                    key={index}
+                    
+key={`empty-${año}-${mes}-${index}`}
+
+
                   />
                 )
               }
@@ -731,7 +786,10 @@ const esHoy =
 
                 <div
 
-                  key={dia}
+                
+key={`${año}-${mes}-${dia}`}
+
+
 
                   onClick={() => {
 
@@ -1373,5 +1431,5 @@ backgroundColor:
   )
 }
 
-export default AgendaMensual
+export default AgendaMensualPro
 

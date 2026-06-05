@@ -6,8 +6,8 @@ import { supabase }
 from './lib/supabase.js'
 
 
-import AgendaMensual
-from './components/AgendaMensual.jsx'
+import AgendaMensualPro
+from './components/AgendaMensualPro.jsx'
 
 
 import AgendaFija
@@ -191,7 +191,7 @@ function App() {
 
       <hr />
 
-      <AgendaMensual />
+      <AgendaMensualPro />
 
 <hr />
 
