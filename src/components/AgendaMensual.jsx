@@ -637,7 +637,10 @@ const nombresMeses = [
 
                 return (
                   <div
-                    key={index}
+                    
+key={`empty-${mes}-${año}-${index}`}
+
+
                   />
                 )
               }
@@ -731,7 +734,10 @@ const esHoy =
 
                 <div
 
-                  key={dia}
+                  
+key={`${mes}-${año}-${dia}`}
+
+
 
                   onClick={() => {
 
