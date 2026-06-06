@@ -13,62 +13,47 @@ function Layout({ userData, logout }) {
 
   if (!userData) return <div>Cargando...</div>
 
-  // Lógica de seguridad ajustada a tus roles reales: ADMINISTRACION y DIRECCION
-  const esAdministrativo = userData?.rol === 'ADMINISTRACION' || userData?.rol === 'DIRECCION';
+  const rol = userData?.rol?.toLowerCase();
+  const esAdministrativo = rol === 'administracion' || rol === 'direccion';
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
-      {/* Menú Lateral igual a image_c78036.png */}
+      {/* MENÚ LATERAL IZQUIERDO */}
       <div style={{ width: 250, backgroundColor: '#0f172a', color: 'white', padding: 20 }}>
-        <h2 style={{ fontSize: '1.2rem', marginBottom: 5 }}>CRIN</h2>
-        <p style={{ fontWeight: 'bold', margin: 0 }}>{userData?.nombre}</p>
-        <p style={{ fontSize: '0.9rem', opacity: 0.8 }}>{userData?.rol}</p>
-        <hr style={{ margin: '20px 0', borderColor: '#334155' }} />
-        
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <button style={btnStyle} onClick={() => setVista('dashboard')}>🏠 Menú Principal</button>
-          
-          {/* Solo ADMINISTRACION y DIRECCION ven la Agenda Mensual */}
-          {esAdministrativo && (
-            <button style={btnStyle} onClick={() => setVista('agenda')}>📅 Agenda Mensual</button>
-          )}
-          
+          {esAdministrativo && <button style={btnStyle} onClick={() => setVista('agenda')}>📅 Agenda Mensual</button>}
           <button style={btnStyle} onClick={() => setVista('tareas')}>✅ Tareas</button>
           <button style={btnStyle} onClick={() => setVista('profesionales')}>⚙️ Agenda Fija</button>
         </div>
-
         <div style={{ marginTop: 40 }}>
-          <button 
-            onClick={logout} 
-            style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
-          >
-            Cerrar sesión
-          </button>
+          <button onClick={logout} style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', width: '100%' }}>Cerrar sesión</button>
         </div>
       </div>
 
-      {/* Contenido */}
-      <div style={{ flex: 1, padding: 20 }}>
-        {vista === 'dashboard' && <Dashboard userData={userData} setVista={setVista} />}
-        {vista === 'agenda' && esAdministrativo && <AgendaMensualPro userData={userData} />}
-        {vista === 'tareas' && <Tasks userData={userData} />}
-        {vista === 'profesionales' && <AgendaFija userData={userData} />}
+      {/* ÁREA DERECHA: Encabezado + Contenido */}
+      <div style={{ flex: 1 }}>
+        {/* Encabezado fijo con Logo y Usuario */}
+        <div style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '20px', borderBottom: '1px solid #ddd' }}>
+          <img src="https://gqhfrzvtccxrixdtazzs.supabase.co/storage/v1/object/public/logo%20crin/photo.jpg" alt="Logo" style={{ width: '80px', height: '80px', borderRadius: '50%' }} />
+          <div>
+            <h2 style={{ margin: 0 }}>{userData?.nombre}</h2>
+            <p style={{ margin: 0, textTransform: 'uppercase', color: '#666' }}>{userData?.rol}</p>
+          </div>
+        </div>
+
+        {/* Contenido */}
+        <div style={{ padding: '20px' }}>
+          {vista === 'dashboard' && <Dashboard userData={userData} setVista={setVista} />}
+          {vista === 'agenda' && esAdministrativo && <AgendaMensualPro userData={userData} />}
+          {vista === 'tareas' && <Tasks userData={userData} />}
+          {vista === 'profesionales' && <AgendaFija userData={userData} />}
+        </div>
       </div>
     </div>
   )
 }
 
-// Estilo base tal cual lo tenías
-const btnStyle = {
-  background: 'none',
-  border: 'none',
-  color: 'white',
-  textAlign: 'left',
-  fontSize: '1.1rem',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '10px'
-}
+const btnStyle = { background: 'none', border: 'none', color: 'white', textAlign: 'left', fontSize: '1.1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }
 
 export default Layout
