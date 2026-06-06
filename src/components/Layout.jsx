@@ -63,6 +63,19 @@ useEffect(() => {
 }, [vista])
 
 
+if (!userData) {
+
+  return (
+
+    <div>
+
+      Cargando...
+
+    </div>
+  )
+}
+
+
   return (
 
     <div
