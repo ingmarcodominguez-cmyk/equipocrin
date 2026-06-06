@@ -65,24 +65,44 @@ function Tasks({
 
     cargarUsuarios()
 
+    const intervalo =
+
+      setInterval(() => {
+
+        cargarTasks()
+
+      }, 3000)
+
+    return () =>
+
+      clearInterval(
+        intervalo
+      )
+
   }, [])
 
   async function cargarTasks() {
 
-    const { data } =
+    const {
 
-      await supabase
+      data,
 
-        .from('tasks')
+      error
 
-        .select('*')
+    } = await supabase
 
-        .order(
-          'created_at',
-          {
-            ascending: false
-          }
-        )
+      .from('tasks')
+
+      .select('*')
+
+      .order(
+        'created_at',
+        {
+          ascending: false
+        }
+      )
+
+    console.log(error)
 
     if (data) {
 
@@ -92,13 +112,19 @@ function Tasks({
 
   async function cargarUsuarios() {
 
-    const { data } =
+    const {
 
-      await supabase
+      data,
 
-        .from('users')
+      error
 
-        .select('*')
+    } = await supabase
+
+      .from('users')
+
+      .select('*')
+
+    console.log(error)
 
     if (data) {
 
@@ -111,7 +137,11 @@ function Tasks({
     if (!descripcion)
       return
 
-    await supabase
+    const {
+
+      error
+
+    } = await supabase
 
       .from('tasks')
 
@@ -123,12 +153,32 @@ function Tasks({
           asignado,
 
         estado:
-          'pendiente'
+          'pendiente',
+
+        creado_por:
+          userData?.id
       }])
 
-    setDescripcion('')
+    console.log(error)
 
-    cargarTasks()
+    if (error) {
+
+      alert(
+        'Error al crear tarea'
+      )
+
+    } else {
+
+      alert(
+        'Tarea creada'
+      )
+
+      setDescripcion('')
+
+      setAsignado('')
+
+      await cargarTasks()
+    }
   }
 
   async function responderTask(
@@ -137,7 +187,11 @@ function Tasks({
 
   ) {
 
-    await supabase
+    const {
+
+      error
+
+    } = await supabase
 
       .from('tasks')
 
@@ -147,7 +201,7 @@ function Tasks({
           respuestas[id],
 
         estado:
-          'realizada'
+          'completada'
       })
 
       .eq(
@@ -155,7 +209,30 @@ function Tasks({
         id
       )
 
-    cargarTasks()
+    if (error) {
+
+      alert(
+
+        JSON.stringify(
+          error
+        )
+      )
+
+    } else {
+
+      alert(
+        'Respuesta enviada'
+      )
+
+      setRespuestas({
+
+        ...respuestas,
+
+        [id]: ''
+      })
+
+      await cargarTasks()
+    }
   }
 
   function nombreUsuario(
@@ -184,7 +261,7 @@ function Tasks({
 
       <div
         style={{
-          marginBottom: 20
+          marginBottom: 30
         }}
       >
 
@@ -208,7 +285,11 @@ function Tasks({
 
             width: '100%',
 
-            minHeight: 80
+            minHeight: 100,
+
+            padding: 10,
+
+            borderRadius: 10
           }}
         />
 
@@ -224,6 +305,13 @@ function Tasks({
               e.target.value
             )
           }
+
+          style={{
+
+            padding: 10,
+
+            borderRadius: 10
+          }}
         >
 
           <option value="">
@@ -276,11 +364,19 @@ function Tasks({
               border:
                 '1px solid #ccc',
 
-              borderRadius: 10,
+              borderRadius: 12,
 
               padding: 15,
 
-              marginBottom: 15
+              marginBottom: 20,
+
+              backgroundColor:
+                t.estado ===
+                'completada'
+
+                ? '#dcfce7'
+
+                : '#ffffff'
             }}
           >
 
@@ -288,13 +384,35 @@ function Tasks({
 
               <strong>
 
-                {
-                  nombreUsuario(
-                    t.asignado_a
-                  )
-                }
+                Asignado a:
 
               </strong>
+
+              {' '}
+
+              {
+                nombreUsuario(
+                  t.asignado_a
+                )
+              }
+
+            </p>
+
+            <p>
+
+              <strong>
+
+                Encargado por:
+
+              </strong>
+
+              {' '}
+
+              {
+                nombreUsuario(
+                  t.creado_por
+                )
+              }
 
             </p>
 
@@ -308,7 +426,12 @@ function Tasks({
 
             <p>
 
-              Estado:
+              <strong>
+
+                Estado:
+
+              </strong>
+
               {' '}
 
               {
@@ -345,7 +468,7 @@ function Tasks({
             {
 
               t.estado !==
-                'realizada'
+                'completada'
 
               &&
 
@@ -377,7 +500,13 @@ function Tasks({
 
                     width: '100%',
 
-                    minHeight: 60
+                    minHeight: 80,
+
+                    marginTop: 10,
+
+                    padding: 10,
+
+                    borderRadius: 10
                   }}
                 />
 

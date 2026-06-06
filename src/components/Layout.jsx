@@ -83,29 +83,26 @@ function Layout({
 
         <hr />
 
-        
-<div
-  style={{
-    marginTop: 30
-  }}
->
+        <div
+          style={{
+            marginTop: 30
+          }}
+        >
 
-  <button
+          <button
 
-    onClick={() =>
-      setVista(
-        'dashboard'
-      )
-    }
-  >
+            onClick={() =>
+              setVista(
+                'dashboard'
+              )
+            }
+          >
 
-    Menú
+            Menú
 
-  </button>
+          </button>
 
-</div>
-
-
+        </div>
 
         <br /><br />
 
@@ -156,7 +153,13 @@ function Layout({
 
           &&
 
-          <AgendaMensualPro />
+          <AgendaMensualPro
+
+            userData={
+              userData
+            }
+
+          />
         }
 
         {
@@ -166,7 +169,13 @@ function Layout({
 
           &&
 
-          <Tasks />
+          <Tasks
+
+            userData={
+              userData
+            }
+
+          />
         }
 
         {
@@ -176,7 +185,13 @@ function Layout({
 
           &&
 
-          <AgendaFija />
+          <AgendaFija
+
+            userData={
+              userData
+            }
+
+          />
         }
 
       </div>
@@ -186,3 +201,4 @@ function Layout({
 }
 
 export default Layout
+
