@@ -37,48 +37,61 @@ function Tasks({
   ] = useState({})
 
   useEffect(() => {
+    if (!userData?.id) return
+
     cargarTasks()
     cargarUsuarios()
+
     const intervalo =
       setInterval(() => {
         cargarTasks()
       }, 3000)
+
     return () =>
       clearInterval(
         intervalo
       )
-  }, [])
+  }, [userData])
 
   async function cargarTasks() {
-    const {
-      data,
-      error
-    } = await supabase
-      .from('tasks')
-      .select('*')
-      .order(
-        'created_at',
-        {
-          ascending: false
-        }
-      )
+    if (!userData?.id) return
 
-    console.log(error)
-    if (data) {
-      setTasks(data)
+    try {
+      let query = supabase.from('tasks').select('*')
+      
+      // Convertimos a mayúsculas para que coincida exactamente con Supabase (PROFESIONAL, ADMINISTRACION, etc.)
+      const rolUsuario = (userData?.rol || userData?.role || '')?.toUpperCase()
+
+      // LÓGICA DE ROLES MEJORADA:
+      // Si NO es ADMINISTRACION y NO es DIRECCION, se le limita la vista a sus tareas
+      if (rolUsuario !== 'ADMINISTRACION' && rolUsuario !== 'DIRECCION') {
+        query = query.or(`creado_por.eq."${userData.id}",asignado_a.eq."${userData.id}"`)
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false })
+
+      if (error) {
+        console.error("Error al filtrar tareas:", error)
+      }
+      
+      if (data) {
+        setTasks(data)
+      }
+    } catch (err) {
+      console.error("Error crítico en cargarTasks:", err)
     }
   }
 
   async function cargarUsuarios() {
-    const {
-      data,
-      error
-    } = await supabase
-      .from('users')
-      .select('*')
-    console.log(error)
-    if (data) {
-      setUsers(data)
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+      if (data) {
+        setUsers(data)
+      }
+    } catch (err) {
+      console.error("Error al cargar usuarios:", err)
     }
   }
 
@@ -93,16 +106,15 @@ function Tasks({
       .insert([{
         descripcion,
         asignado_a:
-          asignado,
+          asignado || null,
         estado:
           'pendiente',
         fecha_vencimiento:
-          fechaVencimiento,
+          fechaVencimiento || null,
         creado_por:
-          userData?.id
+          userData?.id || null
       }])
 
-    console.log(error)
     if (error) {
       alert(
         'Error al crear tarea'
@@ -127,7 +139,7 @@ function Tasks({
       .from('tasks')
       .update({
         respuesta:
-          respuestas[id],
+          respuestas[id] || '',
         estado:
           'completada'
       })
@@ -154,13 +166,10 @@ function Tasks({
     }
   }
 
-  function nombreUsuario(
-    id
-  ) {
-    return users.find(
-      (u) =>
-        u.id == id
-    )?.nombre || ''
+  function nombreUsuario(id) {
+    if (!id || !users || users.length === 0) return 'No asignado'
+    const usuarioEncontrado = users.find((u) => String(u.id) === String(id))
+    return usuarioEncontrado?.nombre || 'Usuario no encontrado'
   }
 
   return (
@@ -169,6 +178,7 @@ function Tasks({
         Tareas
       </h1>
 
+      {/* FORMULARIO DE CREACIÓN */}
       <div
         style={{
           marginBottom: 30
@@ -208,7 +218,7 @@ function Tasks({
             Asignar a
           </option>
           {
-            users.map((u) => (
+            Array.isArray(users) && users.map((u) => (
               <option
                 key={u.id}
                 value={u.id}
@@ -248,8 +258,24 @@ function Tasks({
         </button>
       </div>
 
+      {/* AVISO VISUAL SI NO HAY TAREAS */}
+      {tasks.length === 0 && (
+        <div style={{ 
+          padding: 15, 
+          backgroundColor: '#f1f5f9', 
+          borderRadius: 10, 
+          textAlign: 'center', 
+          color: '#64748b',
+          marginBottom: 20,
+          fontStyle: 'italic'
+        }}>
+          No tenés tareas asignadas ni creadas pendientes en este momento.
+        </div>
+      )}
+
+      {/* LISTADO DE TARJETAS DE TAREAS */}
       {
-        tasks.map((t) => (
+        Array.isArray(tasks) && tasks.map((t) => (
           <div
             key={t.id}
             style={{
@@ -271,9 +297,7 @@ function Tasks({
               </strong>
               {' '}
               {
-                nombreUsuario(
-                  t.asignado_a
-                )
+                nombreUsuario(t.asignado_a)
               }
             </p>
 
@@ -283,9 +307,7 @@ function Tasks({
               </strong>
               {' '}
               {
-                nombreUsuario(
-                  t.creado_por
-                )
+                nombreUsuario(t.creado_por)
               }
             </p>
 
@@ -305,26 +327,20 @@ function Tasks({
               }
 
               {
-                t.estado !==
-                  'completada'
-                &&
-                t.fecha_vencimiento
-                &&
-                new Date(
-                  t.fecha_vencimiento
+                t.estado !== 'completada'
+                && t.fecha_vencimiento
+                && new Date(t.fecha_vencimiento) < new Date()
+                && (
+                  <span
+                    style={{
+                      color: 'red',
+                      marginLeft: 10,
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    VENCIDA
+                  </span>
                 )
-                <
-                new Date()
-                &&
-                <span
-                  style={{
-                    color: 'red',
-                    marginLeft: 10,
-                    fontWeight: 'bold'
-                  }}
-                >
-                  VENCIDA
-                </span>
               }
             </p>
 
@@ -343,53 +359,56 @@ function Tasks({
               </div>
             }
 
-            {/* CONTROL DE ACCESO: Solo renderiza si NO está completada Y si el usuario activo es el ASIGNADO */}
+            {/* CONTROL DE INTERFAZ ESTRICTO */}
             {
               t.estado !== 'completada'
-              && String(userData?.id) === String(t.asignado_a)
               ? (
-                <div>
-                  <textarea
-                    placeholder="Respuesta breve"
-                    value={
-                      respuestas[t.id]
-                      || ''
-                    }
-                    onChange={(e) =>
-                      setRespuestas({
-                        ...respuestas,
-                        [t.id]:
-                          e.target.value
-                      })
-                    }
-                    style={{
-                      width: '100%',
-                      minHeight: 80,
-                      marginTop: 10,
-                      padding: 10,
-                      borderRadius: 10
-                    }}
-                  />
+                  userData?.id && String(userData.id) === String(t.asignado_a) 
+                  ? (
+                    <div>
+                      <textarea
+                        placeholder="Respuesta breve"
+                        value={
+                          respuestas[t.id]
+                          || ''
+                        }
+                        onChange={(e) =>
+                          setRespuestas({
+                            ...respuestas,
+                            [t.id]:
+                              e.target.value
+                          })
+                        }
+                        style={{
+                          width: '100%',
+                          minHeight: 80,
+                          marginTop: 10,
+                          padding: 10,
+                          borderRadius: 10
+                        }}
+                      />
 
-                  <br /><br />
+                      <br /><br />
 
-                  <button
-                    onClick={() =>
-                      responderTask(
-                        t.id
-                      )
-                    }
-                  >
-                    Responder
-                  </button>
-                </div>
+                      <button
+                        onClick={() =>
+                          responderTask(
+                            t.id
+                          )
+                        }
+                      >
+                        Responder
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 15, color: '#64748b', fontSize: 13, fontStyle: 'italic' }}>
+                      Pendiente de respuesta por parte del integrante asignado.
+                    </div>
+                  )
               ) : (
-                /* Mensaje informativo si la tarea sigue pendiente pero no es el encargado */
-                t.estado !== 'completada' && (
-                  <div style={{ marginTop: 15, color: '#64748b', fontSize: 13, fontStyle: 'italic' }}>
-                    Pendiente de respuesta por parte del integrante asignado.
-                  </div>
-                )
+                <div style={{ marginTop: 15, color: '#16a34a', fontSize: 13, fontStyle: 'italic' }}>
+                  ✓ Tarea completada exitosamente.
+                </div>
               )
             }
 
