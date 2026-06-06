@@ -35,6 +35,17 @@ function Tasks({
 
   ] = useState('')
 
+  
+const [
+
+  fechaVencimiento,
+
+  setFechaVencimiento
+
+] = useState('')
+
+
+
   const [
 
     asignado,
@@ -154,6 +165,12 @@ function Tasks({
 
         estado:
           'pendiente',
+
+
+fecha_vencimiento:
+  fechaVencimiento ,
+
+
 
         creado_por:
           userData?.id
@@ -339,6 +356,41 @@ function Tasks({
 
         </select>
 
+        
+<br /><br />
+
+
+<p>
+
+  Fecha de vencimiento
+
+</p>
+
+
+
+<input
+
+  type="date"
+
+  value={fechaVencimiento}
+
+  onChange={(e) =>
+
+    setFechaVencimiento(
+      e.target.value
+    )
+  }
+
+  style={{
+
+    padding: 10,
+
+    borderRadius: 10
+  }}
+/>
+
+
+
         <br /><br />
 
         <button
@@ -434,9 +486,46 @@ function Tasks({
 
               {' '}
 
-              {
-                t.estado
-              }
+              
+{
+  t.estado
+}
+
+{
+
+  t.estado !==
+    'completada'
+
+  &&
+
+  t.fecha_vencimiento
+
+  &&
+
+  new Date(
+    t.fecha_vencimiento
+  )
+
+  <
+
+  new Date()
+
+  &&
+
+  <span
+    style={{
+      color: 'red',
+      marginLeft: 10,
+      fontWeight: 'bold'
+    }}
+  >
+
+    VENCIDA
+
+  </span>
+}
+
+
 
             </p>
 
