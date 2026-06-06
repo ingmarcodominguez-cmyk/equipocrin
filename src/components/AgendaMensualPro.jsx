@@ -192,21 +192,13 @@ const mes =
 
 
 
-const primerDia = (() => {
+const primerDiaOriginal =
 
-  const fecha = new Date(
-    Date.UTC(
-      mesActual.getFullYear(),
-      mesActual.getMonth(),
-      1
-    )
-  )
-
-  const dia = fecha.getUTCDay()
-
-  return dia === 0 ? 6 : dia - 1
-
-})()
+  new Date(
+    mesActual.getFullYear(),
+    mesActual.getMonth(),
+    1
+  ).getDay()
 
 
 
@@ -221,7 +213,18 @@ const diasMes =
 
 
 
+let primerDia =
+  primerDiaOriginal
 
+if (primerDia === 0) {
+
+  primerDia = 6
+
+} else {
+
+  primerDia =
+    primerDia - 1
+}
 
 
 
@@ -533,23 +536,20 @@ onClick={() => {
 
   <button
 
-
 onClick={() => {
 
-  setMesActual(
+  const nuevaFecha =
+    new Date(mesActual)
 
-    new Date(
-
-      mesActual.getFullYear(),
-
-      mesActual.getMonth() + 1,
-
-      1
-    )
+  nuevaFecha.setMonth(
+    nuevaFecha.getMonth() + 1
   )
+
+  setMesActual(
+    nuevaFecha
+  )
+
 }}
-
-
 
 
   >
@@ -689,10 +689,7 @@ className="
 
                 return (
                   <div
-                    
-key={`empty-${año}-${mes}-${index}`}
-
-
+                    key={index}
                   />
                 )
               }
@@ -786,10 +783,7 @@ const esHoy =
 
                 <div
 
-                
-key={`${año}-${mes}-${dia}`}
-
-
+                  key={dia}
 
                   onClick={() => {
 
@@ -1081,20 +1075,71 @@ backgroundColor:
 
               <br /><br />
 
-              <input
+              
+<select
 
-                type="text"
+  value={nuevaHora}
 
-                placeholder="HH:MM"
+  onChange={(e) =>
+    setNuevaHora(
+      e.target.value
+    )
+  }
 
-                value={nuevaHora}
+  style={{
 
-                onChange={(e) =>
-                  setNuevaHora(
-                    e.target.value
-                  )
-                }
-              />
+    width: '100%',
+
+    padding: 12,
+
+    borderRadius: 10,
+
+    border:
+      '1px solid #cbd5e1',
+
+    backgroundColor:
+      '#f1f5f9'
+  }}
+>
+
+  {
+
+    [
+
+      '08:15',
+      '09:00',
+      '09:45',
+      '10:30',
+      '11:15',
+      '12:00',
+      '12:45',
+      '13:30',
+      '14:15',
+      '15:00',
+      '15:45',
+      '16:30',
+      '17:15',
+      '18:00',
+      '18:45',
+      '19:30'
+
+    ].map((h) => (
+
+      <option
+
+        key={h}
+
+        value={h}
+      >
+
+        {h}
+
+      </option>
+    ))
+  }
+
+</select>
+
 
               <br /><br />
 
@@ -1166,7 +1211,14 @@ backgroundColor:
 
               </button>
 
-              {' '}
+            
+<span
+  style={{
+    marginLeft: 15
+  }}
+></span>
+
+
 
               <button
 
