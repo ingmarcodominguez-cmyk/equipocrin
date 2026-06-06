@@ -1,111 +1,61 @@
-
 import {
-
   useEffect,
-
   useState
-
 } from 'react'
-
 import {
-
   supabase
-
 } from '../lib/supabase.js'
 
 function Tasks({
-
   userData
-
 }) {
-
   const [
-
     tasks,
-
     setTasks
-
   ] = useState([])
-
   const [
-
     descripcion,
-
     setDescripcion
-
   ] = useState('')
-
   
-const [
-
-  fechaVencimiento,
-
-  setFechaVencimiento
-
-] = useState('')
-
-
-
   const [
-
-    asignado,
-
-    setAsignado
-
+    fechaVencimiento,
+    setFechaVencimiento
   ] = useState('')
 
   const [
-
-    users,
-
-    setUsers
-
-  ] = useState([])
-
+    asignado,
+    setAsignado
+  ] = useState('')
   const [
-
+    users,
+    setUsers
+  ] = useState([])
+  const [
     respuestas,
-
     setRespuestas
-
   ] = useState({})
 
   useEffect(() => {
-
     cargarTasks()
-
     cargarUsuarios()
-
     const intervalo =
-
       setInterval(() => {
-
         cargarTasks()
-
       }, 3000)
-
     return () =>
-
       clearInterval(
         intervalo
       )
-
   }, [])
 
   async function cargarTasks() {
-
     const {
-
       data,
-
       error
-
     } = await supabase
-
       .from('tasks')
-
       .select('*')
-
       .order(
         'created_at',
         {
@@ -114,166 +64,109 @@ const [
       )
 
     console.log(error)
-
     if (data) {
-
       setTasks(data)
     }
   }
 
   async function cargarUsuarios() {
-
     const {
-
       data,
-
       error
-
     } = await supabase
-
       .from('users')
-
       .select('*')
-
     console.log(error)
-
     if (data) {
-
       setUsers(data)
     }
   }
 
   async function crearTask() {
-
     if (!descripcion)
       return
 
     const {
-
       error
-
     } = await supabase
-
       .from('tasks')
-
       .insert([{
-
         descripcion,
-
         asignado_a:
           asignado,
-
         estado:
           'pendiente',
-
-
-fecha_vencimiento:
-  fechaVencimiento ,
-
-
-
+        fecha_vencimiento:
+          fechaVencimiento,
         creado_por:
           userData?.id
       }])
 
     console.log(error)
-
     if (error) {
-
       alert(
         'Error al crear tarea'
       )
-
     } else {
-
       alert(
         'Tarea creada'
       )
-
       setDescripcion('')
-
       setAsignado('')
-
+      setFechaVencimiento('')
       await cargarTasks()
     }
   }
 
   async function responderTask(
-
     id
-
   ) {
-
     const {
-
       error
-
     } = await supabase
-
       .from('tasks')
-
       .update({
-
         respuesta:
           respuestas[id],
-
         estado:
           'completada'
       })
-
       .eq(
         'id',
         id
       )
 
     if (error) {
-
       alert(
-
         JSON.stringify(
           error
         )
       )
-
     } else {
-
       alert(
         'Respuesta enviada'
       )
-
       setRespuestas({
-
         ...respuestas,
-
         [id]: ''
       })
-
       await cargarTasks()
     }
   }
 
   function nombreUsuario(
-
     id
-
   ) {
-
     return users.find(
-
       (u) =>
         u.id == id
-
     )?.nombre || ''
   }
 
   return (
-
     <div>
-
       <h1>
-
         Tareas
-
       </h1>
 
       <div
@@ -281,31 +174,18 @@ fecha_vencimiento:
           marginBottom: 30
         }}
       >
-
         <textarea
-
-          placeholder="
-          Descripción
-          de la tarea
-          "
-
+          placeholder="Descripción de la tarea"
           value={descripcion}
-
           onChange={(e) =>
-
             setDescripcion(
               e.target.value
             )
           }
-
           style={{
-
             width: '100%',
-
             minHeight: 100,
-
             padding: 10,
-
             borderRadius: 10
           }}
         />
@@ -313,309 +193,204 @@ fecha_vencimiento:
         <br /><br />
 
         <select
-
           value={asignado}
-
           onChange={(e) =>
-
             setAsignado(
               e.target.value
             )
           }
-
           style={{
-
             padding: 10,
-
             borderRadius: 10
           }}
         >
-
           <option value="">
-
             Asignar a
-
           </option>
-
           {
-
             users.map((u) => (
-
               <option
-
                 key={u.id}
-
                 value={u.id}
               >
-
                 {u.nombre}
-
               </option>
             ))
           }
-
         </select>
 
-        
-<br /><br />
+        <br /><br />
 
+        <p>
+          Fecha de vencimiento
+        </p>
 
-<p>
-
-  Fecha de vencimiento
-
-</p>
-
-
-
-<input
-
-  type="date"
-
-  value={fechaVencimiento}
-
-  onChange={(e) =>
-
-    setFechaVencimiento(
-      e.target.value
-    )
-  }
-
-  style={{
-
-    padding: 10,
-
-    borderRadius: 10
-  }}
-/>
-
-
+        <input
+          type="date"
+          value={fechaVencimiento}
+          onChange={(e) =>
+            setFechaVencimiento(
+              e.target.value
+            )
+          }
+          style={{
+            padding: 10,
+            borderRadius: 10
+          }}
+        />
 
         <br /><br />
 
         <button
           onClick={crearTask}
         >
-
           Crear tarea
-
         </button>
-
       </div>
 
       {
-
         tasks.map((t) => (
-
           <div
-
             key={t.id}
-
             style={{
-
               border:
                 '1px solid #ccc',
-
               borderRadius: 12,
-
               padding: 15,
-
               marginBottom: 20,
-
               backgroundColor:
                 t.estado ===
                 'completada'
-
                 ? '#dcfce7'
-
                 : '#ffffff'
             }}
           >
-
             <p>
-
               <strong>
-
                 Asignado a:
-
               </strong>
-
               {' '}
-
               {
                 nombreUsuario(
                   t.asignado_a
                 )
               }
-
             </p>
 
             <p>
-
               <strong>
-
                 Encargado por:
-
               </strong>
-
               {' '}
-
               {
                 nombreUsuario(
                   t.creado_por
                 )
               }
-
             </p>
 
             <p>
-
               {
                 t.descripcion
               }
-
             </p>
 
             <p>
-
               <strong>
-
                 Estado:
-
               </strong>
-
               {' '}
+              {
+                t.estado
+              }
 
-              
-{
-  t.estado
-}
-
-{
-
-  t.estado !==
-    'completada'
-
-  &&
-
-  t.fecha_vencimiento
-
-  &&
-
-  new Date(
-    t.fecha_vencimiento
-  )
-
-  <
-
-  new Date()
-
-  &&
-
-  <span
-    style={{
-      color: 'red',
-      marginLeft: 10,
-      fontWeight: 'bold'
-    }}
-  >
-
-    VENCIDA
-
-  </span>
-}
-
-
-
+              {
+                t.estado !==
+                  'completada'
+                &&
+                t.fecha_vencimiento
+                &&
+                new Date(
+                  t.fecha_vencimiento
+                )
+                <
+                new Date()
+                &&
+                <span
+                  style={{
+                    color: 'red',
+                    marginLeft: 10,
+                    fontWeight: 'bold'
+                  }}
+                >
+                  VENCIDA
+                </span>
+              }
             </p>
 
             {
-
               t.respuesta
-
               &&
-
               <div>
-
                 <strong>
-
                   Respuesta:
-
                 </strong>
-
                 <p>
-
                   {
                     t.respuesta
                   }
-
                 </p>
-
               </div>
             }
 
+            {/* CONTROL DE ACCESO: Solo renderiza si NO está completada Y si el usuario activo es el ASIGNADO */}
             {
+              t.estado !== 'completada'
+              && String(userData?.id) === String(t.asignado_a)
+              ? (
+                <div>
+                  <textarea
+                    placeholder="Respuesta breve"
+                    value={
+                      respuestas[t.id]
+                      || ''
+                    }
+                    onChange={(e) =>
+                      setRespuestas({
+                        ...respuestas,
+                        [t.id]:
+                          e.target.value
+                      })
+                    }
+                    style={{
+                      width: '100%',
+                      minHeight: 80,
+                      marginTop: 10,
+                      padding: 10,
+                      borderRadius: 10
+                    }}
+                  />
 
-              t.estado !==
-                'completada'
+                  <br /><br />
 
-              &&
-
-              <div>
-
-                <textarea
-
-                  placeholder="
-                  Respuesta breve
-                  "
-
-                  value={
-                    respuestas[t.id]
-                    || ''
-                  }
-
-                  onChange={(e) =>
-
-                    setRespuestas({
-
-                      ...respuestas,
-
-                      [t.id]:
-                        e.target.value
-                    })
-                  }
-
-                  style={{
-
-                    width: '100%',
-
-                    minHeight: 80,
-
-                    marginTop: 10,
-
-                    padding: 10,
-
-                    borderRadius: 10
-                  }}
-                />
-
-                <br /><br />
-
-                <button
-
-                  onClick={() =>
-
-                    responderTask(
-                      t.id
-                    )
-                  }
-                >
-
-                  Responder
-
-                </button>
-
-              </div>
+                  <button
+                    onClick={() =>
+                      responderTask(
+                        t.id
+                      )
+                    }
+                  >
+                    Responder
+                  </button>
+                </div>
+              ) : (
+                /* Mensaje informativo si la tarea sigue pendiente pero no es el encargado */
+                t.estado !== 'completada' && (
+                  <div style={{ marginTop: 15, color: '#64748b', fontSize: 13, fontStyle: 'italic' }}>
+                    Pendiente de respuesta por parte del integrante asignado.
+                  </div>
+                )
+              )
             }
 
           </div>
@@ -627,4 +402,3 @@ fecha_vencimiento:
 }
 
 export default Tasks
-
