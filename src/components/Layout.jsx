@@ -13,40 +13,40 @@ function Layout({ userData, logout }) {
 
   if (!userData) return <div>Cargando...</div>
 
-  // Lógica de seguridad: solo los roles habilitados ven la agenda mensual
+  // Lógica de seguridad: solo ADMIN o DIRECCION ven la Agenda Mensual
   const esAdministrativo = userData?.rol === 'ADMIN' || userData?.rol === 'DIRECCION';
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
-      {/* MANTENEMOS TU DISEÑO ORIGINAL EXACTO */}
+      {/* Menú Lateral igual a image_c78036.png */}
       <div style={{ width: 250, backgroundColor: '#0f172a', color: 'white', padding: 20 }}>
-        <h2>CRIN</h2>
-        <p>{userData?.nombre}</p>
-        <p>{userData?.rol}</p>
-        <hr />
+        <h2 style={{ fontSize: '1.2rem', marginBottom: 5 }}>CRIN</h2>
+        <p style={{ fontWeight: 'bold', margin: 0 }}>{userData?.nombre}</p>
+        <p style={{ fontSize: '0.9rem', opacity: 0.8 }}>{userData?.rol}</p>
+        <hr style={{ margin: '20px 0', borderColor: '#334155' }} />
         
-        <div style={{ marginTop: 30 }}>
-          <button onClick={() => setVista('dashboard')}>Menú</button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <button style={btnStyle} onClick={() => setVista('dashboard')}>🏠 Menú Principal</button>
+          
+          {esAdministrativo && (
+            <button style={btnStyle} onClick={() => setVista('agenda')}>📅 Agenda Mensual</button>
+          )}
+          
+          <button style={btnStyle} onClick={() => setVista('tareas')}>✅ Tareas</button>
+          <button style={btnStyle} onClick={() => setVista('profesionales')}>⚙️ Agenda Fija</button>
         </div>
 
-        {/* AQUÍ AGREGAMOS EL FILTRO SIN PERDER TU ESTILO */}
-        {esAdministrativo && (
-            <div style={{ marginTop: 30 }}>
-                <button onClick={() => setVista('agenda')}>Agenda Mensual</button>
-            </div>
-        )}
-
-        <div style={{ marginTop: 30 }}>
-          <button onClick={() => setVista('tareas')}>Tareas</button>
+        <div style={{ marginTop: 40 }}>
+          <button 
+            onClick={logout} 
+            style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            Cerrar sesión
+          </button>
         </div>
-        <div style={{ marginTop: 30 }}>
-          <button onClick={() => setVista('profesionales')}>Agenda Fija</button>
-        </div>
-
-        <br /><br />
-        <button onClick={logout}>Cerrar sesión</button>
       </div>
 
+      {/* Contenido */}
       <div style={{ flex: 1, padding: 20 }}>
         {vista === 'dashboard' && <Dashboard userData={userData} setVista={setVista} />}
         {vista === 'agenda' && esAdministrativo && <AgendaMensualPro userData={userData} />}
@@ -55,6 +55,19 @@ function Layout({ userData, logout }) {
       </div>
     </div>
   )
+}
+
+// Estilo base para que los botones se vean como en tu imagen
+const btnStyle = {
+  background: 'none',
+  border: 'none',
+  color: 'white',
+  textAlign: 'left',
+  fontSize: '1.1rem',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px'
 }
 
 export default Layout
