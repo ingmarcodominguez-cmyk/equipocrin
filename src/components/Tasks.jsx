@@ -1,189 +1,88 @@
 
-import { useEffect, useState }
-from 'react'
+import {
 
-import { supabase }
-from '../lib/supabase.js'
+  useEffect,
 
-function Tasks() {
+  useState
 
-  const [tasks, setTasks] =
-    useState([])
+} from 'react'
 
-  const [users, setUsers] =
-    useState([])
-
-const [rol, setRol] =
-  useState('')
-
-
-  const [titulo, setTitulo] =
-    useState('')
-
-  const [
-    descripcion,
-    setDescripcion
-  ] = useState('')
-
-  const [tipo, setTipo] =
-    useState('llamada')
-
-  const [
-    prioridad,
-    setPrioridad
-  ] = useState('MEDIA')
-
-  const [
-    asignadoA,
-    setAsignadoA
-  ] = useState('')
-
-  const [
-    pacienteNombre,
-    setPacienteNombre
-  ] = useState('')
-
-  const [vence, setVence] =
-    useState('')
-
-  
-useEffect(() => {
-
-  iniciar()
-
-}, [])
-
-
-async function iniciar() {
-
-  const {
-
-    data: { user }
-
-  } = await supabase.auth
-    .getUser()
-
-  const { data } =
-
-    await supabase
-
-      .from('users')
-
-      .select('*')
-
-      .eq(
-        'id',
-        user.id
-      )
-
-      .single()
-
-  if (data) {
-
-    setRol(
-      data.rol
-    )
-
-    cargarTasks(
-      data.rol,
-      user.id
-    )
-  }
-
-  cargarUsuarios()
-}
-
-  
-
-
-
-async function cargarTasks(
-  rolUsuario,
-  userId
-) {
-
-
-
-
-
-
-    const hoy =
-
-      new Date()
-        .toISOString()
-
-    // PASAR A VENCIDA
-
-    await supabase
-
-      .from('tasks')
-
-      .update({
-        estado: 'vencida'
-      })
-
-      .lt(
-        'vence',
-        hoy
-      )
-
-      .eq(
-        'estado',
-        'en_proceso'
-      )
-
-    
-let query =
+import {
 
   supabase
 
-    .from('tasks')
+} from '../lib/supabase.js'
 
-    .select('*')
+function Tasks({
 
+  userData
 
+}) {
 
-if (
+  const [
 
-  rolUsuario
-    ?.toLowerCase()
-    ===
-  'profesional'
+    tasks,
 
-  ||
+    setTasks
 
-  rolUsuario
-    ?.toLowerCase()
-    ===
-  'auxiliar'
-)
+  ] = useState([])
 
+  const [
 
- 
-  {
+    descripcion,
 
-  query = query.eq(
-    'asignado_a',
-    userId
-  )
-}
+    setDescripcion
 
-const { data } =
+  ] = useState('')
 
-  await query
+  const [
 
-    .order(
-      'created_at',
-      {
-        ascending: false
-      }
-    )
+    asignado,
 
+    setAsignado
 
+  ] = useState('')
+
+  const [
+
+    users,
+
+    setUsers
+
+  ] = useState([])
+
+  const [
+
+    respuestas,
+
+    setRespuestas
+
+  ] = useState({})
+
+  useEffect(() => {
+
+    cargarTasks()
+
+    cargarUsuarios()
+
+  }, [])
+
+  async function cargarTasks() {
+
+    const { data } =
+
+      await supabase
+
+        .from('tasks')
+
+        .select('*')
+
+        .order(
+          'created_at',
           {
             ascending: false
           }
-        
+        )
 
     if (data) {
 
@@ -207,68 +106,35 @@ const { data } =
     }
   }
 
-  function nombreUsuario(
-    id
-  ) {
-
-    return users.find(
-      (u) => u.id == id
-    )?.nombre || ''
-  }
-
   async function crearTask() {
 
-    const {
-
-      data: { user }
-
-    } = await supabase.auth
-      .getUser()
+    if (!descripcion)
+      return
 
     await supabase
 
       .from('tasks')
 
-      .insert([
-        {
+      .insert([{
 
-          titulo,
+        descripcion,
 
-          descripcion,
+        asignado_a:
+          asignado,
 
-          tipo,
+        estado:
+          'pendiente'
+      }])
 
-          prioridad,
-
-          asignado_a:
-            asignadoA,
-
-          creado_por:
-            user.id,
-
-          paciente_nombre:
-            pacienteNombre,
-
-          vence,
-
-          estado:
-            'en_proceso'
-        }
-      ])
-
-    setTitulo('')
     setDescripcion('')
-    setTipo('llamada')
-    setPrioridad('MEDIA')
-    setAsignadoA('')
-    setPacienteNombre('')
-    setVence('')
 
     cargarTasks()
   }
 
-  async function completarTask(
+  async function responderTask(
+
     id
+
   ) {
 
     await supabase
@@ -277,11 +143,11 @@ const { data } =
 
       .update({
 
-        estado:
-          'completada',
+        respuesta:
+          respuestas[id],
 
-        fecha_completada:
-          new Date()
+        estado:
+          'realizada'
       })
 
       .eq(
@@ -292,264 +158,98 @@ const { data } =
     cargarTasks()
   }
 
-  function colorEstado(
-    
-    estado
+  function nombreUsuario(
+
+    id
+
   ) {
 
-    if (
-      estado ===
-      'completada'
-    ) {
+    return users.find(
 
-      return '#d4edda'
-    }
+      (u) =>
+        u.id == id
 
-    if (
-      estado ===
-      'vencida'
-    ) {
-
-      return '#f8d7da'
-    }
-
-    return '#fff3cd'
+    )?.nombre || ''
   }
-
-
-function colorPrioridad(
-  prioridad
-) {
-
-  if (
-    prioridad ===
-    'URGENTE'
-  ) {
-
-    return '#dc3545'
-  }
-
-  if (
-    prioridad ===
-    'ALTA'
-  ) {
-
-    return '#fd7e14'
-  }
-
-  if (
-    prioridad ===
-    'MEDIA'
-  ) {
-
-    return '#ffc107'
-  }
-
-  return '#6c757d'
-}
-
-
-
 
   return (
 
-    <div
-      style={{
-        padding: 20
-      }}
-    >
+    <div>
 
       <h1>
+
         Tareas
+
       </h1>
 
       <div
-
         style={{
-
-          border:
-            '1px solid #ccc',
-
-          borderRadius: 10,
-
-          padding: 15,
-
-          marginBottom: 30
+          marginBottom: 20
         }}
       >
 
-        <input
-
-          placeholder="Título"
-
-          value={titulo}
-
-          onChange={(e) =>
-            setTitulo(
-              e.target.value
-            )
-          }
-        />
-
-        <br /><br />
-
         <textarea
 
-          placeholder=
-            "Descripción"
+          placeholder="
+          Descripción
+          de la tarea
+          "
 
           value={descripcion}
 
           onChange={(e) =>
+
             setDescripcion(
               e.target.value
             )
           }
-        />
 
-        <br /><br />
+          style={{
 
-        <input
+            width: '100%',
 
-          placeholder=
-            "Paciente"
-
-          value={pacienteNombre}
-
-          onChange={(e) =>
-            setPacienteNombre(
-              e.target.value
-            )
-          }
+            minHeight: 80
+          }}
         />
 
         <br /><br />
 
         <select
 
-          value={tipo}
+          value={asignado}
 
           onChange={(e) =>
-            setTipo(
-              e.target.value
-            )
-          }
-        >
 
-          <option value="llamada">
-            Llamada
-          </option>
-
-          <option value="seguimiento">
-            Seguimiento
-          </option>
-
-          <option value="administrativa">
-            Administrativa
-          </option>
-
-          <option value="informe">
-            Informe
-          </option>
-
-          <option value="autorizacion">
-            Autorización
-          </option>
-
-        </select>
-
-        <br /><br />
-
-        <select
-
-          value={prioridad}
-
-          onChange={(e) =>
-            setPrioridad(
-              e.target.value
-            )
-          }
-        >
-
-          <option value="BAJA">
-            Baja
-          </option>
-
-          <option value="MEDIA">
-            Media
-          </option>
-
-          <option value="ALTA">
-            Alta
-          </option>
-
-          <option value="URGENTE">
-            Urgente
-          </option>
-
-        </select>
-
-        <br /><br />
-
-        <select
-
-          value={asignadoA}
-
-          onChange={(e) =>
-            setAsignadoA(
+            setAsignado(
               e.target.value
             )
           }
         >
 
           <option value="">
+
             Asignar a
+
           </option>
 
           {
 
-            users.map(
-              (u) => (
+            users.map((u) => (
 
-                <option
+              <option
 
-                  key={u.id}
+                key={u.id}
 
-                  value={u.id}
-                >
+                value={u.id}
+              >
 
-                  {u.nombre}
+                {u.nombre}
 
-                </option>
-              )
-            )
+              </option>
+            ))
           }
 
         </select>
-
-        <br /><br />
-
-<label>
-
-  Vencimiento
-
-</label>
-
-<br />
-
-
-        <input
-
-          type="date"
-
-          value={vence}
-
-          onChange={(e) =>
-            setVence(
-              e.target.value
-            )
-          }
-        />
 
         <br /><br />
 
@@ -565,163 +265,143 @@ function colorPrioridad(
 
       {
 
-        tasks.map(
-          (task) => (
+        tasks.map((t) => (
 
-            <div
+          <div
 
-              key={task.id}
+            key={t.id}
 
-              style={{
+            style={{
 
-                backgroundColor:
-                  colorEstado(
-                    task.estado
-                  ),
+              border:
+                '1px solid #ccc',
 
-                padding: 15,
+              borderRadius: 10,
 
-                borderRadius: 10,
+              padding: 15,
 
-                marginBottom: 15
-              }}
-            >
+              marginBottom: 15
+            }}
+          >
 
-              <h3>
+            <p>
 
-                {task.titulo}
-
-              </h3>
-
-              <p>
-                {task.descripcion}
-              </p>
-
-              <p>
-
-                Paciente:
-                {' '}
-
-                {
-                  task.paciente_nombre
-                }
-
-              </p>
-
-              <p>
-
-                Tipo:
-                {' '}
-
-                {task.tipo}
-
-              </p>
-
-              
-<p>
-
-  Prioridad:
-  {' '}
-
-  <span
-
-    style={{
-
-      backgroundColor:
-        colorPrioridad(
-          task.prioridad
-        ),
-
-      color:
-        'white',
-
-      padding:
-        '4px 10px',
-
-      borderRadius:
-        20,
-
-      fontWeight:
-        'bold'
-    }}
-  >
-
-    {task.prioridad}
-
-  </span>
-
-</p>
-
-
-
-              <p>
-
-                Estado:
-                {' '}
-
-                {task.estado}
-
-              </p>
-
-              <p>
-
-                Asignado a:
-                {' '}
+              <strong>
 
                 {
                   nombreUsuario(
-                    task.asignado_a
+                    t.asignado_a
                   )
                 }
 
-              </p>
+              </strong>
 
-            
-<p>
+            </p>
 
-  Vence:
-  {' '}
-
-  {
-
-    new Date(
-      task.vence
-    ).toLocaleDateString(
-      'es-AR'
-    )
-  }
-
-</p>
-
-
+            <p>
 
               {
-
-                task.estado ===
-                  'en_proceso'
-
-                &&
-
-                (
-
-                  <button
-
-                    onClick={() =>
-                      completarTask(
-                        task.id
-                      )
-                    }
-                  >
-
-                    Completar
-
-                  </button>
-                )
+                t.descripcion
               }
 
-            </div>
-          )
-        )
+            </p>
+
+            <p>
+
+              Estado:
+              {' '}
+
+              {
+                t.estado
+              }
+
+            </p>
+
+            {
+
+              t.respuesta
+
+              &&
+
+              <div>
+
+                <strong>
+
+                  Respuesta:
+
+                </strong>
+
+                <p>
+
+                  {
+                    t.respuesta
+                  }
+
+                </p>
+
+              </div>
+            }
+
+            {
+
+              t.estado !==
+                'realizada'
+
+              &&
+
+              <div>
+
+                <textarea
+
+                  placeholder="
+                  Respuesta breve
+                  "
+
+                  value={
+                    respuestas[t.id]
+                    || ''
+                  }
+
+                  onChange={(e) =>
+
+                    setRespuestas({
+
+                      ...respuestas,
+
+                      [t.id]:
+                        e.target.value
+                    })
+                  }
+
+                  style={{
+
+                    width: '100%',
+
+                    minHeight: 60
+                  }}
+                />
+
+                <br /><br />
+
+                <button
+
+                  onClick={() =>
+
+                    responderTask(
+                      t.id
+                    )
+                  }
+                >
+
+                  Responder
+
+                </button>
+
+              </div>
+            }
+
+          </div>
+        ))
       }
 
     </div>
