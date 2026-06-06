@@ -32,14 +32,27 @@ function AgendaFija({ userData }) {
   }, [])
 
   async function cargarDatos() {
-    const [s, p, u] = await Promise.all([
-      supabase.from('sesiones_fijas').select('*').order('hora'),
-      supabase.from('pacientes').select('*').order('nombre'),
-      supabase.from('users').select('*').order('nombre')
-    ])
-    if (s.data) setSesiones(s.data)
-    if (p.data) setPacientes(p.data)
-    if (u.data) setUsers(u.data)
+    // Probamos AMBAS tablas para ver dónde están los datos
+    const { data: s1 } = await supabase.from('sesiones_fijas').select('*');
+    const { data: s2 } = await supabase.from('agendas_fijas').select('*');
+    
+    console.log("Filas en sesiones_fijas:", s1?.length);
+    console.log("Filas en agendas_fijas:", s2?.length);
+
+    // Si hay datos en una pero no en otra, ese es el problema.
+    // Vamos a cargar la que tenga más datos o la que sea la correcta.
+    if (s1 && s1.length > 0) {
+      setSesiones(s1);
+    } else if (s2 && s2.length > 0) {
+      setSesiones(s2);
+    }
+
+    // Cargamos lo demás
+    const { data: pData } = await supabase.from('pacientes').select('*');
+    setPacientes(pData || []);
+    
+    const { data: uData } = await supabase.from('users').select('*');
+    setUsers(uData || []);
   }
 
   async function agregarSesion() {
