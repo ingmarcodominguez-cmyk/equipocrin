@@ -6,17 +6,11 @@ import { supabase }
 from './lib/supabase.js'
 
 
-import AgendaMensualPro
-from './components/AgendaMensualPro.jsx'
-
-
-import AgendaFija
-from './components/AgendaFija.jsx'
 
 
 
-import Tasks
-from './components/Tasks.jsx'
+import Layout
+from './components/Layout.jsx'
 
 
 
@@ -24,6 +18,14 @@ function App() {
 
   const [session, setSession] =
     useState(null)
+
+    
+const [userData, setUserData] =
+  useState(null)
+
+
+
+
 
   const [email, setEmail] =
     useState('')
@@ -67,25 +69,67 @@ function App() {
 
   }, [])
 
-  async function login() {
+  
 
-    const { error } =
+     
+async function login() {
 
-      await supabase.auth
+  const { error } =
 
-        .signInWithPassword({
+    await supabase.auth
 
-          email,
-          password
-        })
+      .signInWithPassword({
 
-    if (error) {
+        email,
+        password
+      })
 
-      alert(
-        'Login incorrecto'
-      )
-    }
+  
+const {
+
+  data: { user }
+
+} = await supabase.auth
+
+  .getUser()
+
+  console.log(user)
+
+const {
+
+  data: perfil
+
+} = await supabase
+
+  .from('users')
+
+  .select('*')
+
+  .eq(
+    'id',
+    user.id
+  )
+
+  .single()
+
+setUserData(
+  perfil
+)
+
+
+console.log(perfil)
+
+
+
+
+  if (error) {
+
+    alert(
+      'Login incorrecto'
+    )
   }
+}
+
 
   async function logout() {
 
@@ -167,43 +211,14 @@ function App() {
       }}
     >
 
-      <h1>
-        CRIN
-      </h1>
 
-      <p>
+<Layout
 
-        Usuario:
-        {' '}
+  userData={userData}
 
-        {session.user.email}
+  logout={logout}
 
-      </p>
-
-      
-      <button
-        onClick={logout}
-      >
-
-        Cerrar sesión
-
-      </button>
-
-      <hr />
-
-      <AgendaMensualPro />
-
-<hr />
-
-<Tasks />
-
-
-<hr />
-
-<AgendaFija />
-
-
-
+/>
 
     
     </div>
