@@ -35,15 +35,26 @@ const [userData, setUserData] =
 
   useEffect(() => {
 
-    supabase.auth
-      .getSession()
+    
+supabase.auth
+  .getSession()
 
-      .then(({ data }) => {
+  .then(({ data }) => {
 
-        setSession(
-          data.session
-        )
-      })
+    setSession(
+      data.session
+    )
+
+    if (data.session) {
+
+      cargarPerfil(
+        data.session.user.id
+      )
+    }
+  })
+
+
+
 
     const {
 
@@ -71,7 +82,36 @@ const [userData, setUserData] =
 
   
 
-     
+  
+async function cargarPerfil(
+
+  userId
+
+) {
+
+  const {
+
+    data: perfil
+
+  } = await supabase
+
+    .from('users')
+
+    .select('*')
+
+    .eq(
+      'id',
+      userId
+    )
+
+    .single()
+
+  setUserData(
+    perfil
+  )
+}
+
+   
 async function login() {
 
   const { error } =
@@ -95,31 +135,10 @@ const {
 
   console.log(user)
 
-const {
 
-  data: perfil
-
-} = await supabase
-
-  .from('users')
-
-  .select('*')
-
-  .eq(
-    'id',
-    user.id
-  )
-
-  .single()
-
-setUserData(
-  perfil
+await cargarPerfil(
+  user.id
 )
-
-
-console.log(perfil)
-
-
 
 
   if (error) {
