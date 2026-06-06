@@ -13,8 +13,8 @@ function Layout({ userData, logout }) {
 
   if (!userData) return <div>Cargando...</div>
 
-  // Lógica de seguridad: solo ADMIN o DIRECCION ven la Agenda Mensual
-  const esAdministrativo = userData?.rol === 'ADMIN' || userData?.rol === 'DIRECCION';
+  // Lógica de seguridad ajustada a tus roles reales: ADMINISTRACION y DIRECCION
+  const esAdministrativo = userData?.rol === 'ADMINISTRACION' || userData?.rol === 'DIRECCION';
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
@@ -28,6 +28,7 @@ function Layout({ userData, logout }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <button style={btnStyle} onClick={() => setVista('dashboard')}>🏠 Menú Principal</button>
           
+          {/* Solo ADMINISTRACION y DIRECCION ven la Agenda Mensual */}
           {esAdministrativo && (
             <button style={btnStyle} onClick={() => setVista('agenda')}>📅 Agenda Mensual</button>
           )}
@@ -57,7 +58,7 @@ function Layout({ userData, logout }) {
   )
 }
 
-// Estilo base para que los botones se vean como en tu imagen
+// Estilo base tal cual lo tenías
 const btnStyle = {
   background: 'none',
   border: 'none',
