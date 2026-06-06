@@ -45,11 +45,15 @@ function Dashboard({
         &&
 
         <div
-          className="
-            flex
-            gap-4
-            flex-wrap
-          "
+    
+className="
+  flex
+  flex-col
+  md:flex-row
+  gap-4
+"
+
+
         >
 
           <button
