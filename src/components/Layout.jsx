@@ -1,5 +1,12 @@
 
-import { useState }
+
+import {
+
+  useState,
+
+  useEffect
+
+}
 
 from 'react'
 
@@ -23,15 +30,38 @@ function Layout({
 
 }) {
 
-  const [
+  
+const [
 
-    vista,
+  vista,
 
-    setVista
+  setVista
 
-  ] = useState(
-    'dashboard'
+] = useState(
+
+  localStorage.getItem(
+    'vista'
   )
+
+  ||
+
+  'dashboard'
+)
+
+
+
+
+useEffect(() => {
+
+  localStorage.setItem(
+
+    'vista',
+
+    vista
+  )
+
+}, [vista])
+
 
   return (
 
