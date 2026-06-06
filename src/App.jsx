@@ -1,249 +1,90 @@
-
-import { useEffect, useState }
-from 'react'
-
-import { supabase }
-from './lib/supabase.js'
-
-
-
-
-
-import Layout
-from './components/Layout.jsx'
-
-
+import { useEffect, useState } from 'react'
+import { supabase } from './lib/supabase.js'
+import Layout from './components/Layout.jsx'
 
 function App() {
-
-  const [session, setSession] =
-    useState(null)
-
-    
-const [userData, setUserData] =
-  useState(null)
-
-
-
-
-
-  const [email, setEmail] =
-    useState('')
-
-  const [password, setPassword] =
-    useState('')
+  const [session, setSession] = useState(null)
+  const [userData, setUserData] = useState(null)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [cargando, setCargando] = useState(true) // Estado para evitar parpadeos
 
   useEffect(() => {
+    // 1. Obtener sesión actual
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+      if (data.session) {
+        cargarPerfil(data.session.user.id)
+      } else {
+        setCargando(false)
+      }
+    })
 
-    
-supabase.auth
-  .getSession()
-
-  .then(({ data }) => {
-
-    setSession(
-      data.session
-    )
-
-    if (data.session) {
-
-      cargarPerfil(
-        data.session.user.id
-      )
-    }
-  })
-
-
-
-
-    const {
-
-      data: listener
-
-    } = supabase.auth
-
-      .onAuthStateChange(
-
-        (_event, session) => {
-
-          setSession(
-            session
-          )
-        }
-      )
+    // 2. Escuchar cambios en la autenticación (RECARGA EL PERFIL SIEMPRE)
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+      if (session) {
+        cargarPerfil(session.user.id)
+      } else {
+        setUserData(null)
+        setCargando(false)
+      }
+    })
 
     return () => {
-
-      listener.subscription
-        .unsubscribe()
+      listener.subscription.unsubscribe()
     }
-
   }, [])
 
-  
-
-  
-async function cargarPerfil(
-
-  userId
-
-) {
-
-  const {
-
-    data: perfil
-
-  } = await supabase
-
-    .from('users')
-
-    .select('*')
-
-    .eq(
-      'id',
-      userId
-    )
-
-    .single()
-
-  setUserData(
-    perfil
-  )
-}
-
-   
-async function login() {
-
-  const { error } =
-
-    await supabase.auth
-
-      .signInWithPassword({
-
-        email,
-        password
-      })
-
-  
-const {
-
-  data: { user }
-
-} = await supabase.auth
-
-  .getUser()
-
-  console.log(user)
-
-
-await cargarPerfil(
-  user.id
-)
-
-
-  if (error) {
-
-    alert(
-      'Login incorrecto'
-    )
+  async function cargarPerfil(userId) {
+    setCargando(true)
+    const { data: perfil } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single()
+    
+    setUserData(perfil)
+    setCargando(false)
   }
-}
 
+  async function login() {
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) {
+      alert('Login incorrecto: ' + error.message)
+    }
+  }
 
   async function logout() {
+    await supabase.auth.signOut()
+    setUserData(null)
+  }
 
-    await supabase.auth
-      .signOut()
+  // Pantalla de carga
+  if (cargando) {
+    return <div style={{ padding: 20 }}>Cargando sistema...</div>
   }
 
   // LOGIN
-
   if (!session) {
-
     return (
-
-      <div
-        style={{
-          padding: 20
-        }}
-      >
-
-        <h1>
-          CRIN
-        </h1>
-
-        <input
-
-          type="email"
-
-          placeholder="Email"
-
-          value={email}
-
-          onChange={(e) =>
-
-            setEmail(
-              e.target.value
-            )
-          }
-        />
-
+      <div style={{ padding: 20 }}>
+        <h1>CRIN</h1>
+        <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <br /><br />
-
-        <input
-
-          type="password"
-
-          placeholder="Password"
-
-          value={password}
-
-          onChange={(e) =>
-
-            setPassword(
-              e.target.value
-            )
-          }
-        />
-
+        <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
         <br /><br />
-
-        <button
-          onClick={login}
-        >
-
-          Ingresar
-
-        </button>
-
+        <button onClick={login}>Ingresar</button>
       </div>
     )
   }
 
   // SISTEMA
-
   return (
-
-    <div
-      style={{
-        padding: 20
-      }}
-    >
-
-
-<Layout
-
-  userData={userData}
-
-  logout={logout}
-
-/>
-
-    
+    <div style={{ padding: 20 }}>
+      <Layout userData={userData} logout={logout} />
     </div>
   )
 }
 
 export default App
-
-
