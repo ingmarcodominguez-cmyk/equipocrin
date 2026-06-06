@@ -28,7 +28,7 @@ function Dashboard({
         "
       >
 
-        Dashboard
+        MENU PRINCIPAL
 
       </h1>
 

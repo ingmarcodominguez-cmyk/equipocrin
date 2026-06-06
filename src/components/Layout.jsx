@@ -83,18 +83,29 @@ function Layout({
 
         <hr />
 
-        <button
+        
+<div
+  style={{
+    marginTop: 30
+  }}
+>
 
-          onClick={() =>
-            setVista(
-              'dashboard'
-            )
-          }
-        >
+  <button
 
-          Dashboard
+    onClick={() =>
+      setVista(
+        'dashboard'
+      )
+    }
+  >
 
-        </button>
+    Menú
+
+  </button>
+
+</div>
+
+
 
         <br /><br />
 
