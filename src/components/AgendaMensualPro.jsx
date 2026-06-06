@@ -1017,23 +1017,48 @@ backgroundColor:
               }}
             >
 
-              <h2>
-                Nuevo turno
-              </h2>
+              
+<h2
+  style={{
+    marginBottom: 40
+  }}
+>
+  Nuevo turno
+</h2>
 
-              <input
 
-                placeholder=
-                  "Paciente"
 
-                value={nuevoPaciente}
+            
+<input
 
-                onChange={(e) =>
-                  setNuevoPaciente(
-                    e.target.value
-                  )
-                }
-              />
+  placeholder=
+    "Paciente"
+
+  value={nuevoPaciente}
+
+  onChange={(e) =>
+    setNuevoPaciente(
+      e.target.value
+    )
+  }
+
+  style={{
+
+    width: '100%',
+
+    padding: 12,
+
+    borderRadius: 10,
+
+    border:
+      '1px solid #cbd5e1',
+
+    backgroundColor:
+      '#f1f5f9'
+  }}
+/>
+
+
 
               <br /><br />
 
@@ -1289,9 +1314,16 @@ backgroundColor:
               }}
             >
 
-              <h2>
-                Editar turno
-              </h2>
+            
+<h2
+  style={{
+    marginBottom: 30
+  }}
+>
+  Editar turno
+</h2>
+
+
 
               <p>
 
@@ -1319,16 +1351,35 @@ backgroundColor:
 
               </p>
 
-              <input
+              
+<input
 
-                value={editPaciente}
+  value={editPaciente}
 
-                onChange={(e) =>
-                  setEditPaciente(
-                    e.target.value
-                  )
-                }
-              />
+  onChange={(e) =>
+    setEditPaciente(
+      e.target.value
+    )
+  }
+
+  style={{
+
+    width: '100%',
+
+    padding: 12,
+
+    borderRadius: 10,
+
+    border:
+      '1px solid #cbd5e1',
+
+    backgroundColor:
+      '#f1f5f9'
+  }}
+/>
+
+
+
 
               <br /><br />
 
@@ -1416,68 +1467,80 @@ backgroundColor:
 
               <br /><br />
 
-              <button
-                onClick={
-                  guardarEdicion
-                }
-              >
+              
+<div
+  style={{
 
-                Guardar
+    display: 'flex',
 
-              </button>
+    flexWrap: 'wrap',
 
-              {' '}
+    gap: 12,
 
-              <button
+    marginTop: 15
+  }}
+>
 
-                onClick={() =>
-                  cambiarEstadoTurno(
-                    turnoEditando.id,
-                    'realizado'
-                  )
-                }
-              >
+  <button
+    onClick={
+      guardarEdicion
+    }
+  >
 
-                Realizado
+    Guardar
 
-              </button>
+  </button>
 
-              {' '}
+  <button
 
-              <button
+    onClick={() =>
+      cambiarEstadoTurno(
+        turnoEditando.id,
+        'realizado'
+      )
+    }
+  >
 
-                onClick={() =>
-                  cambiarEstadoTurno(
-                    turnoEditando.id,
-                    'cancelado'
-                  )
-                }
-              >
+    Realizado
 
-                Cancelado
+  </button>
 
-              </button>
+  <button
 
-              {' '}
+    onClick={() =>
+      cambiarEstadoTurno(
+        turnoEditando.id,
+        'cancelado'
+      )
+    }
+  >
 
-              <button
+    Cancelado
 
-                onClick={() =>
-                  setTurnoEditando(
-                    null
-                  )
-                }
-              >
+  </button>
 
-                Cerrar
+  <button
 
-              </button>
+    onClick={() =>
+      setTurnoEditando(
+        null
+      )
+    }
+  >
 
-            </div>
+    Cerrar
+
+  </button>
+
+
+
+</div>
 
           </div>
-        )
-      }
+
+        </div>
+
+      )}
 
     </div>
   )
