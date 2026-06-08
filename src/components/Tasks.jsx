@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 
-function Tasks({ userData, playNotification }) { // Recibimos la función como prop
+function Tasks({ userData }) {
   const [tasks, setTasks] = useState([])
   const [descripcion, setDescripcion] = useState('')
   const [fechaVencimiento, setFechaVencimiento] = useState('')
@@ -9,23 +9,22 @@ function Tasks({ userData, playNotification }) { // Recibimos la función como p
   const [users, setUsers] = useState([])
   const [respuestas, setRespuestas] = useState({})
 
+  // --- SUMÉ ESTO: Función para el sonido (sin tocar nada de lo demás) ---
+  const reproducirSonido = () => {
+    const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+    audio.play().catch(err => console.error("Error al reproducir:", err));
+  };
+
   useEffect(() => {
     if (!userData?.id) return
 
     cargarTasks()
     cargarUsuarios()
 
-    // Canal en tiempo real
     const channel = supabase
       .channel('tasks_realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, (payload) => {
-        console.log('Nueva tarea detectada, disparando sonido...');
-        
-        // Ahora usamos la función que viene del Layout
-        if (playNotification) {
-            playNotification();
-        }
-        
+        reproducirSonido(); // --- LLAMO A LA FUNCIÓN AQUÍ ---
         cargarTasks();
       })
       .subscribe();
@@ -38,7 +37,7 @@ function Tasks({ userData, playNotification }) { // Recibimos la función como p
       clearInterval(intervalo)
       supabase.removeChannel(channel)
     }
-  }, [userData, playNotification])
+  }, [userData])
 
   async function cargarTasks() {
     if (!userData?.id) return
