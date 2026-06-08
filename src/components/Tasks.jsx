@@ -8,17 +8,22 @@ function Tasks({ userData }) {
   const [asignado, setAsignado] = useState('')
   const [users, setUsers] = useState([])
   const [respuestas, setRespuestas] = useState({})
-  
-  // Estado para el botón de activar sonido
   const [sonidoActivado, setSonidoActivado] = useState(false);
+  const [alerta, setAlerta] = useState(false);
 
-  const reproducirSonido = async () => {
-    try {
-      const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
-      await audio.play().catch(e => console.log("Bloqueado por navegador, requiere clic previo."));
-    } catch (err) {
-      console.error("Error al reproducir:", err);
+  const reproducirSonidoYVibrar = () => {
+    // 1. Sonido
+    const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+    audio.play().catch(e => console.log("Sonido bloqueado"));
+
+    // 2. Vibración (solo en móviles)
+    if ("vibrate" in navigator) {
+      navigator.vibrate([500, 200, 500]);
     }
+
+    // 3. Alerta Visual
+    setAlerta(true);
+    setTimeout(() => setAlerta(false), 5000);
   };
 
   useEffect(() => {
@@ -30,7 +35,7 @@ function Tasks({ userData }) {
     const channel = supabase
       .channel('tasks_realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, (payload) => {
-        reproducirSonido();
+        reproducirSonidoYVibrar();
         cargarTasks();
       })
       .subscribe();
@@ -50,47 +55,29 @@ function Tasks({ userData }) {
     try {
       let query = supabase.from('tasks').select('*')
       const rolUsuario = (userData?.rol || userData?.role || '')?.toUpperCase()
-
       if (rolUsuario !== 'ADMINISTRACION' && rolUsuario !== 'DIRECCION') {
         query = query.or(`creado_por.eq."${userData.id}",asignado_a.eq."${userData.id}"`)
       }
-
       const { data, error } = await query.order('created_at', { ascending: false })
-      if (error) console.error("Error al filtrar tareas:", error)
       if (data) setTasks(data)
-    } catch (err) {
-      console.error("Error crítico en cargarTasks:", err)
-    }
+    } catch (err) { console.error(err) }
   }
 
   async function cargarUsuarios() {
     try {
       const { data } = await supabase.from('users').select('*')
       if (data) setUsers(data)
-    } catch (err) {
-      console.error("Error al cargar usuarios:", err)
-    }
+    } catch (err) { console.error(err) }
   }
 
   async function crearTask() {
     if (!descripcion) return
     const { error } = await supabase.from('tasks').insert([{
-      descripcion,
-      asignado_a: asignado || null,
-      estado: 'pendiente',
-      fecha_vencimiento: fechaVencimiento || null,
-      creado_por: userData?.id || null
+      descripcion, asignado_a: asignado || null, estado: 'pendiente',
+      fecha_vencimiento: fechaVencimiento || null, creado_por: userData?.id || null
     }])
-
-    if (error) {
-      alert('Error al crear tarea')
-    } else {
-      alert('Tarea creada')
-      setDescripcion('')
-      setAsignado('')
-      setFechaVencimiento('')
-      await cargarTasks()
-    }
+    if (error) alert('Error')
+    else { alert('Tarea creada'); setDescripcion(''); cargarTasks(); }
   }
 
   async function responderTask(id) {
@@ -98,14 +85,8 @@ function Tasks({ userData }) {
       respuesta: respuestas[id] || '',
       estado: 'completada'
     }).eq('id', id)
-
-    if (error) {
-      alert(JSON.stringify(error))
-    } else {
-      alert('Respuesta enviada')
-      setRespuestas({ ...respuestas, [id]: '' })
-      await cargarTasks()
-    }
+    if (error) alert(JSON.stringify(error))
+    else { alert('Respuesta enviada'); setRespuestas({ ...respuestas, [id]: '' }); cargarTasks(); }
   }
 
   function nombreUsuario(id) {
@@ -116,86 +97,51 @@ function Tasks({ userData }) {
 
   return (
     <div>
-      {/* Botón de activación del sonido */}
+      {/* Alerta Visual de borde rojo */}
+      {alerta && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', 
+          pointerEvents: 'none', border: '15px solid red', 
+          boxSizing: 'border-box', zIndex: 9999
+        }}></div>
+      )}
+
       {!sonidoActivado && (
         <button 
-          onClick={() => { setSonidoActivado(true); alert("Sonido activo"); }}
+          onClick={() => { setSonidoActivado(true); alert("Sonido y vibración activos"); }}
           style={{ padding: '20px', background: 'red', color: 'white', width: '100%', fontSize: '1.2rem', marginBottom: '20px' }}
         >
-          TOCÁ AQUÍ PARA ACTIVAR SONIDOS
+          TOCÁ AQUÍ PARA ACTIVAR NOTIFICACIONES
         </button>
       )}
 
       <h1>Tareas</h1>
 
       <div style={{ marginBottom: 30 }}>
-        <textarea
-          placeholder="Descripción de la tarea"
-          value={descripcion}
-          onChange={(e) => setDescripcion(e.target.value)}
-          style={{ width: '100%', minHeight: 100, padding: 10, borderRadius: 10 }}
-        />
+        <textarea placeholder="Descripción" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} style={{ width: '100%', minHeight: 100, padding: 10, borderRadius: 10 }} />
         <br /><br />
         <select value={asignado} onChange={(e) => setAsignado(e.target.value)} style={{ padding: 10, borderRadius: 10 }}>
           <option value="">Asignar a</option>
-          {Array.isArray(users) && users.map((u) => (
-            <option key={u.id} value={u.id}>{u.nombre}</option>
-          ))}
+          {Array.isArray(users) && users.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
         </select>
         <br /><br />
-        <p>Fecha de vencimiento</p>
         <input type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} style={{ padding: 10, borderRadius: 10 }} />
         <br /><br />
         <button onClick={crearTask}>Crear tarea</button>
       </div>
 
-      {tasks.length === 0 && (
-        <div style={{ padding: 15, backgroundColor: '#f1f5f9', borderRadius: 10, textAlign: 'center', color: '#64748b', marginBottom: 20, fontStyle: 'italic' }}>
-          No tenés tareas asignadas ni creadas pendientes en este momento.
-        </div>
-      )}
-
       {Array.isArray(tasks) && tasks.map((t) => (
         <div key={t.id} style={{ border: '1px solid #ccc', borderRadius: 12, padding: 15, marginBottom: 20, backgroundColor: t.estado === 'completada' ? '#dcfce7' : '#ffffff' }}>
           <p><strong>Asignado a:</strong> {nombreUsuario(t.asignado_a)}</p>
-          <p><strong>Encargado por:</strong> {nombreUsuario(t.creado_por)}</p>
           <p>{t.descripcion}</p>
-          <p>
-            <strong>Estado:</strong> {t.estado}
-            {t.estado !== 'completada' && t.fecha_vencimiento && new Date(t.fecha_vencimiento) < new Date() && (
-              <span style={{ color: 'red', marginLeft: 10, fontWeight: 'bold' }}>VENCIDA</span>
-            )}
-          </p>
-
-          {t.respuesta && (
-            <div>
-              <strong>Respuesta:</strong>
-              <p>{t.respuesta}</p>
-            </div>
-          )}
-
           {t.estado !== 'completada' ? (
             userData?.id && String(userData.id) === String(t.asignado_a) ? (
               <div>
-                <textarea
-                  placeholder="Respuesta breve"
-                  value={respuestas[t.id] || ''}
-                  onChange={(e) => setRespuestas({ ...respuestas, [t.id]: e.target.value })}
-                  style={{ width: '100%', minHeight: 80, marginTop: 10, padding: 10, borderRadius: 10 }}
-                />
-                <br /><br />
+                <textarea placeholder="Respuesta" value={respuestas[t.id] || ''} onChange={(e) => setRespuestas({ ...respuestas, [t.id]: e.target.value })} style={{ width: '100%', minHeight: 80 }} />
                 <button onClick={() => responderTask(t.id)}>Responder</button>
               </div>
-            ) : (
-              <div style={{ marginTop: 15, color: '#64748b', fontSize: 13, fontStyle: 'italic' }}>
-                Pendiente de respuesta por parte del integrante asignado.
-              </div>
-            )
-          ) : (
-            <div style={{ marginTop: 15, color: '#16a34a', fontSize: 13, fontStyle: 'italic' }}>
-              ✓ Tarea completada exitosamente.
-            </div>
-          )}
+            ) : <p>Pendiente de respuesta.</p>
+          ) : <p>✓ Completada.</p>}
         </div>
       ))}
     </div>
