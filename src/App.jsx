@@ -7,7 +7,7 @@ function App() {
   const [userData, setUserData] = useState(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [cargando, setCargando] = useState(true) // Estado para evitar parpadeos
+  const [cargando, setCargando] = useState(true)
 
   useEffect(() => {
     // 1. Obtener sesión actual
@@ -20,7 +20,7 @@ function App() {
       }
     })
 
-    // 2. Escuchar cambios en la autenticación (RECARGA EL PERFIL SIEMPRE)
+    // 2. Escuchar cambios en la autenticación
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
       if (session) {
@@ -58,6 +58,9 @@ function App() {
   async function logout() {
     await supabase.auth.signOut()
     setUserData(null)
+    setEmail('') // Limpia el email
+    setPassword('') // Limpia la contraseña
+    window.location.reload() // Refresca la app para asegurar limpieza total
   }
 
   // Pantalla de carga
@@ -70,9 +73,21 @@ function App() {
     return (
       <div style={{ padding: 20 }}>
         <h1>CRIN</h1>
-        <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input 
+          type="email" 
+          placeholder="Email" 
+          value={email} 
+          onChange={(e) => setEmail(e.target.value)} 
+          autoComplete="off" 
+        />
         <br /><br />
-        <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <input 
+          type="password" 
+          placeholder="Password" 
+          value={password} 
+          onChange={(e) => setPassword(e.target.value)} 
+          autoComplete="new-password" 
+        />
         <br /><br />
         <button onClick={login}>Ingresar</button>
       </div>
