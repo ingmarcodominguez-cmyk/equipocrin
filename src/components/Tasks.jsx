@@ -8,8 +8,10 @@ function Tasks({ userData }) {
   const [asignado, setAsignado] = useState('')
   const [users, setUsers] = useState([])
   const [respuestas, setRespuestas] = useState({})
+  
+  // Estado para el botón de activar sonido
+  const [sonidoActivado, setSonidoActivado] = useState(false);
 
-  // Función para reproducir sonido de forma segura
   const reproducirSonido = async () => {
     try {
       const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
@@ -28,7 +30,7 @@ function Tasks({ userData }) {
     const channel = supabase
       .channel('tasks_realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, (payload) => {
-        reproducirSonido(); // Dispara el sonido
+        reproducirSonido();
         cargarTasks();
       })
       .subscribe();
@@ -114,6 +116,16 @@ function Tasks({ userData }) {
 
   return (
     <div>
+      {/* Botón de activación del sonido */}
+      {!sonidoActivado && (
+        <button 
+          onClick={() => { setSonidoActivado(true); alert("Sonido activo"); }}
+          style={{ padding: '20px', background: 'red', color: 'white', width: '100%', fontSize: '1.2rem', marginBottom: '20px' }}
+        >
+          TOCÁ AQUÍ PARA ACTIVAR SONIDOS
+        </button>
+      )}
+
       <h1>Tareas</h1>
 
       <div style={{ marginBottom: 30 }}>
