@@ -9,10 +9,14 @@ function Tasks({ userData }) {
   const [users, setUsers] = useState([])
   const [respuestas, setRespuestas] = useState({})
 
-  // --- SUMÉ ESTO: Función para el sonido (sin tocar nada de lo demás) ---
-  const reproducirSonido = () => {
-    const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
-    audio.play().catch(err => console.error("Error al reproducir:", err));
+  // Función para reproducir sonido de forma segura
+  const reproducirSonido = async () => {
+    try {
+      const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+      await audio.play().catch(e => console.log("Bloqueado por navegador, requiere clic previo."));
+    } catch (err) {
+      console.error("Error al reproducir:", err);
+    }
   };
 
   useEffect(() => {
@@ -24,7 +28,7 @@ function Tasks({ userData }) {
     const channel = supabase
       .channel('tasks_realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, (payload) => {
-        reproducirSonido(); // --- LLAMO A LA FUNCIÓN AQUÍ ---
+        reproducirSonido(); // Dispara el sonido
         cargarTasks();
       })
       .subscribe();
