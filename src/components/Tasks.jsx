@@ -1,10 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 
-// Instanciamos el audio fuera del componente para que no se recargue
-const sonido = new Audio('/notificacion.mp3');
-
-function Tasks({ userData }) {
+function Tasks({ userData, playNotification }) { // Recibimos la función como prop
   const [tasks, setTasks] = useState([])
   const [descripcion, setDescripcion] = useState('')
   const [fechaVencimiento, setFechaVencimiento] = useState('')
@@ -18,11 +15,17 @@ function Tasks({ userData }) {
     cargarTasks()
     cargarUsuarios()
 
-    // Canal en tiempo real para el sonido "WSUP"
+    // Canal en tiempo real
     const channel = supabase
       .channel('tasks_realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, (payload) => {
-        sonido.play().catch(e => console.log("Esperando interacción del usuario..."));
+        console.log('Nueva tarea detectada, disparando sonido...');
+        
+        // Ahora usamos la función que viene del Layout
+        if (playNotification) {
+            playNotification();
+        }
+        
         cargarTasks();
       })
       .subscribe();
@@ -35,7 +38,7 @@ function Tasks({ userData }) {
       clearInterval(intervalo)
       supabase.removeChannel(channel)
     }
-  }, [userData])
+  }, [userData, playNotification])
 
   async function cargarTasks() {
     if (!userData?.id) return
