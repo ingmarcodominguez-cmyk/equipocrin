@@ -10,6 +10,7 @@ function Tasks({ userData }) {
   const [respuestas, setRespuestas] = useState({})
   const [sonidoActivado, setSonidoActivado] = useState(false);
 
+  // 1. Notificaciones y Alertas
   const activarNotificaciones = () => {
     if ("Notification" in window && Notification.permission !== "granted") {
       Notification.requestPermission();
@@ -27,6 +28,7 @@ function Tasks({ userData }) {
     if ("vibrate" in navigator) navigator.vibrate([1000, 1000, 1000]);
   };
 
+  // 2. Efectos y Carga
   useEffect(() => {
     if (!userData?.id) return
     cargarTasks()
@@ -59,26 +61,46 @@ function Tasks({ userData }) {
     if (data) setUsers(data)
   }
 
+  // 3. Acciones de Tareas
   async function crearTask() {
-    if (!descripcion) return
-    await supabase.from('tasks').insert([{ 
+    // Validación de campos
+    if (!descripcion || !asignado || !fechaVencimiento) {
+      alert("⚠️ Por favor, completá todos los campos antes de enviar la tarea.");
+      return;
+    }
+
+    const { error } = await supabase.from('tasks').insert([{ 
       descripcion, 
-      asignado_a: asignado || null, 
-      fecha_vencimiento: fechaVencimiento || null,
+      asignado_a: asignado, 
+      fecha_vencimiento: fechaVencimiento,
       estado: 'pendiente', 
       creado_por: userData?.id 
     }])
-    setDescripcion(''); 
-    setFechaVencimiento('');
-    setAsignado('');
-    cargarTasks();
+
+    if (error) {
+      alert("❌ Error al crear la tarea: " + error.message);
+    } else {
+      alert("✅ Tarea enviada exitosamente.");
+      setDescripcion(''); 
+      setFechaVencimiento('');
+      setAsignado('');
+      cargarTasks();
+    }
   }
 
   async function responderTask(id) {
     if (!respuestas[id]) return;
-    await supabase.from('tasks').update({ respuesta: respuestas[id], estado: 'completada' }).eq('id', id)
-    setRespuestas({ ...respuestas, [id]: '' }); 
-    cargarTasks();
+    const { error } = await supabase.from('tasks').update({ 
+      respuesta: respuestas[id], 
+      estado: 'completada' 
+    }).eq('id', id)
+    
+    if (error) {
+      alert("Error al enviar la respuesta.");
+    } else {
+      setRespuestas({ ...respuestas, [id]: '' }); 
+      cargarTasks();
+    }
   }
 
   function nombreUsuario(id) {
@@ -86,32 +108,38 @@ function Tasks({ userData }) {
     return u ? u.nombre : 'Usuario'
   }
 
+  // 4. Renderizado
   return (
     <div>
-      {!sonidoActivado && <button onClick={activarNotificaciones} style={{ width: '100%', padding: 20, background: 'red', color: 'white', marginBottom: '15px' }}>ACTIVAR NOTIFICACIONES</button>}
+      {!sonidoActivado && (
+        <button onClick={activarNotificaciones} style={{ width: '100%', padding: 20, background: 'red', color: 'white', marginBottom: '15px' }}>
+          TOCÁ AQUÍ PARA ACTIVAR NOTIFICACIONES
+        </button>
+      )}
       
       <h1>Mis Tareas</h1>
       
-      {/* FORMULARIO MEJORADO */}
+      {/* Formulario de creación */}
       <div style={{ border: '2px solid #007bff', padding: 20, marginBottom: 30, borderRadius: 12, backgroundColor: '#f8f9fa' }}>
-        <h3 style={{ marginTop: 0 }}>Nueva Tarea</h3>
-        
+        <h3>Nueva Tarea</h3>
         <label>Tarea pedida:</label>
-        <textarea placeholder="Describe la tarea aquí..." value={descripcion} onChange={(e) => setDescripcion(e.target.value)} style={{ width: '100%', minHeight: '60px', marginBottom: '10px' }} />
+        <textarea placeholder="Describe la tarea..." value={descripcion} onChange={(e) => setDescripcion(e.target.value)} style={{ width: '100%', marginBottom: 10 }} />
         
         <label>Asignado a:</label>
-        <select onChange={(e) => setAsignado(e.target.value)} value={asignado} style={{ width: '100%', padding: '8px', marginBottom: '10px' }}>
+        <select onChange={(e) => setAsignado(e.target.value)} value={asignado} style={{ width: '100%', marginBottom: 10 }}>
           <option value="">Selecciona un usuario...</option>
           {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
         </select>
         
         <label>Fecha de vencimiento:</label>
-        <input type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} style={{ width: '100%', padding: '8px', marginBottom: '15px' }} />
+        <input type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} style={{ width: '100%', marginBottom: 15 }} />
         
-        <button onClick={crearTask} style={{ width: '100%', padding: '12px', background: '#007bff', color: 'white', border: 'none', borderRadius: 6, fontWeight: 'bold' }}>ENVIAR TAREA</button>
+        <button onClick={crearTask} style={{ width: '100%', padding: 12, background: '#007bff', color: 'white', border: 'none', borderRadius: 6, fontWeight: 'bold' }}>
+          ENVIAR TAREA
+        </button>
       </div>
 
-      {/* LISTADO DE TAREAS */}
+      {/* Listado de tareas */}
       {tasks.map((t) => {
         const esCreador = String(userData?.id) === String(t.creado_por);
         const esAsignado = String(userData?.id) === String(t.asignado_a);
@@ -131,7 +159,7 @@ function Tasks({ userData }) {
                 {esCreador && <p style={{ fontStyle: 'italic', color: '#666' }}>Esperando respuesta...</p>}
                 {esAsignado && (
                   <div style={{ marginTop: 10, borderTop: '1px solid #eee', paddingTop: 10 }}>
-                    <textarea placeholder="Escribe tu respuesta..." onChange={(e) => setRespuestas({...respuestas, [t.id]: e.target.value})} style={{ width: '100%' }} />
+                    <textarea placeholder="Tu respuesta aquí..." onChange={(e) => setRespuestas({...respuestas, [t.id]: e.target.value})} style={{ width: '100%' }} />
                     <button onClick={() => responderTask(t.id)} style={{ width: '100%', marginTop: 5 }}>Enviar Respuesta</button>
                   </div>
                 )}
