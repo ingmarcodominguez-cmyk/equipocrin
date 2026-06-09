@@ -28,16 +28,20 @@ function Tasks({ userData }) {
     if ("vibrate" in navigator) navigator.vibrate([1000, 1000, 1000]);
   };
 
-  // 2. Efectos y Carga
+  // 2. Efectos y Carga en Tiempo Real
   useEffect(() => {
     if (!userData?.id) return
     cargarTasks()
     cargarUsuarios()
     
+    // Escucha cualquier cambio (INSERT o UPDATE) para mantener todo al día
     const channel = supabase
       .channel('tasks_realtime')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, () => {
-        dispararAlerta();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
+        // Si entra una tarea nueva, suena; si es una respuesta, solo actualizamos
+        if (payload.eventType === 'INSERT') {
+          dispararAlerta();
+        }
         cargarTasks();
       })
       .subscribe();
@@ -63,9 +67,8 @@ function Tasks({ userData }) {
 
   // 3. Acciones de Tareas
   async function crearTask() {
-    // Validación de campos
     if (!descripcion || !asignado || !fechaVencimiento) {
-      alert("⚠️ Por favor, completá todos los campos antes de enviar la tarea.");
+      alert("⚠️ Por favor, completá todos los campos antes de enviar.");
       return;
     }
 
@@ -78,7 +81,7 @@ function Tasks({ userData }) {
     }])
 
     if (error) {
-      alert("❌ Error al crear la tarea: " + error.message);
+      alert("❌ Error al crear: " + error.message);
     } else {
       alert("✅ Tarea enviada exitosamente.");
       setDescripcion(''); 
@@ -89,16 +92,20 @@ function Tasks({ userData }) {
   }
 
   async function responderTask(id) {
-    if (!respuestas[id]) return;
+    if (!respuestas[id]) {
+      alert("⚠️ Debes escribir una respuesta.");
+      return;
+    }
+    
     const { error } = await supabase.from('tasks').update({ 
       respuesta: respuestas[id], 
       estado: 'completada' 
     }).eq('id', id)
     
     if (error) {
-      alert("Error al enviar la respuesta.");
+      alert("❌ Error al enviar la respuesta.");
     } else {
-      setRespuestas({ ...respuestas, [id]: '' }); 
+      setRespuestas({ ...respuestas, [id]: '' });
       cargarTasks();
     }
   }
@@ -119,7 +126,6 @@ function Tasks({ userData }) {
       
       <h1>Mis Tareas</h1>
       
-      {/* Formulario de creación */}
       <div style={{ border: '2px solid #007bff', padding: 20, marginBottom: 30, borderRadius: 12, backgroundColor: '#f8f9fa' }}>
         <h3>Nueva Tarea</h3>
         <label>Tarea pedida:</label>
@@ -139,7 +145,6 @@ function Tasks({ userData }) {
         </button>
       </div>
 
-      {/* Listado de tareas */}
       {tasks.map((t) => {
         const esCreador = String(userData?.id) === String(t.creado_por);
         const esAsignado = String(userData?.id) === String(t.asignado_a);
