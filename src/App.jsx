@@ -10,93 +10,56 @@ function App() {
   const [cargando, setCargando] = useState(true)
 
   useEffect(() => {
-    // 1. Obtener sesión actual
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
-      if (data.session) {
-        cargarPerfil(data.session.user.id)
-      } else {
-        setCargando(false)
-      }
+      if (data.session) cargarPerfil(data.session.user.id)
+      else setCargando(false)
     })
 
-    // 2. Escuchar cambios en la autenticación
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
-      if (session) {
-        cargarPerfil(session.user.id)
-      } else {
-        setUserData(null)
-        setCargando(false)
-      }
+      if (session) cargarPerfil(session.user.id)
+      else { setUserData(null); setCargando(false); }
     })
-
-    return () => {
-      listener.subscription.unsubscribe()
-    }
+    return () => listener.subscription.unsubscribe()
   }, [])
 
   async function cargarPerfil(userId) {
     setCargando(true)
-    const { data: perfil } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .single()
-    
+    const { data: perfil } = await supabase.from('users').select('*').eq('id', userId).single()
     setUserData(perfil)
     setCargando(false)
   }
 
   async function login() {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) {
-      alert('Login incorrecto: ' + error.message)
-    }
+    if (error) alert('Login incorrecto: ' + error.message)
   }
 
   async function logout() {
     await supabase.auth.signOut()
-    setUserData(null)
-    setEmail('') // Limpia el email
-    setPassword('') // Limpia la contraseña
-    window.location.reload() // Refresca la app para asegurar limpieza total
+    window.location.reload()
   }
 
-  // Pantalla de carga
-  if (cargando) {
-    return <div style={{ padding: 20 }}>Cargando sistema...</div>
-  }
+  if (cargando) return <div style={{ padding: 20 }}>Cargando sistema...</div>
 
-  // LOGIN
+  // LOGIN (Mantenemos el padding aquí para que el formulario se vea bien)
   if (!session) {
     return (
       <div style={{ padding: 20 }}>
         <h1>CRIN</h1>
-        <input 
-          type="email" 
-          placeholder="Email" 
-          value={email} 
-          onChange={(e) => setEmail(e.target.value)} 
-          autoComplete="off" 
-        />
+        <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" />
         <br /><br />
-        <input 
-          type="password" 
-          placeholder="Password" 
-          value={password} 
-          onChange={(e) => setPassword(e.target.value)} 
-          autoComplete="new-password" 
-        />
+        <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
         <br /><br />
         <button onClick={login}>Ingresar</button>
       </div>
     )
   }
 
-  // SISTEMA
+  // SISTEMA: Quitamos el padding: 20 para que el Layout ocupe el 100% de la pantalla
   return (
-    <div style={{ padding: 20 }}>
+    <div style={{ width: '100vw', height: '100vh', margin: 0, padding: 0 }}>
       <Layout userData={userData} logout={logout} />
     </div>
   )
