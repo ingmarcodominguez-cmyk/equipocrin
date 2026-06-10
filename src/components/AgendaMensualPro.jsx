@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
 
 function AgendaMensualPro() {
@@ -13,7 +13,28 @@ function AgendaMensualPro() {
     hora: '09:00', observaciones: '', estado: 'pendiente' 
   })
 
-  useEffect(() => { cargarTurnos(); cargarUsuarios() }, [mesActual])
+  // Carga de datos inicial y escucha en tiempo real
+  useEffect(() => {
+    cargarTurnos();
+    cargarUsuarios();
+
+    const channel = supabase
+      .channel('realtime:public:turnos')
+      .on('postgres_changes', 
+          { event: 'INSERT', schema: 'public', table: 'turnos' }, 
+          (payload) => {
+              // Sonido al detectar inserción
+              const audio = new Audio('https://actions.google.com/sounds/v1/notifications/beep_short.ogg');
+              audio.play().catch(e => console.log("Clic necesario para habilitar sonido"));
+              cargarTurnos();
+          }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [mesActual]);
 
   async function cargarTurnos() {
     const { data } = await supabase.from('turnos').select('*')
