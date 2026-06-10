@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 
-function Tasks({ userData }) {
+function Tasks({ userData, playNotification }) {
   const [tasks, setTasks] = useState([])
   const [descripcion, setDescripcion] = useState('')
   const [fechaVencimiento, setFechaVencimiento] = useState('')
@@ -18,15 +18,6 @@ function Tasks({ userData }) {
     alert("Notificaciones activadas");
   };
 
-  const dispararAlerta = () => {
-    if ("Notification" in window && Notification.permission === "granted") {
-      new Notification("¡Nueva Tarea!", { body: "Tenés una tarea nueva pendiente." });
-    }
-    const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
-    audio.play().catch(e => console.log("Sonido bloqueado"));
-    if ("vibrate" in navigator) navigator.vibrate([1000, 1000, 1000]);
-  };
-
   useEffect(() => {
     if (!userData?.id) return
     cargarTasks()
@@ -36,7 +27,7 @@ function Tasks({ userData }) {
       .channel('tasks_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
         if (payload.eventType === 'INSERT') {
-          dispararAlerta();
+          playNotification();
         }
         cargarTasks();
       })
@@ -63,7 +54,7 @@ function Tasks({ userData }) {
 
   async function crearTask() {
     if (!descripcion || !asignado || !fechaVencimiento) {
-      alert("⚠️ Por favor, completá todos los campos antes de enviar.");
+      alert("⚠️ Por favor, completá todos los campos.");
       return;
     }
 
@@ -76,9 +67,8 @@ function Tasks({ userData }) {
     }])
 
     if (error) {
-      alert("❌ Error al crear: " + error.message);
+      alert("❌ Error: " + error.message);
     } else {
-      alert("✅ Tarea enviada exitosamente.");
       setDescripcion(''); 
       setFechaVencimiento('');
       setAsignado('');
@@ -87,19 +77,14 @@ function Tasks({ userData }) {
   }
 
   async function responderTask(id) {
-    if (!respuestas[id]) {
-      alert("⚠️ Debes escribir una respuesta.");
-      return;
-    }
-    
+    if (!respuestas[id]) return;
     const { error } = await supabase.from('tasks').update({ 
       respuesta: respuestas[id], 
       estado: 'completada' 
     }).eq('id', id)
     
-    if (error) {
-      alert("❌ Error al enviar la respuesta.");
-    } else {
+    if (error) alert("Error al enviar.");
+    else {
       setRespuestas({ ...respuestas, [id]: '' });
       cargarTasks();
     }
@@ -111,58 +96,58 @@ function Tasks({ userData }) {
   }
 
   return (
-    <div>
+    <div style={{ width: '100%', maxWidth: '100%' }}>
       {!sonidoActivado && (
-        <button onClick={activarNotificaciones} style={{ width: '100%', padding: 20, background: 'red', color: 'white', marginBottom: '15px' }}>
-          TOCÁ AQUÍ PARA ACTIVAR NOTIFICACIONES
+        <button onClick={activarNotificaciones} style={{ width: '100%', padding: 15, background: '#ef4444', color: 'white', border: 'none', borderRadius: 8, marginBottom: 15 }}>
+          🔔 ACTIVAR NOTIFICACIONES
         </button>
       )}
       
       <h1>Mis Tareas</h1>
       
+      {/* FORMULARIO MEJORADO */}
       <div style={{ border: '2px solid #007bff', padding: 20, marginBottom: 30, borderRadius: 12, backgroundColor: '#f8f9fa' }}>
         <h3>Nueva Tarea</h3>
-        <textarea placeholder="Describe la tarea..." value={descripcion} onChange={(e) => setDescripcion(e.target.value)} style={{ width: '100%', marginBottom: 10 }} />
         
-        <select onChange={(e) => setAsignado(e.target.value)} value={asignado} style={{ width: '100%', marginBottom: 10 }}>
-          <option value="">Asignar a...</option>
+        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Descripción:</label>
+        <textarea placeholder="Describe la tarea..." value={descripcion} onChange={(e) => setDescripcion(e.target.value)} style={{ width: '100%', padding: '10px', marginBottom: 10, borderRadius: 4 }} />
+        
+        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Asignado a:</label>
+        <select onChange={(e) => setAsignado(e.target.value)} value={asignado} style={{ width: '100%', padding: '10px', marginBottom: 10, borderRadius: 4 }}>
+          <option value="">Selecciona un usuario...</option>
           {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
         </select>
         
-        <input type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} style={{ width: '100%', marginBottom: 15 }} />
+        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>📅 Fecha de vencimiento:</label>
+        <input type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} style={{ width: '100%', padding: '10px', marginBottom: 15, borderRadius: 4 }} />
         
-        <button onClick={crearTask} style={{ width: '100%', padding: 12, background: '#007bff', color: 'white', border: 'none', borderRadius: 6, fontWeight: 'bold' }}>
+        <button onClick={crearTask} style={{ width: '100%', padding: 15, background: '#007bff', color: 'white', border: 'none', borderRadius: 6, fontWeight: 'bold' }}>
           ENVIAR TAREA
         </button>
       </div>
 
+      {/* LISTADO */}
       {tasks.map((t) => {
         const esCreador = String(userData?.id) === String(t.creado_por);
         const esAsignado = String(userData?.id) === String(t.asignado_a);
 
         return (
-          <div key={t.id} style={{ border: '1px solid #ccc', padding: 15, margin: 10, borderRadius: 10, backgroundColor: t.estado === 'completada' ? '#f0fdf4' : '#fff' }}>
-            {/* AQUÍ ESTÁ EL CAMBIO: Misma fila */}
+          <div key={t.id} style={{ border: '1px solid #ccc', padding: 15, margin: '10px 0', borderRadius: 10, backgroundColor: t.estado === 'completada' ? '#f0fdf4' : '#fff' }}>
             <p style={{ margin: 0, fontSize: '0.9rem' }}>
-              <strong>De:</strong> {nombreUsuario(t.creado_por)} &nbsp;|&nbsp; <strong>Para:</strong> {nombreUsuario(t.asignado_a)}
+              <strong>De:</strong> {nombreUsuario(t.creado_por)} | <strong>Para:</strong> {nombreUsuario(t.asignado_a)}
             </p>
             <p style={{ margin: '10px 0', fontSize: '1.1rem' }}><strong>Tarea:</strong> {t.descripcion}</p>
-            {t.fecha_vencimiento && <p style={{ fontSize: '0.8rem', color: '#d9534f', margin: 0 }}><strong>Vence:</strong> {t.fecha_vencimiento}</p>}
+            <p style={{ fontSize: '0.8rem', color: '#d9534f' }}><strong>Vence:</strong> {t.fecha_vencimiento}</p>
             
             {t.estado === 'completada' && (
               <p style={{ color: 'blue', marginTop: 10 }}><strong>Respuesta:</strong> {t.respuesta}</p>
             )}
 
-            {t.estado !== 'completada' && (
-              <>
-                {esCreador && <p style={{ fontStyle: 'italic', color: '#666', marginTop: 10 }}>Esperando respuesta...</p>}
-                {esAsignado && (
-                  <div style={{ marginTop: 15, borderTop: '1px solid #eee', paddingTop: 10 }}>
-                    <textarea placeholder="Tu respuesta aquí..." onChange={(e) => setRespuestas({...respuestas, [t.id]: e.target.value})} style={{ width: '100%' }} />
-                    <button onClick={() => responderTask(t.id)} style={{ width: '100%', marginTop: 5 }}>Enviar Respuesta</button>
-                  </div>
-                )}
-              </>
+            {t.estado !== 'completada' && esAsignado && (
+              <div style={{ marginTop: 10 }}>
+                <textarea placeholder="Tu respuesta..." onChange={(e) => setRespuestas({...respuestas, [t.id]: e.target.value})} style={{ width: '100%', padding: 8 }} />
+                <button onClick={() => responderTask(t.id)} style={{ width: '100%', marginTop: 5, padding: 10 }}>Enviar Respuesta</button>
+              </div>
             )}
           </div>
         )
