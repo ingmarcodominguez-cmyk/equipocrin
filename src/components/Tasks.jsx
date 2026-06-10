@@ -18,82 +18,77 @@ function Tasks({ userData, playNotification }) {
   };
 
   useEffect(() => {
-    if (!userData?.id) return
-    cargarTasks()
-    cargarUsuarios()
-    
-    //const channel = supabase
-      //.channel('tasks_realtime')
-     // .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
-       // if (payload.eventType === 'INSERT') playNotification();
-       // cargarTasks();
-     // })
-      //.subscribe();
-      
+    if (!userData?.id) return;
 
+    cargarTasks();
+    cargarUsuarios();
 
-const intervalo =
-  setInterval(() => {
+    // Suscripción a cambios en tiempo real
+    const channel = supabase
+      .channel('tasks_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
+        // Si es una nueva tarea y el usuario actual es el asignado, reproducir sonido
+        if (payload.eventType === 'INSERT' && String(payload.new.asignado_a) === String(userData.id)) {
+          playNotification();
+        }
+        // Actualizamos la lista automáticamente al detectar cualquier cambio
+        cargarTasks();
+      })
+      .subscribe();
 
-    cargarTasks()
-
-  }, 2000)
-
-return () => {
-
-  clearInterval(
-    intervalo
-  )
-
-}
-
-
-
-
-// hasta aqui lo que agrego chat gpt
-
-    return () => { supabase.removeChannel(channel) }
-  }, [userData?.id]) // Ajustado para evitar ejecuciones en bucle
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userData?.id]);
 
   async function cargarTasks() {
-    if (!userData?.id) return
+    if (!userData?.id) return;
     const { data } = await supabase
       .from('tasks')
       .select('*')
       .or(`creado_por.eq.${userData.id},asignado_a.eq.${userData.id}`)
-      .order('created_at', { ascending: false })
+      .order('created_at', { ascending: false });
       
-    if (data) setTasks(data)
+    if (data) setTasks(data);
   }
 
   async function cargarUsuarios() {
-    const { data } = await supabase.from('users').select('*')
-    if (data) setUsers(data)
+    const { data } = await supabase.from('users').select('*');
+    if (data) setUsers(data);
   }
 
   async function crearTask() {
     if (!descripcion || !asignado || !fechaVencimiento) return alert("Completa todos los campos");
     const { error } = await supabase.from('tasks').insert([{ 
-      descripcion, asignado_a: asignado, fecha_vencimiento: fechaVencimiento, estado: 'pendiente', creado_por: userData?.id 
-    }])
+      descripcion, 
+      asignado_a: asignado, 
+      fecha_vencimiento: fechaVencimiento, 
+      estado: 'pendiente', 
+      creado_por: userData?.id 
+    }]);
+    
     if (!error) {
-      setDescripcion(''); setFechaVencimiento(''); setAsignado('');
-      // No llamamos a cargarTasks manual aquí; dejamos que actúe el canal en tiempo real
+      setDescripcion(''); 
+      setFechaVencimiento(''); 
+      setAsignado('');
     }
   }
 
   async function responderTask(id) {
     if (!respuestas[id]) return;
-    const { error } = await supabase.from('tasks').update({ respuesta: respuestas[id], estado: 'completada' }).eq('id', id)
+    const { error } = await supabase.from('tasks').update({ 
+      respuesta: respuestas[id], 
+      estado: 'completada' 
+    }).eq('id', id);
+    
     if (!error) {
       setRespuestas({ ...respuestas, [id]: '' });
-      // No llamamos a cargarTasks manual aquí; dejamos que actúe el canal en tiempo real
     }
   }
 
   function nombreUsuario(id) {
-    const u = users.find((user) => String(user.id) === String(id))
-    return u ? u.nombre : 'Usuario'
+    const u = users.find((user) => String(user.id) === String(id));
+    return u ? u.nombre : 'Usuario';
   }
 
   return (
