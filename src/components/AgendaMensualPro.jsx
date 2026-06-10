@@ -65,7 +65,6 @@ function AgendaMensualPro() {
 
   const obtenerColor = (e) => e === 'realizado' ? '#d4edda' : e === 'cancelado' ? '#f8d7da' : '#f8f9fa'
 
-  // Cálculos para el calendario
   const diasEnMes = new Date(mesActual.getFullYear(), mesActual.getMonth() + 1, 0).getDate();
   const primerDiaDelMes = new Date(mesActual.getFullYear(), mesActual.getMonth(), 1).getDay();
   const offset = primerDiaDelMes === 0 ? 6 : primerDiaDelMes - 1;
@@ -78,12 +77,12 @@ function AgendaMensualPro() {
         <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1))}>Siguiente →</button>
       </div>
       
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '5px', border: '1px solid #ddd' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '5px', border: '1px solid #ddd', backgroundColor: '#FFFFFF' }}>
         {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => (
-          <div key={d} style={{ textAlign: 'center', fontWeight: 'bold', padding: '10px', background: '#f4f4f4' }}>{d}</div>
+          <div key={d} style={{ textAlign: 'center', fontWeight: 'bold', padding: '10px', backgroundColor: '#f4f4f4', color: '#000000' }}>{d}</div>
         ))}
         
-        {[...Array(offset)].map((_, i) => <div key={`empty-${i}`} style={{ minHeight: '160px', background: '#fafafa' }}></div>)}
+        {[...Array(offset)].map((_, i) => <div key={`empty-${i}`} style={{ minHeight: '160px', backgroundColor: '#FFFFFF' }}></div>)}
 
         {[...Array(diasEnMes)].map((_, i) => {
           const diaN = i + 1;
@@ -93,7 +92,7 @@ function AgendaMensualPro() {
           });
           
           return (
-            <div key={i} style={{ minHeight: '160px', border: '1px solid #eee', padding: '5px' }}>
+            <div key={i} style={{ minHeight: '160px', border: '1px solid #eee', padding: '5px', backgroundColor: '#FFFFFF' }}>
               <div onClick={() => abrirNuevoTurno(diaN)} style={{ fontWeight: 'bold', cursor: 'pointer', color: '#007bff', paddingBottom: '5px' }}>
                 {diaN} +
               </div>
@@ -104,7 +103,7 @@ function AgendaMensualPro() {
                     setForm({...t, hora: t.fecha_inicio.split('T')[1].substring(0,5)});
                     setDiaSeleccionado(diaN);
                 }} 
-                style={{ fontSize: '10px', padding: '4px', margin: '2px 0', borderRadius: '3px', background: obtenerColor(t.estado), border: '1px solid #ccc', cursor: 'pointer' }}>
+                style={{ fontSize: '10px', padding: '4px', margin: '2px 0', borderRadius: '3px', backgroundColor: obtenerColor(t.estado), border: '1px solid #ccc', cursor: 'pointer', color: '#000000' }}>
                   <b>{t.paciente_nombre}</b><br/>
                   {users.find(u => u.id === t.profesional_id)?.nombre || '...'} | {t.tipo_turno.toUpperCase()} | {t.fecha_inicio.split('T')[1].substring(0,5)}
                 </div>
