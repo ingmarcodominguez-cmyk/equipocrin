@@ -78,12 +78,12 @@ function AgendaMensualPro() {
       </div>
       
       <div style={{ overflowX: 'auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(60px, 1fr))', gap: '2px', border: '1px solid #ddd', backgroundColor: '#FFFFFF', minWidth: '400px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(80px, 1fr))', gap: '2px', border: '1px solid #ddd', backgroundColor: '#FFFFFF', minWidth: '600px' }}>
           {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => (
             <div key={d} style={{ textAlign: 'center', fontWeight: 'bold', padding: '10px 0', backgroundColor: '#f4f4f4', fontSize: '0.85rem' }}>{d}</div>
           ))}
           
-          {[...Array(offset)].map((_, i) => <div key={`empty-${i}`} style={{ minHeight: '120px', backgroundColor: '#FFFFFF' }}></div>)}
+          {[...Array(offset)].map((_, i) => <div key={`empty-${i}`} style={{ minHeight: '150px', backgroundColor: '#FFFFFF' }}></div>)}
 
           {[...Array(diasEnMes)].map((_, i) => {
             const diaN = i + 1;
@@ -93,8 +93,8 @@ function AgendaMensualPro() {
             });
             
             return (
-              <div key={i} style={{ minHeight: '120px', border: '1px solid #eee', padding: '2px', backgroundColor: '#FFFFFF' }}>
-                <div onClick={() => abrirNuevoTurno(diaN)} style={{ fontWeight: 'bold', cursor: 'pointer', color: '#007bff', fontSize: '0.8rem', paddingBottom: '2px' }}>
+              <div key={i} style={{ minHeight: '150px', border: '1px solid #eee', padding: '4px', backgroundColor: '#FFFFFF' }}>
+                <div onClick={() => abrirNuevoTurno(diaN)} style={{ fontWeight: 'bold', cursor: 'pointer', color: '#007bff', fontSize: '0.8rem', paddingBottom: '5px' }}>
                   {diaN} +
                 </div>
                 {turnosDia.map(t => (
@@ -104,8 +104,11 @@ function AgendaMensualPro() {
                       setForm({...t, hora: t.fecha_inicio.split('T')[1].substring(0,5)});
                       setDiaSeleccionado(diaN);
                   }} 
-                  style={{ fontSize: '9px', padding: '3px', margin: '1px 0', borderRadius: '3px', backgroundColor: obtenerColor(t.estado), border: '1px solid #ccc', cursor: 'pointer', color: '#000000', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-                    {t.paciente_nombre.substring(0, 7)}...
+                  style={{ fontSize: '9px', padding: '4px', margin: '2px 0', borderRadius: '3px', backgroundColor: obtenerColor(t.estado), border: '1px solid #ccc', cursor: 'pointer', color: '#000000', display: 'flex', flexDirection: 'column', lineHeight: '1.2' }}>
+                    <span style={{ fontWeight: 'bold' }}>{t.paciente_nombre}</span>
+                    <span>{users.find(u => u.id === t.profesional_id)?.nombre || '...'}</span>
+                    <span>{t.tipo_turno.toUpperCase()}</span>
+                    <span style={{ fontWeight: 'bold' }}>{t.fecha_inicio.split('T')[1].substring(0,5)} hs</span>
                   </div>
                 ))}
               </div>
@@ -120,7 +123,7 @@ function AgendaMensualPro() {
             <h2>{turnoEditando ? 'Editar Turno' : 'Nuevo Turno'}</h2>
             <input style={inputStyle} placeholder="Paciente" value={form.paciente_nombre} onChange={e => setForm({...form, paciente_nombre: e.target.value})} />
             <select style={inputStyle} value={form.profesional_id} onChange={e => setForm({...form, profesional_id: e.target.value})}>
-              <option value="">Profesional</option>
+              <option value="">Seleccionar Profesional</option>
               {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
             </select>
             <select style={inputStyle} value={form.tipo_turno} onChange={e => setForm({...form, tipo_turno: e.target.value})}>
