@@ -43,6 +43,26 @@ function App() {
 
   if (cargando) return <div style={{ padding: 20 }}>Cargando sistema...</div>
 
+  // agregado por chat gpt 
+if (
+  session
+  &&
+  !userData
+) {
+
+  return (
+    <div
+      style={{
+        padding: 20
+      }}
+    >
+      Cargando perfil...
+    </div>
+  )
+}
+
+
+
   // LOGIN (Mantenemos el padding aquí para que el formulario se vea bien)
   if (!session) {
     return (
