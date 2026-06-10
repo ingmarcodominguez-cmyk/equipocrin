@@ -1,16 +1,23 @@
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+* {
+  box-sizing: border-box;
+}
 
 body {
-
   margin: 0;
+  padding: 0;
+  background-color: #000;
+  color: #fff;
+  font-family: 'Urbanist', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 
-  font-family:
-    Inter,
-    sans-serif;
+/* Opcional: Para que los botones se vean más "neón" al pasar el mouse */
+button {
+  transition: all 0.3s ease;
+}
 
-  background:
-    #f4f7fb;
+button:hover {
+  filter: brightness(1.2);
+  transform: translateY(-2px);
 }

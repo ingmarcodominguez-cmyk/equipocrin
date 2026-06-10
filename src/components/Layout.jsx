@@ -2,96 +2,124 @@ import { useState, useEffect, useRef } from 'react'
 import AgendaMensualPro from './AgendaMensualPro.jsx'
 import AgendaFija from './AgendaFija.jsx'
 import Tasks from './Tasks.jsx'
-import Dashboard from './Dashboard.jsx'
+import logo from '../assets/photo.jpg'; 
 
 function Layout({ userData, logout }) {
-  // Estado para la vista activa (por defecto 'dashboard')
-  const [vista, setVista] = useState(localStorage.getItem('vista') || 'dashboard')
-  const [menuVisible, setMenuVisible] = useState(window.innerWidth > 768)
-  
+  // Persistencia: el sistema recuerda en qué pantalla estaba el usuario
+  const [vista, setVista] = useState(localStorage.getItem('vistaActual') || 'bienvenida')
   const audioRef = useRef(new Audio('/notificacion.mp3'));
-
+  
   useEffect(() => {
-    localStorage.setItem('vista', vista)
-  }, [vista])
+    localStorage.setItem('vistaActual', vista);
+  }, [vista]);
 
-  const playNotification = () => {
-    audioRef.current.play().catch(e => console.log("Interacción necesaria"));
-  };
-
-  if (!userData) return <div style={{ padding: 20 }}>Cargando datos...</div>
-
-  const rol = userData?.rol?.toLowerCase();
-  const esAdministrativo = rol === 'administracion' || rol === 'direccion';
-
-  const cambiarVista = (nuevaVista) => {
-    setVista(nuevaVista);
-    // En móvil, al elegir una opción, el menú se oculta automáticamente
-    if (window.innerWidth <= 768) setMenuVisible(false);
-  }
+  const playNotification = () => audioRef.current.play().catch(e => {});
+  const esAdministrativo = userData?.rol?.toLowerCase() === 'administracion' || userData?.rol?.toLowerCase() === 'direccion';
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', position: 'relative' }}>
+    <div style={{ 
+      backgroundColor: '#000', 
+      minHeight: '100vh', 
+      color: '#fff', 
+      padding: '20px', 
+      fontFamily: 'sans-serif' 
+    }}>
       
-      {/* MENÚ LATERAL */}
-      {menuVisible && (
-        <div style={{ 
-          width: 250, 
-          backgroundColor: '#0f172a', 
-          color: 'white', 
-          padding: 20,
-          position: window.innerWidth <= 768 ? 'absolute' : 'relative',
-          height: '100vh',
-          zIndex: 1000,
-          boxShadow: window.innerWidth <= 768 ? '5px 0 15px rgba(0,0,0,0.3)' : 'none'
-        }}>
-          <button onClick={() => setMenuVisible(false)} style={{width: '100%', marginBottom: 20, padding: 10, cursor: 'pointer'}}>← Ocultar Menú</button>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            <button style={btnStyle} onClick={() => cambiarVista('dashboard')}>🏠 Menú Principal</button>
-            {esAdministrativo && <button style={btnStyle} onClick={() => cambiarVista('agenda')}>📅 Agenda Mensual</button>}
-            <button style={btnStyle} onClick={() => cambiarVista('tareas')}>✅ Tareas</button>
-            <button style={btnStyle} onClick={() => cambiarVista('profesionales')}>⚙️ Agenda Fija</button>
-          </div>
-          
-          <button onClick={logout} style={{ marginTop: 50, width: '100%', backgroundColor: '#ef4444', color: 'white', border: 'none', padding: 10, cursor: 'pointer' }}>Cerrar Sesión</button>
+      {/* 1. PANTALLA DE BIENVENIDA */}
+      {vista === 'bienvenida' && (
+        <div style={{ textAlign: 'center', marginTop: '15vh' }}>
+          <img src={logo} alt="Logo CRIN" style={{ width: 220, borderRadius: '20px', marginBottom: 30, border: '1px solid #333' }} />
+          <h1 style={{ fontSize: '2.5rem', marginBottom: 10 }}>Bienvenido</h1>
+          <h2 style={{ color: '#00f2ff', textTransform: 'uppercase', marginBottom: 40 }}>{userData?.nombre}</h2>
+          <button 
+            onClick={() => setVista('hub')} 
+            style={{ padding: '20px 50px', fontSize: '1.2rem', background: '#00f2ff', color: '#000', border: 'none', borderRadius: '50px', cursor: 'pointer', fontWeight: 'bold' }}
+          >
+            ENTRAR AL MENÚ PRINCIPAL
+          </button>
         </div>
       )}
 
-      {/* ÁREA DE CONTENIDO */}
-      <div style={{ flex: 1, overflowX: 'hidden' }}>
-        {!menuVisible && (
-          <button onClick={() => setMenuVisible(true)} style={{ margin: 15, padding: '10px 20px', cursor: 'pointer' }}>≡ Menú</button>
-        )}
-
-        <div style={{ padding: 20 }}>
-          {/* BOTÓN VOLVER (si no estamos en el dashboard) */}
-          {vista !== 'dashboard' && (
-            <button onClick={() => setVista('dashboard')} style={{ marginBottom: 20, padding: '8px 16px', cursor: 'pointer' }}>← Volver al Menú Principal</button>
-          )}
-
-          {/* VISTAS */}
-          {vista === 'dashboard' && (
-            <div>
-              <h1>Bienvenido, {userData?.nombre}</h1>
-              <div style={{ display: 'grid', gap: '15px', marginTop: 20 }}>
-                {esAdministrativo && <button onClick={() => cambiarVista('agenda')} style={btnBig}>📅 Agenda Mensual</button>}
-                <button onClick={() => cambiarVista('tareas')} style={btnBig}>✅ Tareas</button>
-                <button onClick={() => cambiarVista('profesionales')} style={btnBig}>⚙️ Agenda Fija</button>
-              </div>
-            </div>
-          )}
+      {/* 2. MENÚ PRINCIPAL (HUB) */}
+      {vista === 'hub' && (
+        <div style={{ maxWidth: '600px', margin: 'auto', paddingTop: '5vh' }}>
+          <div style={{ textAlign: 'center', marginBottom: 40 }}>
+            <img src={logo} alt="Logo CRIN" style={{ width: 120, borderRadius: '15px' }} />
+            <h2 style={{ marginTop: 20 }}>Menú Principal</h2>
+          </div>
           
-          {vista === 'agenda' && <AgendaMensualPro userData={userData} />}
-          {vista === 'tareas' && <Tasks userData={userData} playNotification={playNotification} />}
-          {vista === 'profesionales' && <AgendaFija userData={userData} />}
+          <div style={{ display: 'grid', gap: '20px' }}>
+            {esAdministrativo && (
+              <button onClick={() => setVista('agenda')} style={btnHubStyle}>
+                📅 AGENDA MENSUAL
+              </button>
+            )}
+            <button onClick={() => setVista('tareas')} style={btnHubStyle}>
+              ✅ TAREAS
+            </button>
+            <button onClick={() => setVista('profesionales')} style={btnHubStyle}>
+              ⚙️ AGENDA FIJA
+            </button>
+          </div>
+
+          <button onClick={logout} style={btnCerrarStyle}>
+            Cerrar Sesión
+          </button>
         </div>
-      </div>
+      )}
+
+      {/* 3. VISTAS DE CONTENIDO */}
+      {['agenda', 'tareas', 'profesionales'].includes(vista) && (
+        <div style={{ maxWidth: '1200px', margin: 'auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30, borderBottom: '1px solid #333', paddingBottom: 15 }}>
+            <button onClick={() => setVista('hub')} style={btnVolverStyle}>
+              ← VOLVER AL MENÚ
+            </button>
+            <img src={logo} alt="Logo" style={{ width: 50, borderRadius: '8px' }} />
+          </div>
+          
+          <div style={{ backgroundColor: '#111', padding: 20, borderRadius: 15 }}>
+            {vista === 'agenda' && <AgendaMensualPro userData={userData} />}
+            {vista === 'tareas' && <Tasks userData={userData} playNotification={playNotification} />}
+            {vista === 'profesionales' && <AgendaFija userData={userData} />}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-const btnStyle = { background: 'none', border: 'none', color: 'white', textAlign: 'left', fontSize: '1.1rem', cursor: 'pointer' };
-const btnBig = { padding: '20px', fontSize: '1.2rem', cursor: 'pointer', borderRadius: '8px' };
+// Estilos
+const btnHubStyle = { 
+  padding: '25px', 
+  background: '#111', 
+  color: '#fff', 
+  border: '1px solid #333', 
+  borderRadius: '15px', 
+  cursor: 'pointer', 
+  fontSize: '1.1rem', 
+  textAlign: 'left', 
+  fontWeight: 'bold' 
+};
 
-export default Layout
+const btnVolverStyle = { 
+  background: '#333', 
+  color: '#fff', 
+  border: 'none', 
+  padding: '10px 20px', 
+  borderRadius: '5px', 
+  cursor: 'pointer' 
+};
+
+const btnCerrarStyle = { 
+  marginTop: 40, 
+  background: 'none', 
+  color: '#ff4444', 
+  border: '1px solid #ff4444', 
+  padding: '10px', 
+  width: '100%', 
+  cursor: 'pointer', 
+  borderRadius: '5px' 
+};
+
+export default Layout;
