@@ -23,15 +23,12 @@ function Tasks({ userData, playNotification }) {
     cargarTasks();
     cargarUsuarios();
 
-    // Suscripción a cambios en tiempo real
     const channel = supabase
       .channel('tasks_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
-        // Si es una nueva tarea y el usuario actual es el asignado, reproducir sonido
         if (payload.eventType === 'INSERT' && String(payload.new.asignado_a) === String(userData.id)) {
           playNotification();
         }
-        // Actualizamos la lista automáticamente al detectar cualquier cambio
         cargarTasks();
       })
       .subscribe();
@@ -68,9 +65,7 @@ function Tasks({ userData, playNotification }) {
     }]);
     
     if (!error) {
-      setDescripcion(''); 
-      setFechaVencimiento(''); 
-      setAsignado('');
+      setDescripcion(''); setFechaVencimiento(''); setAsignado('');
     }
   }
 
@@ -96,10 +91,7 @@ function Tasks({ userData, playNotification }) {
       {!sonidoActivado && (
         <button onClick={activarNotificaciones} style={btnNotifStyle}>🔔 ACTIVAR NOTIFICACIONES</button>
       )}
-      
       <h2 style={{ color: '#00f2ff', marginBottom: '20px' }}>Gestión de Tareas</h2>
-      
-      {/* FORMULARIO */}
       <div style={formStyle}>
         <h3 style={{ marginTop: 0 }}>Nueva Tarea</h3>
         <textarea placeholder="Descripción..." value={descripcion} onChange={(e) => setDescripcion(e.target.value)} style={inputStyle} />
@@ -110,8 +102,6 @@ function Tasks({ userData, playNotification }) {
         <input type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} style={inputStyle} />
         <button onClick={crearTask} style={btnEnviarStyle}>ENVIAR TAREA</button>
       </div>
-
-      {/* LISTADO */}
       <div style={{ display: 'grid', gap: '20px' }}>
         {tasks.map((t) => (
           <div key={t.id} style={cardStyle}>
@@ -122,9 +112,7 @@ function Tasks({ userData, playNotification }) {
               </div>
               <div style={{ fontSize: '0.8rem', color: '#ff4444', marginTop: '5px' }}>📅 Vence: {t.fecha_vencimiento}</div>
             </div>
-            
             <p style={{ margin: '15px 0', fontSize: '1rem', color: '#eee' }}>{t.descripcion}</p>
-            
             {t.estado === 'completada' ? (
               <div style={{ background: '#1a1a1a', padding: '10px', borderRadius: '8px', borderLeft: '3px solid #00ff9d' }}>
                 <span style={{ fontSize: '0.7rem', color: '#00ff9d' }}>RESPUESTA:</span>
@@ -145,7 +133,6 @@ function Tasks({ userData, playNotification }) {
   )
 }
 
-// Estilos
 const cardStyle = { background: '#0a0a0a', border: '1px solid #333', borderRadius: '15px', padding: '20px' };
 const formStyle = { background: '#111', border: '1px solid #333', padding: '20px', borderRadius: '15px', marginBottom: '30px' };
 const inputStyle = { width: '100%', background: '#000', border: '1px solid #444', color: '#fff', padding: '12px', borderRadius: '8px', marginBottom: '10px', fontFamily: 'inherit' };
