@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 
 function AgendaMensualPro() {
@@ -13,28 +13,31 @@ function AgendaMensualPro() {
     hora: '09:00', observaciones: '', estado: 'pendiente' 
   })
 
-  // Carga de datos inicial y escucha en tiempo real
+  // Carga de datos inicial y escucha en tiempo real absoluta (Todo tipo de cambios)
   useEffect(() => {
     cargarTurnos();
     cargarUsuarios();
 
+    // Filtramos con '*' para capturar INSERT, UPDATE y DELETE en tiempo real
     const channel = supabase
       .channel('realtime:public:turnos')
       .on('postgres_changes', 
-          { event: 'INSERT', schema: 'public', table: 'turnos' }, 
-          (payload) => {
-              // Sonido al detectar inserción
-              const audio = new Audio('https://actions.google.com/sounds/v1/notifications/beep_short.ogg');
-              audio.play().catch(e => console.log("Clic necesario para habilitar sonido"));
-              cargarTurnos();
-          }
+        { event: '*', schema: 'public', table: 'turnos' }, 
+        (payload) => {
+            // Sonido al detectar cualquier cambio externo
+            const audio = new Audio('https://actions.google.com/sounds/v1/notifications/beep_short.ogg');
+            audio.play().catch(e => console.log("Clic necesario para habilitar sonido"));
+            
+            // Volvemos a traer los turnos actualizados de la base de datos
+            cargarTurnos();
+        }
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [mesActual]);
+  }, []); // Quitamos mesActual de aquí para que la suscripción sea única y persistente
 
   async function cargarTurnos() {
     const { data } = await supabase.from('turnos').select('*')
@@ -81,7 +84,11 @@ function AgendaMensualPro() {
     } else {
       await supabase.from('turnos').insert(payload)
     }
-    setDiaSeleccionado(null); setTurnoEditando(null); cargarTurnos()
+    
+    setDiaSeleccionado(null); 
+    setTurnoEditando(null);
+    // Nota: quitamos 'cargarTurnos()' de aquí porque la suscripción en tiempo real 
+    // se va a encargar de disparar el cambio inmediatamente tanto para ti como para el resto.
   }
 
   const obtenerColor = (e) => e === 'realizado' ? '#d4edda' : e === 'cancelado' ? '#f8d7da' : '#f8f9fa'
@@ -172,4 +179,4 @@ const btnStyle = { flex: 1, padding: '10px', borderRadius: '5px', border: 'none'
 const overlayStyle = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }
 const modalStyle = { background: '#fff', padding: '20px', borderRadius: '10px', width: '90%', maxWidth: '350px', border: '1px solid #ccc' }
 
-export default AgendaMensualPro
+export default AgendaMensualPro;

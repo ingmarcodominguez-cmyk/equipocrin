@@ -31,7 +31,7 @@ function Tasks({ userData, playNotification }) {
       .subscribe();
       
     return () => { supabase.removeChannel(channel) }
-  }, [userData])
+  }, [userData?.id]) // Ajustado para evitar ejecuciones en bucle
 
   async function cargarTasks() {
     if (!userData?.id) return
@@ -56,7 +56,7 @@ function Tasks({ userData, playNotification }) {
     }])
     if (!error) {
       setDescripcion(''); setFechaVencimiento(''); setAsignado('');
-      cargarTasks();
+      // No llamamos a cargarTasks manual aquí; dejamos que actúe el canal en tiempo real
     }
   }
 
@@ -65,7 +65,7 @@ function Tasks({ userData, playNotification }) {
     const { error } = await supabase.from('tasks').update({ respuesta: respuestas[id], estado: 'completada' }).eq('id', id)
     if (!error) {
       setRespuestas({ ...respuestas, [id]: '' });
-      cargarTasks();
+      // No llamamos a cargarTasks manual aquí; dejamos que actúe el canal en tiempo real
     }
   }
 
@@ -116,7 +116,7 @@ function Tasks({ userData, playNotification }) {
             ) : (
               String(userData?.id) === String(t.asignado_a) && (
                 <div style={{ marginTop: 15 }}>
-                  <textarea placeholder="Tu respuesta..." onChange={(e) => setRespuestas({...respuestas, [t.id]: e.target.value})} style={inputStyle} />
+                  <textarea placeholder="Tu respuesta..." value={respuestas[t.id] || ''} onChange={(e) => setRespuestas({...respuestas, [t.id]: e.target.value})} style={inputStyle} />
                   <button onClick={() => responderTask(t.id)} style={btnEnviarStyle}>ENVIAR RESPUESTA</button>
                 </div>
               )
