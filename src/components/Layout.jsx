@@ -6,10 +6,8 @@ import logo from '../assets/photo.jpg';
 
 function Layout({ userData, logout }) {
   // Persistencia: el sistema recuerda en qué pantalla estaba el usuario
-  //const [vista, setVista] = useState(localStorage.getItem('vistaActual') || 'bienvenida')
+  const [vista, setVista] = useState(localStorage.getItem('vistaActual') || 'bienvenida')
   
-const [vista, setVista] =
-  useState('bienvenida')
 
 
   const audioRef = useRef(new Audio('/notificacion.mp3'));
