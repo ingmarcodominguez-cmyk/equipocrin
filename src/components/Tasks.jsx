@@ -31,77 +31,23 @@ function Tasks({ userData, playNotification }) {
       //.subscribe();
       
 
-const channel = supabase
 
-  .channel(
-    `tasks_${userData.id}`
+const intervalo =
+  setInterval(() => {
+
+    cargarTasks()
+
+  }, 2000)
+
+return () => {
+
+  clearInterval(
+    intervalo
   )
 
-  .on(
+}
 
-    'postgres_changes',
 
-    {
-
-      event: '*',
-
-      schema: 'public',
-
-      table: 'tasks'
-
-    },
-
-    async (
-      payload
-    ) => {
-
-      console.log(
-        'Realtime:',
-        payload
-      )
-
-      await cargarTasks()
-
-      if (
-
-        payload.eventType
-        ===
-        'INSERT'
-
-        &&
-
-        String(
-          payload.new.asignado_a
-        )
-
-        ===
-
-        String(
-          userData.id
-        )
-
-      ) {
-
-        playNotification()
-
-      }
-
-    }
-
-  )
-
-  .subscribe(
-
-    (status) => {
-
-      console.log(
-        'STATUS:',
-        status
-      )
-
-    }
-
-  )
 
 
 // hasta aqui lo que agrego chat gpt
