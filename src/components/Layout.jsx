@@ -6,7 +6,7 @@ import Dashboard from './Dashboard.jsx'
 
 function Layout({ userData, logout }) {
   const [vista, setVista] = useState(localStorage.getItem('vista') || 'dashboard')
-  const [menuVisible, setMenuVisible] = useState(window.innerWidth > 768) // Oculto en móvil por defecto
+  const [menuVisible, setMenuVisible] = useState(window.innerWidth > 768)
   
   const audioRef = useRef(new Audio('/notificacion.mp3'));
 
@@ -18,14 +18,14 @@ function Layout({ userData, logout }) {
     audioRef.current.play().catch(e => console.log("Interacción necesaria"));
   };
 
-  if (!userData) return <div>Cargando...</div>
+  if (!userData) return <div style={{ padding: 20 }}>Cargando datos de usuario...</div>
 
   const rol = userData?.rol?.toLowerCase();
   const esAdministrativo = rol === 'administracion' || rol === 'direccion';
 
-  // Función para cerrar el menú al hacer clic en una opción (solo en móvil)
   const cambiarVista = (nuevaVista) => {
     setVista(nuevaVista);
+    // Si estamos en móvil, ocultamos el menú automáticamente al seleccionar una opción
     if (window.innerWidth <= 768) setMenuVisible(false);
   }
 
@@ -44,8 +44,12 @@ function Layout({ userData, logout }) {
           zIndex: 1000,
           boxShadow: window.innerWidth <= 768 ? '5px 0 15px rgba(0,0,0,0.3)' : 'none'
         }}>
-          <button onClick={() => setMenuVisible(false)} style={{ marginBottom: 20, background: 'none', border: '1px solid white', color: 'white', cursor: 'pointer' }}>
-            ✕ Cerrar Menú
+          {/* Botón para ocultar menú (solo oculta, no navega) */}
+          <button 
+            onClick={() => setMenuVisible(false)} 
+            style={{ marginBottom: 20, background: '#1e293b', border: 'none', color: '#cbd5e1', padding: '10px', width: '100%', cursor: 'pointer', borderRadius: '4px' }}
+          >
+            ← Ocultar Menú
           </button>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -56,20 +60,23 @@ function Layout({ userData, logout }) {
           </div>
           
           <div style={{ marginTop: 40 }}>
-            <button onClick={logout} style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', width: '100%' }}>Cerrar sesión</button>
+            <button onClick={logout} style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '10px', borderRadius: '4px', cursor: 'pointer', width: '100%' }}>
+              Cerrar sesión
+            </button>
           </div>
         </div>
       )}
 
-      {/* ÁREA DERECHA */}
+      {/* ÁREA DE CONTENIDO */}
       <div style={{ flex: 1, overflowX: 'hidden' }}>
-        {/* Botón hamburguesa (solo si menú está oculto) */}
+        {/* Botón hamburguesa (aparece solo si el menú está oculto) */}
         {!menuVisible && (
-          <button onClick={() => setMenuVisible(true)} style={{ margin: 15, padding: '10px 20px', cursor: 'pointer' }}>
+          <button onClick={() => setMenuVisible(true)} style={{ margin: 15, padding: '10px 20px', cursor: 'pointer', background: '#e2e8f0', border: 'none', borderRadius: '4px' }}>
             ≡ Menú
           </button>
         )}
 
+        {/* CONTENEDOR DE LA VISTA ACTIVA */}
         <div style={{ padding: '20px' }}>
           {vista === 'dashboard' && <Dashboard userData={userData} setVista={setVista} />}
           {vista === 'agenda' && esAdministrativo && <AgendaMensualPro userData={userData} />}
