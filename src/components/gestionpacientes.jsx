@@ -100,3 +100,7 @@ const inputStyle = { padding: '12px', borderRadius: '8px', border: '1px solid #4
 const btnStyle = { padding: '15px', background: 'transparent', border: '1px solid #00f2ff', color: '#00f2ff', borderRadius: '8px', cursor: 'pointer', width: '100%', fontWeight: 'bold' };
 
 export default GestionPacientes;
+
+
+
+
