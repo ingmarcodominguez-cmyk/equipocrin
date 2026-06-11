@@ -26,6 +26,7 @@ function Tasks({ userData, playNotification }) {
     const channel = supabase
       .channel('tasks_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
+        // Solo suena si la tarea es nueva y está asignada al usuario actual
         if (payload.eventType === 'INSERT' && String(payload.new.asignado_a) === String(userData.id)) {
           playNotification();
         }
@@ -36,16 +37,22 @@ function Tasks({ userData, playNotification }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userData?.id]);
+  }, [userData?.id, userData?.rol]); // Agregado userData.rol como dependencia
 
   async function cargarTasks() {
     if (!userData?.id) return;
-    const { data } = await supabase
-      .from('tasks')
-      .select('*')
-      .or(`creado_por.eq.${userData.id},asignado_a.eq.${userData.id}`)
-      .order('created_at', { ascending: false });
-      
+
+    // Roles que ven todo el tablero
+    const rolesConAccesoTotal = ['ADMINISTRACION', 'DIRECCION'];
+    
+    let query = supabase.from('tasks').select('*').order('created_at', { ascending: false });
+
+    // Filtrar solo si el rol NO tiene acceso total
+    if (!rolesConAccesoTotal.includes(userData.rol)) {
+      query = query.or(`creado_por.eq.${userData.id},asignado_a.eq.${userData.id}`);
+    }
+
+    const { data } = await query;
     if (data) setTasks(data);
   }
 
@@ -102,6 +109,7 @@ function Tasks({ userData, playNotification }) {
         <input type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} style={inputStyle} />
         <button onClick={crearTask} style={btnEnviarStyle}>ENVIAR TAREA</button>
       </div>
+
       <div style={{ display: 'grid', gap: '20px' }}>
         {tasks.map((t) => (
           <div key={t.id} style={cardStyle}>
