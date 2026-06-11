@@ -6,7 +6,6 @@ function AgendaFija({ userData }) {
   const [pacientes, setPacientes] = useState([])
   const [users, setUsers] = useState([])
   
-  // Estados para Registro
   const [dia, setDia] = useState('Lunes')
   const [hora, setHora] = useState('09:00')
   const [horarioManual, setHorarioManual] = useState('')
@@ -14,7 +13,6 @@ function AgendaFija({ userData }) {
   const [prestadorSeleccionado, setPrestadorSeleccionado] = useState('')
   const [prestacion, setPrestacion] = useState('')
   
-  // Estados para Edición y Consulta
   const [editId, setEditId] = useState(null)
   const [editData, setEditData] = useState({})
   const [diaConsulta, setDiaConsulta] = useState('Lunes') 
@@ -120,7 +118,11 @@ function AgendaFija({ userData }) {
             {pacientesFiltrados.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
           {sesionesVisibles.filter(s => s.paciente_id === pacienteConsultaId).map(s => (
-            <div key={s.id} style={{ padding: '10px', background: '#1a1a1a', borderRadius: '8px', marginTop: '10px' }}>{s.dia_semana} | {s.hora} hs | {s.tipo_prestacion}</div>
+            <div key={s.id} style={{ padding: '10px', background: '#1a1a1a', borderRadius: '8px', marginTop: '10px', fontSize: '0.9rem' }}>
+              <strong>{s.dia_semana}</strong> | {s.hora} hs <br/>
+              Prestación: <span style={{ color: '#00ff9d' }}>{s.tipo_prestacion}</span> <br/>
+              Profesional: <span style={{ color: '#aaa' }}>{users.find(u => u.id === s.profesional_id)?.nombre || 'No asignado'}</span>
+            </div>
           ))}
         </div>
       </div>
