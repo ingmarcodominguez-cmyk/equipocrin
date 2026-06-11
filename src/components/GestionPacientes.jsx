@@ -2,22 +2,17 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 
 function GestionPacientes() {
-  // --- LÓGICA DE BLOQUEO DE SALIDA (Flecha del teléfono) ---
+  // --- BLOQUEO DE SALIDA: AVISO DE CONFIRMACIÓN ---
   useEffect(() => {
-    // Reemplazamos la entrada actual del historial con una nueva
-    window.history.replaceState(null, "", window.location.href);
-    
-    const handlePopState = () => {
-      // Cada vez que intenten volver, forzamos a que se queden en la misma página
-      window.history.pushState(null, "", window.location.href);
-      // Aquí puedes añadir un alert si quieres darle feedback a la directora
-      // alert("Para salir, utiliza el botón del menú.");
+    const handleBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = '¿Seguro que quieres salir? Los cambios no guardados se perderán.';
     };
 
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, []);
-  // --------------------------------------------------------
+  // -------------------------------------------------
 
   const [pacientes, setPacientes] = useState([])
   const [editId, setEditId] = useState(null)
