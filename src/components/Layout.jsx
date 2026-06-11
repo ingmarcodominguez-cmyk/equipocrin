@@ -5,13 +5,13 @@ import Tasks from './Tasks.jsx'
 import logo from '../assets/photo.jpg'; 
 
 function Layout({ userData, logout }) {
-  // Quitamos el localStorage para obligar a que SIEMPRE empiece en 'bienvenida'
   const [vista, setVista] = useState('bienvenida'); 
-
   const audioRef = useRef(new Audio('/notificacion.mp3'));
   const playNotification = () => audioRef.current.play().catch(e => {});
   
-  const esAdministrativo = userData?.rol?.toLowerCase() === 'administracion' || userData?.rol?.toLowerCase() === 'direccion';
+  // CORRECCIÓN: Definimos la jerarquía completa aquí
+  const rol = userData?.rol?.toUpperCase();
+  const tieneAccesoTotal = ['ADMINISTRACION', 'DIRECCION', 'PROFESIONAL_PLUS'].includes(rol);
 
   return (
     <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif' }}>
@@ -39,7 +39,8 @@ function Layout({ userData, logout }) {
             <h2 style={{ marginTop: 20 }}>Menú Principal</h2>
           </div>
           <div style={{ display: 'grid', gap: '20px' }}>
-            {esAdministrativo && (
+            {/* Ahora usamos tieneAccesoTotal que incluye al PROFESIONAL_PLUS */}
+            {tieneAccesoTotal && (
               <button onClick={() => setVista('agenda')} style={btnHubStyle}>📅 AGENDA MENSUAL</button>
             )}
             <button onClick={() => setVista('tareas')} style={btnHubStyle}>✅ TAREAS</button>
