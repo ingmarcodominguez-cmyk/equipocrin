@@ -1,9 +1,23 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 
+// Función para evitar que la flecha "atrás" del teléfono cierre la app
+function useBloquearAtras() {
+  useEffect(() => {
+    window.history.pushState(null, "", window.location.href);
+    const handlePopState = () => {
+      window.history.pushState(null, "", window.location.href);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+}
+
 function GestionPacientes() {
+  useBloquearAtras(); // <-- ACTIVADO: El botón atrás del teléfono ya no cerrará la app
+
   const [pacientes, setPacientes] = useState([])
-  const [editId, setEditId] = useState(null) // Nuevo estado para rastrear edición
+  const [editId, setEditId] = useState(null)
   const [form, setForm] = useState({
     nombre: '', dni: '', fecha_nacimiento: '', domicilio: '', 
     escuela: '', telefono: '', obra_social: '', diagnostico: ''
@@ -26,7 +40,6 @@ function GestionPacientes() {
     return edad;
   };
 
-  // Función para preparar el formulario para editar
   function iniciarEdicion(p) {
     setEditId(p.id);
     setForm({
@@ -44,12 +57,10 @@ function GestionPacientes() {
     const payload = { ...form, edad: edad };
 
     if (editId) {
-      // MODO EDICIÓN
       const { error } = await supabase.from('pacientes').update(payload).eq('id', editId);
       if (error) return alert("Error al actualizar: " + error.message);
       alert("Paciente actualizado");
     } else {
-      // MODO NUEVO
       const { error } = await supabase.from('pacientes').insert([payload]);
       if (error) return alert("Error al guardar: " + error.message);
       alert("Paciente registrado");
@@ -77,7 +88,7 @@ function GestionPacientes() {
 
       <div style={{ display: 'flex', gap: '10px' }}>
         <button onClick={guardarPaciente} style={btnStyle}>{editId ? 'ACTUALIZAR DATOS' : 'GUARDAR PACIENTE'}</button>
-        {editId && <button onClick={() => { setEditId(null); setForm({/* reset */}); }} style={{...btnStyle, borderColor: '#666', color: '#ccc'}}>CANCELAR</button>}
+        {editId && <button onClick={() => { setEditId(null); setForm({nombre: '', dni: '', fecha_nacimiento: '', domicilio: '', escuela: '', telefono: '', obra_social: '', diagnostico: ''}); }} style={{...btnStyle, borderColor: '#666', color: '#ccc'}}>CANCELAR</button>}
       </div>
 
       <h3 style={{ marginTop: '30px', color: '#00f2ff' }}>Listado de Pacientes</h3>
