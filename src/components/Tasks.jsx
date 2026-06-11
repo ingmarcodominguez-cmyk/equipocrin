@@ -5,7 +5,7 @@ function Tasks({ userData, playNotification }) {
   const [tasks, setTasks] = useState([])
   const [descripcion, setDescripcion] = useState('')
   const [fechaVencimiento, setFechaVencimiento] = useState('')
-  const [asignado, setAsignado] = useState('')
+  const [asignados, setAsignados] = useState([])
   const [users, setUsers] = useState([])
   const [respuestas, setRespuestas] = useState({})
   const [sonidoActivado, setSonidoActivado] = useState(false);
@@ -19,14 +19,12 @@ function Tasks({ userData, playNotification }) {
 
   useEffect(() => {
     if (!userData?.id) return;
-
     cargarTasks();
     cargarUsuarios();
 
     const channel = supabase
       .channel('tasks_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
-        // Solo suena si la tarea es nueva y está asignada al usuario actual
         if (payload.eventType === 'INSERT' && String(payload.new.asignado_a) === String(userData.id)) {
           playNotification();
         }
@@ -34,24 +32,16 @@ function Tasks({ userData, playNotification }) {
       })
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [userData?.id, userData?.rol]); // Agregado userData.rol como dependencia
+    return () => { supabase.removeChannel(channel); };
+  }, [userData?.id, userData?.rol]);
 
   async function cargarTasks() {
     if (!userData?.id) return;
-
-    // Roles que ven todo el tablero
     const rolesConAccesoTotal = ['ADMINISTRACION', 'DIRECCION'];
-    
     let query = supabase.from('tasks').select('*').order('created_at', { ascending: false });
-
-    // Filtrar solo si el rol NO tiene acceso total
     if (!rolesConAccesoTotal.includes(userData.rol)) {
       query = query.or(`creado_por.eq.${userData.id},asignado_a.eq.${userData.id}`);
     }
-
     const { data } = await query;
     if (data) setTasks(data);
   }
@@ -62,19 +52,31 @@ function Tasks({ userData, playNotification }) {
   }
 
   async function crearTask() {
-    if (!descripcion || !asignado || !fechaVencimiento) return alert("Completa todos los campos");
-    const { error } = await supabase.from('tasks').insert([{ 
-      descripcion, 
-      asignado_a: asignado, 
-      fecha_vencimiento: fechaVencimiento, 
-      estado: 'pendiente', 
-      creado_por: userData?.id 
-    }]);
+    if (!descripcion || asignados.length === 0 || !fechaVencimiento) 
+      return alert("Completa descripción, fecha y al menos un destinatario");
+
+    const nuevasTareas = asignados.map(userId => ({
+      descripcion,
+      asignado_a: userId,
+      fecha_vencimiento: fechaVencimiento,
+      estado: 'pendiente',
+      creado_por: userData?.id
+    }));
+
+    const { error } = await supabase.from('tasks').insert(nuevasTareas);
     
     if (!error) {
-      setDescripcion(''); setFechaVencimiento(''); setAsignado('');
+      setDescripcion(''); setFechaVencimiento(''); setAsignados([]);
+    } else {
+      alert("Error al crear: " + error.message);
     }
   }
+
+  const toggleAsignado = (userId) => {
+    setAsignados(prev => 
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
+  };
 
   async function responderTask(id) {
     if (!respuestas[id]) return;
@@ -83,9 +85,7 @@ function Tasks({ userData, playNotification }) {
       estado: 'completada' 
     }).eq('id', id);
     
-    if (!error) {
-      setRespuestas({ ...respuestas, [id]: '' });
-    }
+    if (!error) setRespuestas({ ...respuestas, [id]: '' });
   }
 
   function nombreUsuario(id) {
@@ -99,15 +99,22 @@ function Tasks({ userData, playNotification }) {
         <button onClick={activarNotificaciones} style={btnNotifStyle}>🔔 ACTIVAR NOTIFICACIONES</button>
       )}
       <h2 style={{ color: '#00f2ff', marginBottom: '20px' }}>Gestión de Tareas</h2>
+      
       <div style={formStyle}>
-        <h3 style={{ marginTop: 0 }}>Nueva Tarea</h3>
+        <h3 style={{ marginTop: 0 }}>Nueva Tarea (Múltiple)</h3>
         <textarea placeholder="Descripción..." value={descripcion} onChange={(e) => setDescripcion(e.target.value)} style={inputStyle} />
-        <select onChange={(e) => setAsignado(e.target.value)} value={asignado} style={inputStyle}>
-          <option value="">Asignar a...</option>
-          {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-        </select>
+        
+        <div style={{ margin: '10px 0', padding: '10px', background: '#000', borderRadius: '8px', border: '1px solid #444', maxHeight: '150px', overflowY: 'auto' }}>
+          <p style={{ margin: '0 0 10px 0', fontSize: '0.8rem', color: '#aaa' }}>Seleccionar destinatarios:</p>
+          {users.map(u => (
+            <label key={u.id} style={{ display: 'block', marginBottom: '5px', fontSize: '0.9rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={asignados.includes(String(u.id))} onChange={() => toggleAsignado(String(u.id))} /> {u.nombre}
+            </label>
+          ))}
+        </div>
+        
         <input type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} style={inputStyle} />
-        <button onClick={crearTask} style={btnEnviarStyle}>ENVIAR TAREA</button>
+        <button onClick={crearTask} style={btnEnviarStyle}>ENVIAR TAREAS</button>
       </div>
 
       <div style={{ display: 'grid', gap: '20px' }}>
@@ -143,7 +150,7 @@ function Tasks({ userData, playNotification }) {
 
 const cardStyle = { background: '#0a0a0a', border: '1px solid #333', borderRadius: '15px', padding: '20px' };
 const formStyle = { background: '#111', border: '1px solid #333', padding: '20px', borderRadius: '15px', marginBottom: '30px' };
-const inputStyle = { width: '100%', background: '#000', border: '1px solid #444', color: '#fff', padding: '12px', borderRadius: '8px', marginBottom: '10px', fontFamily: 'inherit' };
+const inputStyle = { width: '100%', background: '#000', border: '1px solid #444', color: '#fff', padding: '12px', borderRadius: '8px', marginBottom: '10px', fontFamily: 'inherit', boxSizing: 'border-box' };
 const btnEnviarStyle = { width: '100%', padding: '12px', background: 'transparent', border: '1px solid #00f2ff', color: '#00f2ff', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' };
 const btnNotifStyle = { width: '100%', padding: '10px', background: '#ff4444', color: '#fff', border: 'none', borderRadius: '8px', marginBottom: '20px', cursor: 'pointer' };
 

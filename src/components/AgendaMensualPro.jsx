@@ -48,11 +48,9 @@ function AgendaMensualPro({ userData }) {
   async function guardarTurno() {
     const fechaISO = `${mesActual.getFullYear()}-${String(mesActual.getMonth() + 1).padStart(2, '0')}-${String(diaSeleccionado).padStart(2, '0')}T${form.hora}:00`;
     
-    // Obtenemos el nombre del profesional para guardarlo en las observaciones
     const profesionalObj = users.find(u => String(u.id) === String(form.profesional_id));
     const nombreProf = profesionalObj ? profesionalObj.nombre : 'Sin Prof.';
     
-    // Empaquetamos todo en observaciones
     const obsEmpaquetadas = `[${form.hora}] [${form.prestacion}] [${nombreProf}] ${form.observaciones}`;
     
     const payload = { 
@@ -87,9 +85,9 @@ function AgendaMensualPro({ userData }) {
         <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1))}>Siguiente →</button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', border: '1px solid #ccc' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '1px', border: '1px solid #ccc', backgroundColor: '#ccc' }}>
         {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => <div key={d} style={{ textAlign: 'center', background: '#f4f4f4', padding: '10px', fontWeight: 'bold' }}>{d}</div>)}
-        {[...Array(offset)].map((_, i) => <div key={`off-${i}`} />)}
+        {[...Array(offset)].map((_, i) => <div key={`off-${i}`} style={{ background: '#fff', minHeight: '120px' }} />)}
         {[...Array(diasEnMes)].map((_, i) => {
           const dN = i + 1;
           const tD = (turnos || []).filter(t => {
@@ -98,10 +96,9 @@ function AgendaMensualPro({ userData }) {
           });
           
           return (
-            <div key={i} style={{ minHeight: '120px', border: '1px solid #eee', padding: '5px' }}>
+            <div key={i} style={{ minHeight: '120px', background: '#fff', padding: '5px' }}>
               <div onClick={() => { setDiaSeleccionado(dN); setTurnoEditando(null); setForm({ paciente_nombre: '', profesional_id: '', prestacion: 'Turno primera vez', hora: '09:00', observaciones: '', estado: 'pendiente' }); }} style={{ cursor: 'pointer', color: '#007bff', fontWeight: 'bold' }}>{dN} +</div>
               {tD.map(t => {
-                // Desempaquetamos de observaciones
                 const parts = t.observaciones?.split(']') || [];
                 const hora = parts[0]?.replace('[', '') || '--:--';
                 const prest = parts[1]?.replace('[', '') || '';
