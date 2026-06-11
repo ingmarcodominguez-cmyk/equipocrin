@@ -12,7 +12,7 @@ function GestionPacientes() {
       window.history.pushState(null, "", window.location.href);
       
       // 3. Avisamos a la directora para que no se frustre
-      alert("Para salir de la aplicación, utiliza el botón de 'Salir' dentro del menú.");
+      alert("Por favor, utiliza el botón 'Volver' de la pantalla para navegar.");
     };
 
     window.addEventListener('popstate', handlePopState);
