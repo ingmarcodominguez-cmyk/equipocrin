@@ -10,6 +10,25 @@ function Tasks({ userData, playNotification }) {
   const [respuestas, setRespuestas] = useState({})
   const [sonidoActivado, setSonidoActivado] = useState(false);
 
+  // --- FUNCIÓN DE WHATSAPP INDIVIDUAL ---
+  const enviarPorWhatsAppIndividual = (tareaData, usuariosSeleccionados) => {
+    usuariosSeleccionados.forEach(u => {
+      if (u.telefono) {
+        // Limpiamos el número de cualquier carácter no numérico
+        const telefonoLimpio = u.telefono.replace(/\D/g, ''); 
+        const mensaje = `🔔 *Hola ${u.nombre}*, tienes una nueva tarea:\n\n` +
+                        `📝 Descripción: ${tareaData.descripcion}\n` +
+                        `📅 Vencimiento: ${tareaData.fecha_vencimiento}\n\n` +
+                        `Por favor, revisa la plataforma.`;
+        
+        const url = `https://wa.me/${telefonoLimpio}?text=${encodeURIComponent(mensaje)}`;
+        window.open(url, '_blank');
+      } else {
+        console.warn(`El usuario ${u.nombre} no tiene número de teléfono registrado.`);
+      }
+    });
+  };
+
   const activarNotificaciones = () => {
     if ("Notification" in window && Notification.permission !== "granted") {
       Notification.requestPermission();
@@ -47,8 +66,13 @@ function Tasks({ userData, playNotification }) {
   }
 
   async function cargarUsuarios() {
-    const { data } = await supabase.from('users').select('*');
-    if (data) setUsers(data);
+    // Consultamos específicamente los campos necesarios incluyendo 'telefono'
+    const { data, error } = await supabase.from('users').select('id, nombre, telefono');
+    if (error) {
+      console.error("Error al cargar usuarios:", error);
+    } else if (data) {
+      setUsers(data);
+    }
   }
 
   async function crearTask() {
@@ -66,7 +90,17 @@ function Tasks({ userData, playNotification }) {
     const { error } = await supabase.from('tasks').insert(nuevasTareas);
     
     if (!error) {
+      // Identificamos los objetos de los usuarios seleccionados para obtener sus teléfonos
+      const usuariosSeleccionados = users.filter(u => asignados.includes(String(u.id)));
+      
+      const quiereAvisar = confirm(`¿Deseas enviar un aviso por WhatsApp a los ${usuariosSeleccionados.length} destinatarios?`);
+      
+      if (quiereAvisar) {
+        enviarPorWhatsAppIndividual({ descripcion, fecha_vencimiento: fechaVencimiento }, usuariosSeleccionados);
+      }
+
       setDescripcion(''); setFechaVencimiento(''); setAsignados([]);
+      cargarTasks(); // Recargamos para ver la tarea nueva
     } else {
       alert("Error al crear: " + error.message);
     }
