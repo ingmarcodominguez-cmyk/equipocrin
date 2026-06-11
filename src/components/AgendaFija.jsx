@@ -12,6 +12,7 @@ function AgendaFija({ userData }) {
   const [prestacion, setPrestacion] = useState('')
   const [diaConsulta, setDiaConsulta] = useState('Lunes') 
   const [pacienteConsultaId, setPacienteConsultaId] = useState('') 
+  const [filtroPaciente, setFiltroPaciente] = useState('') // Estado para búsqueda rápida
 
   const dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes']
   const horarios = ['09:00', '09:45', '10:30', '11:15', '12:00', '12:45', '13:30', '14:15', '15:00', '15:45', '16:30', '17:15', '18:00', '18:45', '19:30', '20:15']
@@ -24,15 +25,22 @@ function AgendaFija({ userData }) {
   }, [])
 
   async function cargarDatos() {
+    // Traemos pacientes ordenados alfabéticamente desde el inicio
     const { data: sData } = await supabase.from('sesiones_fijas').select('*');
+    const { data: pData } = await supabase.from('pacientes').select('*').order('nombre', { ascending: true });
+    const { data: uData } = await supabase.from('users').select('*').order('nombre', { ascending: true });
+    
     setSesiones(sData || []);
-    const { data: pData } = await supabase.from('pacientes').select('*');
     setPacientes(pData || []);
-    const { data: uData } = await supabase.from('users').select('*');
     setUsers(uData || []);
   }
 
   const sesionesVisibles = esAdminOdireccion ? sesiones : sesiones.filter(s => s.profesional_id === userData.id);
+  
+  // Filtro de pacientes para el buscador rápido
+  const pacientesFiltrados = pacientes.filter(p => 
+    p.nombre.toLowerCase().includes(filtroPaciente.toLowerCase())
+  );
 
   async function agregarSesion() {
     const p = pacientes.find(p => p.id === pacienteSeleccionado)
@@ -81,12 +89,18 @@ function AgendaFija({ userData }) {
 
         <div style={cardStyle}>
           <h3 style={{ borderBottom: '1px solid #333', paddingBottom: '10px', color: '#00f2ff' }}>Auditoría</h3>
-          <select style={inputStyle} onChange={(e) => setPacienteConsultaId(e.target.value)}>
+          <input 
+            style={{...inputStyle, width: '100%', marginBottom: '10px'}} 
+            placeholder="🔎 Buscar paciente..." 
+            onChange={(e) => setFiltroPaciente(e.target.value)} 
+          />
+          <select style={inputStyle} onChange={(e) => setPacienteConsultaId(e.target.value)} size={5}>
             <option value="">Seleccionar paciente...</option>
-            {pacientes.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            {pacientesFiltrados.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
+          
           {sesionesVisibles.filter(s => s.paciente_id === pacienteConsultaId).map(s => (
-            <div key={s.id} style={{ padding: '10px', background: '#1a1a1a', borderRadius: '8px', marginBottom: '5px', fontSize: '0.9rem' }}>
+            <div key={s.id} style={{ padding: '10px', background: '#1a1a1a', borderRadius: '8px', marginTop: '10px', fontSize: '0.9rem' }}>
               {s.dia_semana} | {s.hora} hs | <span style={{ color: '#00ff9d' }}>{s.tipo_prestacion}</span>
             </div>
           ))}
@@ -96,7 +110,6 @@ function AgendaFija({ userData }) {
   )
 }
 
-// Estilos Premium
 const cardStyle = { background: '#0a0a0a', border: '1px solid #333', borderRadius: '15px', padding: '20px', marginBottom: '20px' };
 const inputStyle = { background: '#000', border: '1px solid #444', color: '#fff', padding: '10px', borderRadius: '8px', fontFamily: 'inherit' };
 const btnAccionStyle = { background: '#00f2ff', color: '#000', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' };
