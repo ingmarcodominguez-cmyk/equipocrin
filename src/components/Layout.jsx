@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import AgendaMensualPro from './AgendaMensualPro.jsx'
 import AgendaFija from './AgendaFija.jsx'
 import Tasks from './Tasks.jsx'
+import GestionPacientes from './GestionPacientes.jsx' // 1. Importación
 import logo from '../assets/photo.jpg'; 
 
 function Layout({ userData, logout }) {
@@ -9,9 +10,9 @@ function Layout({ userData, logout }) {
   const audioRef = useRef(new Audio('/notificacion.mp3'));
   const playNotification = () => audioRef.current.play().catch(e => {});
   
-  // Lógica clara de acceso: Solo estos 3 tienen acceso total a la Agenda Mensual
   const rol = userData?.rol?.toUpperCase() || "";
   const tieneAccesoTotal = ['ADMINISTRACION', 'DIRECCION', 'PROFESIONAL_PLUS'].includes(rol);
+  const esAdminOrDir = ['ADMINISTRACION', 'DIRECCION'].includes(rol); // 2. Nuevo permiso
 
   return (
     <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif' }}>
@@ -34,18 +35,25 @@ function Layout({ userData, logout }) {
             )}
             <button onClick={() => setVista('tareas')} style={btnHubStyle}>✅ TAREAS</button>
             <button onClick={() => setVista('profesionales')} style={btnHubStyle}>⚙️ AGENDA FIJA</button>
+            
+            {/* 3. Botón condicional */}
+            {esAdminOrDir && (
+              <button onClick={() => setVista('pacientes')} style={btnHubStyle}>👤 GESTIÓN PACIENTES</button>
+            )}
           </div>
           <button onClick={logout} style={btnCerrarStyle}>Cerrar Sesión</button>
         </div>
       )}
 
-      {['agenda', 'tareas', 'profesionales'].includes(vista) && (
+      {/* 4. Incluimos 'pacientes' en la lista de vistas permitidas */}
+      {['agenda', 'tareas', 'profesionales', 'pacientes'].includes(vista) && (
         <div style={{ maxWidth: '1200px', margin: 'auto' }}>
           <button onClick={() => setVista('hub')} style={btnVolverStyle}>← VOLVER</button>
           <div style={{ backgroundColor: '#111', padding: 20, borderRadius: 15, marginTop: 10 }}>
             {vista === 'agenda' && <AgendaMensualPro userData={userData} />}
             {vista === 'tareas' && <Tasks userData={userData} playNotification={playNotification} />}
             {vista === 'profesionales' && <AgendaFija userData={userData} />}
+            {vista === 'pacientes' && <GestionPacientes />} 
           </div>
         </div>
       )}
