@@ -2,24 +2,22 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 
 function GestionPacientes() {
-  // BLOQUEO REFORZADO: Mantiene al usuario en la página aunque toque la flecha repetidamente
+  const [aviso, setAviso] = useState(false); // Para mostrar el cartelito
+
+  // BLOQUEO REFORZADO: Usamos un cartel visual en lugar de alert
   useEffect(() => {
-    // Definimos la función que intercepta el "atrás"
-    const handlePopState = () => {
-      // 1. Forzamos el estado actual para que el navegador no pueda avanzar
-      window.history.pushState(null, "", window.location.href);
-      
-      // 2. Mensaje de advertencia
-      alert("Por favor, utiliza el botón 'Volver' de la pantalla para navegar.");
-    };
-
-    // Inicializamos el historial
     window.history.pushState(null, "", window.location.href);
-    window.addEventListener('popstate', handlePopState);
 
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
+    const handlePopState = () => {
+      setAviso(true); // Mostramos el cartel en lugar de alert
+      setTimeout(() => setAviso(false), 3000); // Se oculta solo a los 3 segundos
+      
+      // Forzamos el estado de nuevo para el siguiente intento
+      window.history.pushState(null, "", window.location.href);
     };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   const [pacientes, setPacientes] = useState([])
@@ -78,7 +76,14 @@ function GestionPacientes() {
   }
 
   return (
-    <div style={{ color: '#fff', padding: '20px' }}>
+    <div style={{ color: '#fff', padding: '20px', position: 'relative' }}>
+      {/* AVISO VISUAL: Aparece al tocar la flecha */}
+      {aviso && (
+        <div style={{ position: 'fixed', top: '20px', left: '10%', right: '10%', background: '#ff0055', color: '#fff', padding: '15px', borderRadius: '10px', textAlign: 'center', zIndex: 1000, fontWeight: 'bold' }}>
+          ¡Por favor, utiliza el botón 'Volver' de la pantalla!
+        </div>
+      )}
+
       <h2 style={{ color: '#00f2ff' }}>{editId ? '✏️ Editando Paciente' : 'Gestión de Pacientes'}</h2>
       
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px', background: '#1a1a1a', padding: '20px', borderRadius: '10px' }}>
