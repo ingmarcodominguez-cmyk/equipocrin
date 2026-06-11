@@ -2,21 +2,24 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 
 function GestionPacientes() {
-  // BLOQUEO DE NAVEGACIÓN: Fuerza al historial a quedarse en esta página
+  // BLOQUEO REFORZADO: Mantiene al usuario en la página aunque toque la flecha repetidamente
   useEffect(() => {
-    // 1. Empujamos un estado inicial
-    window.history.pushState(null, "", window.location.href);
-
+    // Definimos la función que intercepta el "atrás"
     const handlePopState = () => {
-      // 2. Al presionar "atrás", volvemos a empujar el estado actual
+      // 1. Forzamos el estado actual para que el navegador no pueda avanzar
       window.history.pushState(null, "", window.location.href);
       
-      // 3. Avisamos a la directora para que no se frustre
+      // 2. Mensaje de advertencia
       alert("Por favor, utiliza el botón 'Volver' de la pantalla para navegar.");
     };
 
+    // Inicializamos el historial
+    window.history.pushState(null, "", window.location.href);
     window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, []);
 
   const [pacientes, setPacientes] = useState([])
