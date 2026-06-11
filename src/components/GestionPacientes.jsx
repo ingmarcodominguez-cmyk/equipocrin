@@ -2,17 +2,22 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 
 function GestionPacientes() {
-  // --- BLOQUEO DE SALIDA: AVISO DE CONFIRMACIÓN ---
+  // BLOQUEO DE NAVEGACIÓN: Fuerza al historial a quedarse en esta página
   useEffect(() => {
-    const handleBeforeUnload = (e) => {
-      e.preventDefault();
-      e.returnValue = '¿Seguro que quieres salir? Los cambios no guardados se perderán.';
+    // 1. Empujamos un estado inicial
+    window.history.pushState(null, "", window.location.href);
+
+    const handlePopState = () => {
+      // 2. Al presionar "atrás", volvemos a empujar el estado actual
+      window.history.pushState(null, "", window.location.href);
+      
+      // 3. Avisamos a la directora para que no se frustre
+      alert("Para salir de la aplicación, utiliza el botón de 'Salir' dentro del menú.");
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
-  // -------------------------------------------------
 
   const [pacientes, setPacientes] = useState([])
   const [editId, setEditId] = useState(null)
