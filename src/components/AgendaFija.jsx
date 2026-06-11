@@ -91,7 +91,8 @@ function AgendaFija({ userData }) {
           {sesionesVisibles.filter(s => s.dia_semana === diaConsulta).sort((a,b) => a.hora.localeCompare(b.hora)).map(s => (
             <div key={s.id} style={filaStyle}>
               {editId === s.id ? (
-                <div style={{ display: 'flex', gap: '5px', width: '100%' }}>
+                <div style={{ display: 'flex', gap: '5px', width: '100%', flexWrap: 'wrap' }}>
+                  <select style={inputStyle} defaultValue={s.dia_semana} onChange={(e) => setEditData({...editData, dia_semana: e.target.value})}>{dias.map(d => <option key={d} value={d}>{d}</option>)}</select>
                   <input style={inputStyle} defaultValue={s.hora} onChange={(e) => setEditData({...editData, hora: e.target.value})} />
                   <input style={inputStyle} defaultValue={s.paciente_nombre} onChange={(e) => setEditData({...editData, paciente_nombre: e.target.value})} />
                   <button onClick={() => guardarEdicion(s.id)} style={btnAccionStyle}>💾</button>
