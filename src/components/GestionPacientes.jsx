@@ -1,20 +1,23 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 
-// Función para evitar que la flecha "atrás" del teléfono cierre la app
-function useBloquearAtras() {
+function GestionPacientes() {
+  // --- LÓGICA DE BLOQUEO DE SALIDA (Flecha del teléfono) ---
   useEffect(() => {
-    window.history.pushState(null, "", window.location.href);
+    // Reemplazamos la entrada actual del historial con una nueva
+    window.history.replaceState(null, "", window.location.href);
+    
     const handlePopState = () => {
+      // Cada vez que intenten volver, forzamos a que se queden en la misma página
       window.history.pushState(null, "", window.location.href);
+      // Aquí puedes añadir un alert si quieres darle feedback a la directora
+      // alert("Para salir, utiliza el botón del menú.");
     };
+
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
-}
-
-function GestionPacientes() {
-  useBloquearAtras(); // <-- ACTIVADO: El botón atrás del teléfono ya no cerrará la app
+  // --------------------------------------------------------
 
   const [pacientes, setPacientes] = useState([])
   const [editId, setEditId] = useState(null)
