@@ -10,16 +10,14 @@ function Tasks({ userData, playNotification }) {
   const [respuestas, setRespuestas] = useState({})
   const [sonidoActivado, setSonidoActivado] = useState(false);
 
-  // --- FUNCIÓN DE WHATSAPP INDIVIDUAL ---
-  const enviarPorWhatsAppIndividual = (tareaData, usuariosSeleccionados) => {
+  // --- FUNCIÓN DE WHATSAPP CON MENSAJE MISTERIOSO ---
+  const enviarPorWhatsAppIndividual = (usuariosSeleccionados) => {
     usuariosSeleccionados.forEach(u => {
       if (u.telefono) {
-        // Limpiamos el número de cualquier carácter no numérico
         const telefonoLimpio = u.telefono.replace(/\D/g, ''); 
-        const mensaje = `🔔 *Hola ${u.nombre}*, tienes una nueva tarea:\n\n` +
-                        `📝 Descripción: ${tareaData.descripcion}\n` +
-                        `📅 Vencimiento: ${tareaData.fecha_vencimiento}\n\n` +
-                        `Por favor, revisa la plataforma.`;
+        // Mensaje enfocado en que el usuario abra la app
+        const mensaje = `🔔 *Hola ${u.nombre}*, tienes una nueva tarea pendiente en la plataforma.\n\n` +
+                        `Por favor, ingresa al sistema para ver los detalles y completar la gestión.`;
         
         const url = `https://wa.me/${telefonoLimpio}?text=${encodeURIComponent(mensaje)}`;
         window.open(url, '_blank');
@@ -66,7 +64,6 @@ function Tasks({ userData, playNotification }) {
   }
 
   async function cargarUsuarios() {
-    // Consultamos específicamente los campos necesarios incluyendo 'telefono'
     const { data, error } = await supabase.from('users').select('id, nombre, telefono');
     if (error) {
       console.error("Error al cargar usuarios:", error);
@@ -90,17 +87,16 @@ function Tasks({ userData, playNotification }) {
     const { error } = await supabase.from('tasks').insert(nuevasTareas);
     
     if (!error) {
-      // Identificamos los objetos de los usuarios seleccionados para obtener sus teléfonos
       const usuariosSeleccionados = users.filter(u => asignados.includes(String(u.id)));
       
       const quiereAvisar = confirm(`¿Deseas enviar un aviso por WhatsApp a los ${usuariosSeleccionados.length} destinatarios?`);
       
       if (quiereAvisar) {
-        enviarPorWhatsAppIndividual({ descripcion, fecha_vencimiento: fechaVencimiento }, usuariosSeleccionados);
+        enviarPorWhatsAppIndividual(usuariosSeleccionados);
       }
 
       setDescripcion(''); setFechaVencimiento(''); setAsignados([]);
-      cargarTasks(); // Recargamos para ver la tarea nueva
+      cargarTasks(); 
     } else {
       alert("Error al crear: " + error.message);
     }
