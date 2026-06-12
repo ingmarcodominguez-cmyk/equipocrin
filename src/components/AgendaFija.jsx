@@ -6,6 +6,9 @@ function AgendaFija({ userData }) {
   const [pacientes, setPacientes] = useState([])
   const [users, setUsers] = useState([])
   
+  // Estado para controlar la vista en móvil
+  const [vistaActiva, setVistaActiva] = useState('agenda') 
+  
   const [dia, setDia] = useState('Lunes')
   const [hora, setHora] = useState('09:00')
   const [horarioManual, setHorarioManual] = useState('')
@@ -22,7 +25,6 @@ function AgendaFija({ userData }) {
   const rol = userData?.rol?.toUpperCase();
   const esAdminOdireccion = rol === 'ADMINISTRACION' || rol === 'DIRECCION';
 
-  // Lógica de saltos de 45 min
   const generarHorarios = () => {
     const arr = [];
     const rangos = [{ inicio: 9, fin: 12, minFin: 30 }, { inicio: 14, fin: 20, minFin: 0 }];
@@ -73,47 +75,52 @@ function AgendaFija({ userData }) {
   return (
     <div style={{ color: '#fff', padding: '20px', maxWidth: '1200px', margin: 'auto' }}>
       
-      {/* FORMULARIO */}
-      <div style={{...cardStyle, marginBottom: '20px'}}>
-        <h3 style={{ color: '#00f2ff' }}>{editId ? '✏️ Editar Sesión' : '➕ Nueva Sesión'}</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
-          <select style={inputStyle} value={dia} onChange={(e) => setDia(e.target.value)}>{dias.map(d => <option key={d} value={d}>{d}</option>)}</select>
-          <select style={inputStyle} value={hora} onChange={(e) => { setHora(e.target.value); setHorarioManual(''); }}>{generarHorarios().map(h => <option key={h} value={h}>{h}</option>)}</select>
-          <input style={inputStyle} placeholder="Hora manual" value={horarioManual} onChange={(e) => setHorarioManual(e.target.value)} />
-          <select style={inputStyle} value={pacienteSeleccionado} onChange={(e) => setPacienteSeleccionado(e.target.value)}><option value="">Paciente...</option>{pacientes.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select>
-          <select style={inputStyle} value={prestadorSeleccionado} onChange={(e) => setPrestadorSeleccionado(e.target.value)}><option value="">Profesional...</option>{users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
-          <button onClick={guardarSesion} style={btnAccionStyle}>{editId ? 'ACTUALIZAR' : 'GUARDAR'}</button>
-          {editId && <button onClick={() => setEditId(null)} style={{...btnAccionStyle, background: '#444'}}>CANCELAR</button>}
-        </div>
+      {/* Botones de navegación (solo visibles o útiles para cambiar vista) */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+        <button onClick={() => setVistaActiva('agenda')} style={btnTabStyle(vistaActiva === 'agenda')}>📅 Agenda</button>
+        <button onClick={() => setVistaActiva('auditoria')} style={btnTabStyle(vistaActiva === 'auditoria')}>🔎 Auditoría</button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
-        {/* AGENDA */}
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 style={{ color: '#00f2ff' }}>📅 Agenda</h2>
-            {esAdminOdireccion && (
-              <select style={inputStyle} onChange={(e) => setProfesionalFiltroId(e.target.value)}>
-                <option value="">Todos los profesionales</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-              </select>
-            )}
+      {vistaActiva === 'agenda' ? (
+        <>
+          <div style={{...cardStyle, marginBottom: '20px'}}>
+            <h3 style={{ color: '#00f2ff' }}>{editId ? '✏️ Editar Sesión' : '➕ Nueva Sesión'}</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
+              <select style={inputStyle} value={dia} onChange={(e) => setDia(e.target.value)}>{dias.map(d => <option key={d} value={d}>{d}</option>)}</select>
+              <select style={inputStyle} value={hora} onChange={(e) => { setHora(e.target.value); setHorarioManual(''); }}>{generarHorarios().map(h => <option key={h} value={h}>{h}</option>)}</select>
+              <input style={inputStyle} placeholder="Hora manual" value={horarioManual} onChange={(e) => setHorarioManual(e.target.value)} />
+              <select style={inputStyle} value={pacienteSeleccionado} onChange={(e) => setPacienteSeleccionado(e.target.value)}><option value="">Paciente...</option>{pacientes.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select>
+              <select style={inputStyle} value={prestadorSeleccionado} onChange={(e) => setPrestadorSeleccionado(e.target.value)}><option value="">Profesional...</option>{users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
+              <button onClick={guardarSesion} style={btnAccionStyle}>{editId ? 'ACTUALIZAR' : 'GUARDAR'}</button>
+              {editId && <button onClick={() => setEditId(null)} style={{...btnAccionStyle, background: '#444'}}>CANCELAR</button>}
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: '5px', marginBottom: '10px' }}>
-            {dias.map(d => <button key={d} onClick={() => setDiaConsulta(d)} style={btnTabStyle(diaConsulta === d)}>{d.substring(0,3)}</button>)}
-          </div>
-          <div style={cardStyle}>
-            {horasDelDia.map(s => (
-              <div key={s.id} style={filaStyle}>
-                <span style={{ fontWeight: 'bold', width: '80px' }}>{s.hora}</span>
-                <span style={{ flexGrow: 1 }}>{s.paciente_nombre}</span>
-                <button onClick={() => iniciarEdicion(s)} style={{background: 'none', border: 'none', color: '#00f2ff'}}>✏️</button>
-              </div>
-            ))}
-          </div>
-        </div>
 
-        {/* AUDITORÍA */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ color: '#00f2ff' }}>📅 Agenda</h2>
+              {esAdminOdireccion && (
+                <select style={inputStyle} onChange={(e) => setProfesionalFiltroId(e.target.value)}>
+                  <option value="">Todos los profesionales</option>
+                  {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                </select>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: '5px', marginBottom: '10px', flexWrap: 'wrap' }}>
+              {dias.map(d => <button key={d} onClick={() => setDiaConsulta(d)} style={btnTabStyle(diaConsulta === d)}>{d.substring(0,3)}</button>)}
+            </div>
+            <div style={cardStyle}>
+              {horasDelDia.map(s => (
+                <div key={s.id} style={filaStyle}>
+                  <span style={{ fontWeight: 'bold', width: '80px' }}>{s.hora}</span>
+                  <span style={{ flexGrow: 1 }}>{s.paciente_nombre}</span>
+                  <button onClick={() => iniciarEdicion(s)} style={{background: 'none', border: 'none', color: '#00f2ff', cursor: 'pointer'}}>✏️</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : (
         <div style={cardStyle}>
           <h3 style={{ color: '#00f2ff' }}>🔎 Auditoría Paciente</h3>
           <input style={{...inputStyle, width: '100%', marginBottom: '10px'}} placeholder="Buscar nombre..." onChange={(e) => setFiltroPaciente(e.target.value)} />
@@ -128,15 +135,23 @@ function AgendaFija({ userData }) {
             ))}
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
 
 const cardStyle = { background: '#0a0a0a', border: '1px solid #333', borderRadius: '15px', padding: '20px' };
-const inputStyle = { background: '#000', border: '1px solid #444', color: '#fff', padding: '8px', borderRadius: '8px' };
+const inputStyle = { background: '#000', border: '1px solid #444', color: '#fff', padding: '8px', borderRadius: '8px', boxSizing: 'border-box' };
 const btnAccionStyle = { background: '#00f2ff', color: '#000', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', padding: '8px' };
 const filaStyle = { padding: '10px', borderBottom: '1px solid #222', display: 'flex', alignItems: 'center' };
-const btnTabStyle = (activo) => ({ padding: '8px 12px', borderRadius: '5px', border: 'none', background: activo ? '#00f2ff' : '#222', color: activo ? '#000' : '#fff', cursor: 'pointer' });
+const btnTabStyle = (activo) => ({ 
+  padding: '10px 15px', 
+  borderRadius: '8px', 
+  border: 'none', 
+  background: activo ? '#00f2ff' : '#222', 
+  color: activo ? '#000' : '#fff', 
+  cursor: 'pointer', 
+  fontWeight: 'bold' 
+});
 
 export default AgendaFija;
