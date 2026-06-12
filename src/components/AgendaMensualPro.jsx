@@ -13,12 +13,13 @@ function AgendaMensualPro({ userData }) {
     hora: '09:00', observaciones: '', estado: 'pendiente' 
   })
 
+  // 1. Lógica de roles: Solo ADMINISTRACION tiene permiso de ver todo
   const rol = userData?.rol?.toUpperCase() || "";
-  const tieneAcceso = ['ADMINISTRACION', 'DIRECCION', 'PROFESIONAL_PLUS'].includes(rol);
+  const esAdmin = rol === 'ADMINISTRACION';
 
   useEffect(() => {
-    if (tieneAcceso) cargarDatos();
-  }, [tieneAcceso, mesActual]);
+    cargarDatos();
+  }, [mesActual]);
 
   async function cargarDatos() {
     const { data: t } = await supabase.from('turnos').select('*');
@@ -26,6 +27,11 @@ function AgendaMensualPro({ userData }) {
     if (t) setTurnos(t);
     if (u) setUsers(u);
   }
+
+  // 2. Filtro: Si no es Admin, filtra obligatoriamente por su ID
+  const turnosVisibles = esAdmin 
+    ? turnos 
+    : turnos.filter(t => String(t.profesional_id || '').trim() === String(userData?.id || '').trim());
 
   const prestaciones = ['Turno primera vez', 'Evaluacion', 'Reunion', 'Entrenamiento', 'Devolucion'];
 
@@ -47,10 +53,8 @@ function AgendaMensualPro({ userData }) {
 
   async function guardarTurno() {
     const fechaISO = `${mesActual.getFullYear()}-${String(mesActual.getMonth() + 1).padStart(2, '0')}-${String(diaSeleccionado).padStart(2, '0')}T${form.hora}:00`;
-    
     const profesionalObj = users.find(u => String(u.id) === String(form.profesional_id));
     const nombreProf = profesionalObj ? profesionalObj.nombre : 'Sin Prof.';
-    
     const obsEmpaquetadas = `[${form.hora}] [${form.prestacion}] [${nombreProf}] ${form.observaciones}`;
     
     const payload = { 
@@ -72,13 +76,12 @@ function AgendaMensualPro({ userData }) {
     cargarDatos();
   }
 
-  if (!tieneAcceso) return <div style={{ color: '#fff', padding: 20 }}>Acceso restringido.</div>;
-
   const diasEnMes = new Date(mesActual.getFullYear(), mesActual.getMonth() + 1, 0).getDate();
   const offset = (new Date(mesActual.getFullYear(), mesActual.getMonth(), 1).getDay() + 6) % 7;
 
   return (
     <div style={{ padding: '20px', backgroundColor: '#fff', color: '#000', borderRadius: '10px', fontSize: '14px' }}>
+      
       <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '20px' }}>
         <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1))}>← Anterior</button>
         <h2 style={{ fontSize: '20px' }}>{mesActual.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase()}</h2>
@@ -90,7 +93,7 @@ function AgendaMensualPro({ userData }) {
         {[...Array(offset)].map((_, i) => <div key={`off-${i}`} style={{ background: '#fff', minHeight: '120px' }} />)}
         {[...Array(diasEnMes)].map((_, i) => {
           const dN = i + 1;
-          const tD = (turnos || []).filter(t => {
+          const tD = (turnosVisibles || []).filter(t => {
             const f = new Date(t.fecha_inicio);
             return f.getUTCDate() === dN && f.getUTCMonth() === mesActual.getMonth() && f.getUTCFullYear() === mesActual.getFullYear();
           });
