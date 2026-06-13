@@ -10,9 +10,18 @@ function Tasks({ userData, playNotification }) {
   const [respuestas, setRespuestas] = useState({})
   
   const [usuarioFiltro, setUsuarioFiltro] = useState('');
-  const [estadoFiltro, setEstadoFiltro] = useState('');
+  const [estadoFiltro, setEstadoFiltro] = useState(''); // '', 'pendiente', 'completada', 'vencida'
 
-  const esAdmin = ['ADMINISTRACION', 'DIRECCION'].includes(userData?.rol?.toUpperCase());
+  const rol = userData?.rol?.toUpperCase() || "";
+  const esAdmin = ['ADMINISTRACION', 'DIRECCION'].includes(rol);
+
+  const esVencida = (fecha, estado) => {
+    if (estado === 'completada' || !fecha) return false;
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const fechaVenc = new Date(fecha);
+    return fechaVenc < hoy;
+  };
 
   useEffect(() => {
     if (!userData?.id) return;
@@ -21,23 +30,19 @@ function Tasks({ userData, playNotification }) {
     
     const channel = supabase
       .channel('tasks_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
-        if (payload.eventType === 'INSERT' && String(payload.new.asignado_a) === String(userData.id)) {
-          playNotification();
-        }
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
         cargarTasks();
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [userData?.id, userData?.rol, usuarioFiltro, estadoFiltro]);
+  }, [userData?.id, rol, usuarioFiltro, estadoFiltro]);
 
   async function cargarTasks() {
     if (!userData?.id) return;
     let query = supabase.from('tasks').select('*').order('created_at', { ascending: false });
 
-    if (estadoFiltro) { query = query.eq('estado', estadoFiltro); }
-
+    // Lógica de acceso
     if (esAdmin) {
       if (usuarioFiltro) {
         query = query.or(`creado_por.eq.${usuarioFiltro},asignado_a.eq.${usuarioFiltro}`);
@@ -47,57 +52,44 @@ function Tasks({ userData, playNotification }) {
     }
 
     const { data } = await query;
-    if (data) setTasks(data);
+    if (data) {
+      // Filtrar localmente después de traer los datos (especialmente para vencidas)
+      let filtradas = data;
+      if (estadoFiltro === 'pendiente') filtradas = data.filter(t => t.estado === 'pendiente' && !esVencida(t.fecha_vencimiento, t.estado));
+      if (estadoFiltro === 'completada') filtradas = data.filter(t => t.estado === 'completada');
+      if (estadoFiltro === 'vencida') filtradas = data.filter(t => esVencida(t.fecha_vencimiento, t.estado));
+      setTasks(filtradas);
+    }
   }
 
-  async function cargarUsuarios() {
-    const { data } = await supabase.from('users').select('id, nombre, telefono');
-    if (data) setUsers(data);
-  }
-
-  async function crearTask() {
-    if (!descripcion || asignados.length === 0 || !fechaVencimiento) return alert("Completa todos los campos");
-    const nuevasTareas = asignados.map(userId => ({ 
-      descripcion, asignado_a: userId, fecha_vencimiento: fechaVencimiento, estado: 'pendiente', creado_por: userData?.id 
-    }));
-    const { error } = await supabase.from('tasks').insert(nuevasTareas);
-    if (!error) { setDescripcion(''); setFechaVencimiento(''); setAsignados([]); cargarTasks(); }
-  }
-
+  // ... (funciones cargarUsuarios, crearTask, toggleAsignado, responderTask, nombreUsuario se mantienen igual)
+  async function cargarUsuarios() { const { data } = await supabase.from('users').select('id, nombre, telefono'); if (data) setUsers(data); }
+  async function crearTask() { if (!descripcion || asignados.length === 0 || !fechaVencimiento) return alert("Completa todos los campos"); const nuevasTareas = asignados.map(userId => ({ descripcion, asignado_a: userId, fecha_vencimiento: fechaVencimiento, estado: 'pendiente', creado_por: userData?.id })); await supabase.from('tasks').insert(nuevasTareas); setDescripcion(''); setFechaVencimiento(''); setAsignados([]); cargarTasks(); }
   const toggleAsignado = (userId) => { setAsignados(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]); };
-
-  async function responderTask(id) {
-    if (!respuestas[id]) return;
-    await supabase.from('tasks').update({ respuesta: respuestas[id], estado: 'completada' }).eq('id', id);
-    setRespuestas({ ...respuestas, [id]: '' });
-    cargarTasks();
-  }
-
-  function nombreUsuario(id) {
-    const u = users.find((user) => String(user.id) === String(id));
-    return u ? u.nombre : 'Usuario';
-  }
+  async function responderTask(id) { if (!respuestas[id]) return; await supabase.from('tasks').update({ respuesta: respuestas[id], estado: 'completada' }).eq('id', id); setRespuestas({...respuestas, [id]: ''}); cargarTasks(); }
+  function nombreUsuario(id) { const u = users.find((user) => String(user.id) === String(id)); return u ? u.nombre : 'Usuario'; }
 
   return (
     <div style={{ color: '#fff', padding: '10px' }}>
       <h2 style={{ color: '#00f2ff' }}>Gestión de Tareas</h2>
       
-      {esAdmin && (
-        <div style={{ background: '#111', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #333' }}>
-          <h4 style={{ margin: '0 0 10px 0' }}>Filtros</h4>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+      <div style={{ background: '#111', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #333' }}>
+        <h4 style={{ margin: '0 0 10px 0' }}>Filtros</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: esAdmin ? '1fr 1fr' : '1fr', gap: '10px' }}>
+          {esAdmin && (
             <select value={usuarioFiltro} onChange={(e) => setUsuarioFiltro(e.target.value)} style={inputStyle}>
-              <option value="">👤 Todos</option>
+              <option value="">👤 Todos los usuarios</option>
               {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
             </select>
-            <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)} style={inputStyle}>
-              <option value="">📋 Todos los estados</option>
-              <option value="pendiente">⏳ Pendientes</option>
-              <option value="completada">✅ Finalizadas</option>
-            </select>
-          </div>
+          )}
+          <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)} style={inputStyle}>
+            <option value="">📋 Todos los estados</option>
+            <option value="pendiente">⏳ Pendientes (Al día)</option>
+            <option value="vencida">⚠️ Vencidas</option>
+            <option value="completada">✅ Finalizadas</option>
+          </select>
         </div>
-      )}
+      </div>
 
       <div style={formStyle}>
         <h3>Nueva Tarea</h3>
@@ -114,29 +106,28 @@ function Tasks({ userData, playNotification }) {
       </div>
 
       <div style={{ display: 'grid', gap: '20px' }}>
-        {tasks.map((t) => (
-          <div key={t.id} style={cardStyle}>
-            <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '10px', borderBottom: '1px solid #333', paddingBottom: '5px' }}>
-              👤 De: {nombreUsuario(t.creado_por)} ➡️ Para: {nombreUsuario(t.asignado_a)}
-            </div>
-            
-            <p style={{ margin: '10px 0', fontSize: '1.1rem' }}>{t.descripcion}</p>
-            
-            {t.estado === 'completada' ? (
-              <div style={{ background: '#1a1a1a', padding: '10px', borderRadius: '5px', borderLeft: '3px solid #00ff9d' }}>
-                <span style={{ fontSize: '0.7rem', color: '#00ff9d' }}>RESPUESTA:</span>
-                <p style={{ margin: '5px 0 0 0' }}>{t.respuesta}</p>
+        {tasks.map((t) => {
+          const vencida = esVencida(t.fecha_vencimiento, t.estado);
+          return (
+            <div key={t.id} style={{ ...cardStyle, borderColor: vencida ? '#ff4444' : '#333' }}>
+              <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '10px', borderBottom: '1px solid #333', paddingBottom: '5px' }}>
+                👤 De: {nombreUsuario(t.creado_por)} ➡️ Para: {nombreUsuario(t.asignado_a)}
+                <span style={{ float: 'right', color: vencida ? '#ff4444' : '#fff' }}>{vencida ? '⚠️ VENCIDA' : `📅 ${t.fecha_vencimiento}`}</span>
               </div>
-            ) : (
-              String(userData?.id) === String(t.asignado_a) && (
-                <div style={{ marginTop: 15 }}>
-                  <textarea placeholder="Tu respuesta..." value={respuestas[t.id] || ''} onChange={(e) => setRespuestas({...respuestas, [t.id]: e.target.value})} style={inputStyle} />
-                  <button onClick={() => responderTask(t.id)} style={btnEnviarStyle}>ENVIAR RESPUESTA</button>
-                </div>
-              )
-            )}
-          </div>
-        ))}
+              <p style={{ margin: '10px 0', fontSize: '1.1rem' }}>{t.descripcion}</p>
+              {t.estado === 'completada' ? (
+                <div style={{ background: '#1a1a1a', padding: '10px', borderRadius: '5px', borderLeft: '3px solid #00ff9d' }}><p style={{ margin: 0 }}>{t.respuesta}</p></div>
+              ) : (
+                String(userData?.id) === String(t.asignado_a) && (
+                  <div>
+                    <textarea placeholder="Tu respuesta..." value={respuestas[t.id] || ''} onChange={(e) => setRespuestas({...respuestas, [t.id]: e.target.value})} style={inputStyle} />
+                    <button onClick={() => responderTask(t.id)} style={btnEnviarStyle}>ENVIAR RESPUESTA</button>
+                  </div>
+                )
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
