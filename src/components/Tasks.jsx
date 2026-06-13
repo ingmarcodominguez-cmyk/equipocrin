@@ -8,7 +8,6 @@ function Tasks({ userData, playNotification }) {
   const [asignados, setAsignados] = useState([])
   const [users, setUsers] = useState([])
   const [respuestas, setRespuestas] = useState({})
-  // NUEVO: Estado para el pop-up propio
   const [mostrarConfirmacion, setMostrarConfirmacion] = useState(false)
   const [tareasPendientesEnvio, setTareasPendientesEnvio] = useState([])
   
@@ -74,17 +73,14 @@ function Tasks({ userData, playNotification }) {
 
   async function crearTask() {
     if (!descripcion || asignados.length === 0 || !fechaVencimiento) return alert("Completa todos los campos");
-    
     const nuevasTareas = asignados.map(userId => ({ 
       descripcion, asignado_a: userId, fecha_vencimiento: fechaVencimiento, estado: 'pendiente', creado_por: userData?.id 
     }));
-    
-    const { data, error } = await supabase.from('tasks').insert(nuevasTareas).select();
-    
+    const { error } = await supabase.from('tasks').insert(nuevasTareas);
     if (!error) {
       setDescripcion(''); setFechaVencimiento(''); setAsignados([]); cargarTasks();
       setTareasPendientesEnvio(asignados);
-      setMostrarConfirmacion(true); // Abre nuestro pop-up personalizado
+      setMostrarConfirmacion(true);
     }
   }
 
@@ -92,7 +88,9 @@ function Tasks({ userData, playNotification }) {
     tareasPendientesEnvio.forEach(userId => {
       const u = users.find(user => String(user.id) === String(userId));
       if (u && u.telefono) {
-        const mensaje = "Tienes una nueva tarea, consulta la plataforma";
+        const nombreUsuario = u.nombre || "Usuario";
+        // Mensaje exacto de la imagen
+        const mensaje = `🔔 Hola ${nombreUsuario.toUpperCase()}, tienes una nueva tarea pendiente en la plataforma.\n\nPor favor, ingresa al sistema para ver los detalles y completar la gestión.`;
         window.open(`https://wa.me/${u.telefono}?text=${encodeURIComponent(mensaje)}`, '_blank');
       }
     });
@@ -117,16 +115,13 @@ function Tasks({ userData, playNotification }) {
     <div style={{ color: '#fff', padding: '10px' }}>
       <h2 style={{ color: '#00f2ff' }}>Gestión de Tareas</h2>
       
-      {/* Pop-up personalizado para evitar el bloqueo del navegador */}
       {mostrarConfirmacion && (
         <div style={{ position: 'fixed', top: '20%', left: '10%', right: '10%', background: '#222', padding: '20px', borderRadius: '10px', border: '1px solid #00f2ff', zIndex: 1000, textAlign: 'center' }}>
-          <p>¿Deseas enviar la tarea por WhatsApp?</p>
-          <button onClick={confirmarEnvioWhatsApp} style={{ ...btnEnviarStyle, marginRight: '10px' }}>SÍ</button>
-          <button onClick={() => setMostrarConfirmacion(false)} style={btnEnviarStyle}>NO</button>
+          <p>¿Deseas enviar el aviso por WhatsApp a los usuarios asignados?</p>
+          <button onClick={confirmarEnvioWhatsApp} style={{ ...btnEnviarStyle, marginRight: '10px' }}>SÍ, ENVIAR</button>
+          <button onClick={() => setMostrarConfirmacion(false)} style={btnEnviarStyle}>CANCELAR</button>
         </div>
       )}
-
-      {/* ... (El resto de tu código de filtros y formulario se mantiene igual) */}
       
       <div style={formStyle}>
         <h3>Nueva Tarea</h3>
