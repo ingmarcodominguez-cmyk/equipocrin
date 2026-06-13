@@ -13,9 +13,9 @@ function AgendaMensualPro({ userData }) {
     hora: '09:00', observaciones: '', estado: 'pendiente' 
   })
 
-  // 1. Lógica de roles: Solo ADMINISTRACION tiene permiso de ver todo
+  // MODIFICADO: Ahora Dirección también tiene permisos de Admin para ver todo
   const rol = userData?.rol?.toUpperCase() || "";
-  const esAdmin = rol === 'ADMINISTRACION';
+  const esAdmin = (rol === 'ADMINISTRACION' || rol === 'DIRECCION');
 
   useEffect(() => {
     cargarDatos();
@@ -28,7 +28,6 @@ function AgendaMensualPro({ userData }) {
     if (u) setUsers(u);
   }
 
-  // 2. Filtro: Si no es Admin, filtra obligatoriamente por su ID
   const turnosVisibles = esAdmin 
     ? turnos 
     : turnos.filter(t => String(t.profesional_id || '').trim() === String(userData?.id || '').trim());
@@ -80,7 +79,8 @@ function AgendaMensualPro({ userData }) {
   const offset = (new Date(mesActual.getFullYear(), mesActual.getMonth(), 1).getDay() + 6) % 7;
 
   return (
-    <div style={{ padding: '20px', backgroundColor: '#fff', color: '#000', borderRadius: '10px', fontSize: '14px' }}>
+    // MODIFICADO: Asegurado el backgroundColor blanco en el contenedor principal
+    <div style={{ padding: '20px', backgroundColor: '#ffffff', color: '#000000', borderRadius: '10px', fontSize: '14px', minHeight: '100vh' }}>
       
       <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '20px' }}>
         <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1))}>← Anterior</button>
@@ -89,8 +89,8 @@ function AgendaMensualPro({ userData }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '1px', border: '1px solid #ccc', backgroundColor: '#ccc' }}>
-        {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => <div key={d} style={{ textAlign: 'center', background: '#f4f4f4', padding: '10px', fontWeight: 'bold' }}>{d}</div>)}
-        {[...Array(offset)].map((_, i) => <div key={`off-${i}`} style={{ background: '#fff', minHeight: '120px' }} />)}
+        {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => <div key={d} style={{ textAlign: 'center', background: '#ffffff', padding: '10px', fontWeight: 'bold' }}>{d}</div>)}
+        {[...Array(offset)].map((_, i) => <div key={`off-${i}`} style={{ background: '#ffffff', minHeight: '120px' }} />)}
         {[...Array(diasEnMes)].map((_, i) => {
           const dN = i + 1;
           const tD = (turnosVisibles || []).filter(t => {
@@ -99,7 +99,7 @@ function AgendaMensualPro({ userData }) {
           });
           
           return (
-            <div key={i} style={{ minHeight: '120px', background: '#fff', padding: '5px' }}>
+            <div key={i} style={{ minHeight: '120px', background: '#ffffff', padding: '5px' }}>
               <div onClick={() => { setDiaSeleccionado(dN); setTurnoEditando(null); setForm({ paciente_nombre: '', profesional_id: '', prestacion: 'Turno primera vez', hora: '09:00', observaciones: '', estado: 'pendiente' }); }} style={{ cursor: 'pointer', color: '#007bff', fontWeight: 'bold' }}>{dN} +</div>
               {tD.map(t => {
                 const parts = t.observaciones?.split(']') || [];
@@ -118,8 +118,8 @@ function AgendaMensualPro({ userData }) {
       </div>
 
       {diaSeleccionado && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#fff', padding: '25px', width: '350px', borderRadius: '15px', color: '#000' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(255,255,255,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#ffffff', padding: '25px', width: '350px', borderRadius: '15px', color: '#000000', border: '1px solid #ccc' }}>
             <h3>{turnoEditando ? 'Editar Turno' : 'Nuevo Turno'}</h3>
             <input placeholder="Paciente" value={form.paciente_nombre} onChange={e => setForm({...form, paciente_nombre: e.target.value})} style={{width: '100%', marginBottom: 15, padding: '10px'}} />
             <select value={form.prestacion} onChange={e => setForm({...form, prestacion: e.target.value})} style={{width: '100%', marginBottom: 15, padding: '10px'}}>{prestaciones.map(p => <option key={p} value={p}>{p}</option>)}</select>
