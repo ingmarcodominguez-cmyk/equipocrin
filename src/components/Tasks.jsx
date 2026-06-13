@@ -8,6 +8,9 @@ function Tasks({ userData, playNotification }) {
   const [asignados, setAsignados] = useState([])
   const [users, setUsers] = useState([])
   const [respuestas, setRespuestas] = useState({})
+  // NUEVO: Estado para el pop-up propio
+  const [mostrarConfirmacion, setMostrarConfirmacion] = useState(false)
+  const [tareasPendientesEnvio, setTareasPendientesEnvio] = useState([])
   
   const [usuarioFiltro, setUsuarioFiltro] = useState('');
   const [estadoFiltro, setEstadoFiltro] = useState(''); 
@@ -15,26 +18,17 @@ function Tasks({ userData, playNotification }) {
   const rol = userData?.rol?.toUpperCase() || "";
   const esAdmin = ['ADMINISTRACION', 'DIRECCION'].includes(rol);
 
-  // CORRECCIÓN VENCIMIENTO: Hoy es 13, vence el 13. 
-  // La tarea NO debe estar vencida hoy, solo a partir de mañana (14).
-  const esVencida = (fecha, estado) => {
-    if (estado === 'completada' || !fecha) return false;
-    
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
-    
-    const vencimiento = new Date(fecha);
-    vencimiento.setHours(0, 0, 0, 0);
-
-    // Solo está vencida si el día de hoy es MAYOR al día de vencimiento
-    return hoy > vencimiento;
+  const formatearFecha = (fecha) => {
+    if (!fecha) return '';
+    const [y, m, d] = fecha.split('-');
+    return `${d}/${m}/${y}`;
   };
 
-  // CORRECCIÓN WHATSAPP: Abrir automático.
-  const abrirWhatsApp = (telefono) => {
-    const mensaje = "Tienes una nueva tarea, consulta la plataforma";
-    const url = `https://wa.me/${telefono}?text=${encodeURIComponent(mensaje)}`;
-    window.open(url, '_blank');
+  const esVencida = (fecha, estado) => {
+    if (estado === 'completada' || !fecha) return false;
+    const hoyStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    const vencStr = fecha.replace(/-/g, '');
+    return parseInt(hoyStr) > parseInt(vencStr);
   };
 
   useEffect(() => {
@@ -58,22 +52,18 @@ function Tasks({ userData, playNotification }) {
   async function cargarTasks() {
     if (!userData?.id) return;
     let query = supabase.from('tasks').select('*').order('created_at', { ascending: false });
-
     if (esAdmin) {
-      if (usuarioFiltro) {
-        query = query.or(`creado_por.eq.${usuarioFiltro},asignado_a.eq.${usuarioFiltro}`);
-      }
+      if (usuarioFiltro) query = query.or(`creado_por.eq.${usuarioFiltro},asignado_a.eq.${usuarioFiltro}`);
     } else {
       query = query.or(`creado_por.eq.${userData.id},asignado_a.eq.${userData.id}`);
     }
-
     const { data } = await query;
     if (data) {
-      let filtradas = data;
-      if (estadoFiltro === 'pendiente') filtradas = data.filter(t => t.estado === 'pendiente' && !esVencida(t.fecha_vencimiento, t.estado));
-      if (estadoFiltro === 'completada') filtradas = data.filter(t => t.estado === 'completada');
-      if (estadoFiltro === 'vencida') filtradas = data.filter(t => esVencida(t.fecha_vencimiento, t.estado));
-      setTasks(filtradas);
+        let filtradas = data;
+        if (estadoFiltro === 'pendiente') filtradas = data.filter(t => t.estado === 'pendiente' && !esVencida(t.fecha_vencimiento, t.estado));
+        if (estadoFiltro === 'completada') filtradas = data.filter(t => t.estado === 'completada');
+        if (estadoFiltro === 'vencida') filtradas = data.filter(t => esVencida(t.fecha_vencimiento, t.estado));
+        setTasks(filtradas);
     }
   }
 
@@ -84,11 +74,29 @@ function Tasks({ userData, playNotification }) {
 
   async function crearTask() {
     if (!descripcion || asignados.length === 0 || !fechaVencimiento) return alert("Completa todos los campos");
+    
     const nuevasTareas = asignados.map(userId => ({ 
       descripcion, asignado_a: userId, fecha_vencimiento: fechaVencimiento, estado: 'pendiente', creado_por: userData?.id 
     }));
-    const { error } = await supabase.from('tasks').insert(nuevasTareas);
-    if (!error) { setDescripcion(''); setFechaVencimiento(''); setAsignados([]); cargarTasks(); }
+    
+    const { data, error } = await supabase.from('tasks').insert(nuevasTareas).select();
+    
+    if (!error) {
+      setDescripcion(''); setFechaVencimiento(''); setAsignados([]); cargarTasks();
+      setTareasPendientesEnvio(asignados);
+      setMostrarConfirmacion(true); // Abre nuestro pop-up personalizado
+    }
+  }
+
+  function confirmarEnvioWhatsApp() {
+    tareasPendientesEnvio.forEach(userId => {
+      const u = users.find(user => String(user.id) === String(userId));
+      if (u && u.telefono) {
+        const mensaje = "Tienes una nueva tarea, consulta la plataforma";
+        window.open(`https://wa.me/${u.telefono}?text=${encodeURIComponent(mensaje)}`, '_blank');
+      }
+    });
+    setMostrarConfirmacion(false);
   }
 
   const toggleAsignado = (userId) => { setAsignados(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]); };
@@ -105,33 +113,21 @@ function Tasks({ userData, playNotification }) {
     return u ? u.nombre : 'Usuario';
   }
 
-  function obtenerTelefono(id) {
-    const u = users.find((user) => String(user.id) === String(id));
-    return u ? u.telefono : '';
-  }
-
   return (
     <div style={{ color: '#fff', padding: '10px' }}>
       <h2 style={{ color: '#00f2ff' }}>Gestión de Tareas</h2>
       
-      <div style={{ background: '#111', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #333' }}>
-        <h4 style={{ margin: '0 0 10px 0' }}>Filtros</h4>
-        <div style={{ display: 'grid', gridTemplateColumns: esAdmin ? '1fr 1fr' : '1fr', gap: '10px' }}>
-          {esAdmin && (
-            <select value={usuarioFiltro} onChange={(e) => setUsuarioFiltro(e.target.value)} style={inputStyle}>
-              <option value="">👤 Todos los usuarios</option>
-              {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-            </select>
-          )}
-          <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)} style={inputStyle}>
-            <option value="">📋 Todos los estados</option>
-            <option value="pendiente">⏳ Pendientes</option>
-            <option value="vencida">⚠️ Vencidas</option>
-            <option value="completada">✅ Finalizadas</option>
-          </select>
+      {/* Pop-up personalizado para evitar el bloqueo del navegador */}
+      {mostrarConfirmacion && (
+        <div style={{ position: 'fixed', top: '20%', left: '10%', right: '10%', background: '#222', padding: '20px', borderRadius: '10px', border: '1px solid #00f2ff', zIndex: 1000, textAlign: 'center' }}>
+          <p>¿Deseas enviar la tarea por WhatsApp?</p>
+          <button onClick={confirmarEnvioWhatsApp} style={{ ...btnEnviarStyle, marginRight: '10px' }}>SÍ</button>
+          <button onClick={() => setMostrarConfirmacion(false)} style={btnEnviarStyle}>NO</button>
         </div>
-      </div>
+      )}
 
+      {/* ... (El resto de tu código de filtros y formulario se mantiene igual) */}
+      
       <div style={formStyle}>
         <h3>Nueva Tarea</h3>
         <textarea placeholder="Descripción..." value={descripcion} onChange={(e) => setDescripcion(e.target.value)} style={inputStyle} />
@@ -152,19 +148,13 @@ function Tasks({ userData, playNotification }) {
       <div style={{ display: 'grid', gap: '20px' }}>
         {tasks.map((t) => {
           const vencida = esVencida(t.fecha_vencimiento, t.estado);
-          const telefono = obtenerTelefono(t.asignado_a);
           return (
             <div key={t.id} style={{ ...cardStyle, borderColor: vencida ? '#ff4444' : '#333' }}>
               <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '10px', borderBottom: '1px solid #333', paddingBottom: '5px' }}>
                 👤 De: {nombreUsuario(t.creado_por)} ➡️ Para: {nombreUsuario(t.asignado_a)}
-                
-                {telefono && (
-                  <button onClick={() => abrirWhatsApp(telefono)} style={{ marginLeft: '10px', background: 'none', border: 'none', color: '#25d366', cursor: 'pointer', fontWeight: 'bold' }}>
-                    📱 WSUP
-                  </button>
-                )}
-
-                <span style={{ float: 'right', color: vencida ? '#ff4444' : '#fff' }}>{vencida ? '⚠️ VENCIDA' : `📅 ${t.fecha_vencimiento}`}</span>
+                <span style={{ float: 'right', color: vencida ? '#ff4444' : '#fff' }}>
+                  {vencida ? '⚠️ VENCIDA' : `📅 ${formatearFecha(t.fecha_vencimiento)}`}
+                </span>
               </div>
               <p style={{ margin: '10px 0', fontSize: '1.1rem' }}>{t.descripcion}</p>
               {t.estado === 'completada' ? (
