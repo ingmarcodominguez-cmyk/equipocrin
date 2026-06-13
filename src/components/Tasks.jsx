@@ -8,36 +8,17 @@ function Tasks({ userData, playNotification }) {
   const [asignados, setAsignados] = useState([])
   const [users, setUsers] = useState([])
   const [respuestas, setRespuestas] = useState({})
-  const [sonidoActivado, setSonidoActivado] = useState(false);
+  
   const [usuarioFiltro, setUsuarioFiltro] = useState('');
+  const [estadoFiltro, setEstadoFiltro] = useState('');
 
   const esAdmin = ['ADMINISTRACION', 'DIRECCION'].includes(userData?.rol?.toUpperCase());
-
-  // --- FUNCIÓN DE WHATSAPP ---
-  const enviarPorWhatsAppIndividual = (usuariosSeleccionados) => {
-    usuariosSeleccionados.forEach(u => {
-      if (u.telefono) {
-        const telefonoLimpio = u.telefono.replace(/\D/g, ''); 
-        const mensaje = `🔔 *Hola ${u.nombre}*, tienes una nueva tarea pendiente en la plataforma.\n\n` +
-                        `Por favor, ingresa al sistema para ver los detalles y completar la gestión.`;
-        const url = `https://wa.me/${telefonoLimpio}?text=${encodeURIComponent(mensaje)}`;
-        window.open(url, '_blank');
-      }
-    });
-  };
-
-  const activarNotificaciones = () => {
-    if ("Notification" in window && Notification.permission !== "granted") {
-      Notification.requestPermission();
-    }
-    setSonidoActivado(true);
-  };
 
   useEffect(() => {
     if (!userData?.id) return;
     cargarTasks();
     cargarUsuarios();
-
+    
     const channel = supabase
       .channel('tasks_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
@@ -49,12 +30,14 @@ function Tasks({ userData, playNotification }) {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [userData?.id, userData?.rol, usuarioFiltro]);
+  }, [userData?.id, userData?.rol, usuarioFiltro, estadoFiltro]);
 
   async function cargarTasks() {
     if (!userData?.id) return;
     let query = supabase.from('tasks').select('*').order('created_at', { ascending: false });
-    
+
+    if (estadoFiltro) { query = query.eq('estado', estadoFiltro); }
+
     if (esAdmin) {
       if (usuarioFiltro) {
         query = query.or(`creado_por.eq.${usuarioFiltro},asignado_a.eq.${usuarioFiltro}`);
@@ -62,7 +45,7 @@ function Tasks({ userData, playNotification }) {
     } else {
       query = query.or(`creado_por.eq.${userData.id},asignado_a.eq.${userData.id}`);
     }
-    
+
     const { data } = await query;
     if (data) setTasks(data);
   }
@@ -73,36 +56,21 @@ function Tasks({ userData, playNotification }) {
   }
 
   async function crearTask() {
-    if (!descripcion || asignados.length === 0 || !fechaVencimiento) 
-      return alert("Completa descripción, fecha y al menos un destinatario");
-
-    const nuevasTareas = asignados.map(userId => ({
-      descripcion,
-      asignado_a: userId,
-      fecha_vencimiento: fechaVencimiento,
-      estado: 'pendiente',
-      creado_por: userData?.id
+    if (!descripcion || asignados.length === 0 || !fechaVencimiento) return alert("Completa todos los campos");
+    const nuevasTareas = asignados.map(userId => ({ 
+      descripcion, asignado_a: userId, fecha_vencimiento: fechaVencimiento, estado: 'pendiente', creado_por: userData?.id 
     }));
-
     const { error } = await supabase.from('tasks').insert(nuevasTareas);
-    if (!error) {
-      const usuariosSeleccionados = users.filter(u => asignados.includes(String(u.id)));
-      if (confirm(`¿Enviar aviso por WhatsApp?`)) {
-        enviarPorWhatsAppIndividual(usuariosSeleccionados);
-      }
-      setDescripcion(''); setFechaVencimiento(''); setAsignados([]);
-      cargarTasks(); 
-    }
+    if (!error) { setDescripcion(''); setFechaVencimiento(''); setAsignados([]); cargarTasks(); }
   }
 
-  const toggleAsignado = (userId) => {
-    setAsignados(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]);
-  };
+  const toggleAsignado = (userId) => { setAsignados(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]); };
 
   async function responderTask(id) {
     if (!respuestas[id]) return;
     await supabase.from('tasks').update({ respuesta: respuestas[id], estado: 'completada' }).eq('id', id);
     setRespuestas({ ...respuestas, [id]: '' });
+    cargarTasks();
   }
 
   function nombreUsuario(id) {
@@ -111,40 +79,54 @@ function Tasks({ userData, playNotification }) {
   }
 
   return (
-    <div style={{ color: '#fff' }}>
-      {!sonidoActivado && <button onClick={activarNotificaciones} style={btnNotifStyle}>🔔 ACTIVAR NOTIFICACIONES</button>}
-      <h2 style={{ color: '#00f2ff', marginBottom: '20px' }}>Gestión de Tareas</h2>
+    <div style={{ color: '#fff', padding: '10px' }}>
+      <h2 style={{ color: '#00f2ff' }}>Gestión de Tareas</h2>
       
       {esAdmin && (
-        <div style={{ marginBottom: '20px', background: '#111', padding: '15px', borderRadius: '8px' }}>
-          <label>Filtrar por participante:</label>
-          <select value={usuarioFiltro} onChange={(e) => setUsuarioFiltro(e.target.value)} style={inputStyle}>
-            <option value="">-- Todos los participantes --</option>
-            {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-          </select>
+        <div style={{ background: '#111', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #333' }}>
+          <h4 style={{ margin: '0 0 10px 0' }}>Filtros</h4>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <select value={usuarioFiltro} onChange={(e) => setUsuarioFiltro(e.target.value)} style={inputStyle}>
+              <option value="">👤 Todos</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+            </select>
+            <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)} style={inputStyle}>
+              <option value="">📋 Todos los estados</option>
+              <option value="pendiente">⏳ Pendientes</option>
+              <option value="completada">✅ Finalizadas</option>
+            </select>
+          </div>
         </div>
       )}
 
       <div style={formStyle}>
+        <h3>Nueva Tarea</h3>
         <textarea placeholder="Descripción..." value={descripcion} onChange={(e) => setDescripcion(e.target.value)} style={inputStyle} />
-        <div style={{ margin: '10px 0', padding: '10px', background: '#000', maxHeight: '150px', overflowY: 'auto' }}>
+        <div style={{ margin: '10px 0', padding: '10px', background: '#000', borderRadius: '8px', maxHeight: '100px', overflowY: 'auto' }}>
           {users.map(u => (
-            <label key={u.id} style={{ display: 'block' }}>
+            <label key={u.id} style={{ display: 'block', fontSize: '0.9rem', cursor: 'pointer' }}>
               <input type="checkbox" checked={asignados.includes(String(u.id))} onChange={() => toggleAsignado(String(u.id))} /> {u.nombre}
             </label>
           ))}
         </div>
         <input type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} style={inputStyle} />
-        <button onClick={crearTask} style={btnEnviarStyle}>ENVIAR TAREAS</button>
+        <button onClick={crearTask} style={btnEnviarStyle}>CREAR TAREA</button>
       </div>
 
       <div style={{ display: 'grid', gap: '20px' }}>
         {tasks.map((t) => (
           <div key={t.id} style={cardStyle}>
-            <div><span>👤 De: {nombreUsuario(t.creado_por)}</span> <span>➡️ Para: {nombreUsuario(t.asignado_a)}</span></div>
-            <p>{t.descripcion}</p>
+            <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '10px', borderBottom: '1px solid #333', paddingBottom: '5px' }}>
+              👤 De: {nombreUsuario(t.creado_por)} ➡️ Para: {nombreUsuario(t.asignado_a)}
+            </div>
+            
+            <p style={{ margin: '10px 0', fontSize: '1.1rem' }}>{t.descripcion}</p>
+            
             {t.estado === 'completada' ? (
-              <div style={{ background: '#1a1a1a', padding: '10px' }}>{t.respuesta}</div>
+              <div style={{ background: '#1a1a1a', padding: '10px', borderRadius: '5px', borderLeft: '3px solid #00ff9d' }}>
+                <span style={{ fontSize: '0.7rem', color: '#00ff9d' }}>RESPUESTA:</span>
+                <p style={{ margin: '5px 0 0 0' }}>{t.respuesta}</p>
+              </div>
             ) : (
               String(userData?.id) === String(t.asignado_a) && (
                 <div style={{ marginTop: 15 }}>
@@ -162,8 +144,7 @@ function Tasks({ userData, playNotification }) {
 
 const cardStyle = { background: '#0a0a0a', border: '1px solid #333', borderRadius: '15px', padding: '20px' };
 const formStyle = { background: '#111', border: '1px solid #333', padding: '20px', borderRadius: '15px', marginBottom: '30px' };
-const inputStyle = { width: '100%', background: '#000', border: '1px solid #444', color: '#fff', padding: '12px', borderRadius: '8px', marginBottom: '10px' };
-const btnEnviarStyle = { width: '100%', padding: '12px', background: 'transparent', border: '1px solid #00f2ff', color: '#00f2ff', borderRadius: '8px', cursor: 'pointer' };
-const btnNotifStyle = { width: '100%', padding: '10px', background: '#ff4444', color: '#fff', border: 'none', borderRadius: '8px', marginBottom: '20px', cursor: 'pointer' };
+const inputStyle = { width: '100%', background: '#000', border: '1px solid #444', color: '#fff', padding: '10px', borderRadius: '8px', marginBottom: '10px', boxSizing: 'border-box' };
+const btnEnviarStyle = { width: '100%', padding: '10px', background: 'transparent', border: '1px solid #00f2ff', color: '#00f2ff', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' };
 
 export default Tasks;
