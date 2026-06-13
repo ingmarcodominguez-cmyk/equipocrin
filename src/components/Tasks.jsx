@@ -10,7 +10,7 @@ function Tasks({ userData, playNotification }) {
   const [respuestas, setRespuestas] = useState({})
   
   const [usuarioFiltro, setUsuarioFiltro] = useState('');
-  const [estadoFiltro, setEstadoFiltro] = useState(''); // '', 'pendiente', 'completada', 'vencida'
+  const [estadoFiltro, setEstadoFiltro] = useState(''); 
 
   const rol = userData?.rol?.toUpperCase() || "";
   const esAdmin = ['ADMINISTRACION', 'DIRECCION'].includes(rol);
@@ -30,7 +30,10 @@ function Tasks({ userData, playNotification }) {
     
     const channel = supabase
       .channel('tasks_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
+        if (payload.eventType === 'INSERT' && String(payload.new.asignado_a) === String(userData.id)) {
+          playNotification();
+        }
         cargarTasks();
       })
       .subscribe();
@@ -42,7 +45,6 @@ function Tasks({ userData, playNotification }) {
     if (!userData?.id) return;
     let query = supabase.from('tasks').select('*').order('created_at', { ascending: false });
 
-    // Lógica de acceso
     if (esAdmin) {
       if (usuarioFiltro) {
         query = query.or(`creado_por.eq.${usuarioFiltro},asignado_a.eq.${usuarioFiltro}`);
@@ -53,7 +55,6 @@ function Tasks({ userData, playNotification }) {
 
     const { data } = await query;
     if (data) {
-      // Filtrar localmente después de traer los datos (especialmente para vencidas)
       let filtradas = data;
       if (estadoFiltro === 'pendiente') filtradas = data.filter(t => t.estado === 'pendiente' && !esVencida(t.fecha_vencimiento, t.estado));
       if (estadoFiltro === 'completada') filtradas = data.filter(t => t.estado === 'completada');
@@ -62,12 +63,33 @@ function Tasks({ userData, playNotification }) {
     }
   }
 
-  // ... (funciones cargarUsuarios, crearTask, toggleAsignado, responderTask, nombreUsuario se mantienen igual)
-  async function cargarUsuarios() { const { data } = await supabase.from('users').select('id, nombre, telefono'); if (data) setUsers(data); }
-  async function crearTask() { if (!descripcion || asignados.length === 0 || !fechaVencimiento) return alert("Completa todos los campos"); const nuevasTareas = asignados.map(userId => ({ descripcion, asignado_a: userId, fecha_vencimiento: fechaVencimiento, estado: 'pendiente', creado_por: userData?.id })); await supabase.from('tasks').insert(nuevasTareas); setDescripcion(''); setFechaVencimiento(''); setAsignados([]); cargarTasks(); }
+  async function cargarUsuarios() {
+    const { data } = await supabase.from('users').select('id, nombre, telefono');
+    if (data) setUsers(data);
+  }
+
+  async function crearTask() {
+    if (!descripcion || asignados.length === 0 || !fechaVencimiento) return alert("Completa todos los campos");
+    const nuevasTareas = asignados.map(userId => ({ 
+      descripcion, asignado_a: userId, fecha_vencimiento: fechaVencimiento, estado: 'pendiente', creado_por: userData?.id 
+    }));
+    const { error } = await supabase.from('tasks').insert(nuevasTareas);
+    if (!error) { setDescripcion(''); setFechaVencimiento(''); setAsignados([]); cargarTasks(); }
+  }
+
   const toggleAsignado = (userId) => { setAsignados(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]); };
-  async function responderTask(id) { if (!respuestas[id]) return; await supabase.from('tasks').update({ respuesta: respuestas[id], estado: 'completada' }).eq('id', id); setRespuestas({...respuestas, [id]: ''}); cargarTasks(); }
-  function nombreUsuario(id) { const u = users.find((user) => String(user.id) === String(id)); return u ? u.nombre : 'Usuario'; }
+
+  async function responderTask(id) {
+    if (!respuestas[id]) return;
+    await supabase.from('tasks').update({ respuesta: respuestas[id], estado: 'completada' }).eq('id', id);
+    setRespuestas({ ...respuestas, [id]: '' });
+    cargarTasks();
+  }
+
+  function nombreUsuario(id) {
+    const u = users.find((user) => String(user.id) === String(id));
+    return u ? u.nombre : 'Usuario';
+  }
 
   return (
     <div style={{ color: '#fff', padding: '10px' }}>
@@ -84,7 +106,7 @@ function Tasks({ userData, playNotification }) {
           )}
           <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)} style={inputStyle}>
             <option value="">📋 Todos los estados</option>
-            <option value="pendiente">⏳ Pendientes (Al día)</option>
+            <option value="pendiente">⏳ Pendientes</option>
             <option value="vencida">⚠️ Vencidas</option>
             <option value="completada">✅ Finalizadas</option>
           </select>
@@ -101,7 +123,10 @@ function Tasks({ userData, playNotification }) {
             </label>
           ))}
         </div>
-        <input type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} style={inputStyle} />
+        <div style={{ marginBottom: '10px' }}>
+          <label style={{ fontStyle: 'italic', color: '#aaa', fontSize: '0.85rem' }}>Fecha de vencimiento:</label>
+          <input type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} style={inputStyle} />
+        </div>
         <button onClick={crearTask} style={btnEnviarStyle}>CREAR TAREA</button>
       </div>
 
