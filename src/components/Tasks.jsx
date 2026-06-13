@@ -15,12 +15,22 @@ function Tasks({ userData, playNotification }) {
   const rol = userData?.rol?.toUpperCase() || "";
   const esAdmin = ['ADMINISTRACION', 'DIRECCION'].includes(rol);
 
+  // Lógica: Vence al día siguiente. Si hoy es > fecha, está vencida.
   const esVencida = (fecha, estado) => {
     if (estado === 'completada' || !fecha) return false;
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
-    const fechaVenc = new Date(fecha);
-    return fechaVenc < hoy;
+    const vencimiento = new Date(fecha);
+    vencimiento.setHours(0, 0, 0, 0);
+    return hoy > vencimiento;
+  };
+
+  // Función para enviar WhatsApp
+  const enviarWhatsApp = (tarea, usuarioAsignado) => {
+    const telefono = usuarioAsignado?.telefono || '';
+    if (!telefono) return alert("Este usuario no tiene teléfono cargado");
+    const mensaje = `Hola ${usuarioAsignado.nombre}, te recuerdo la tarea: "${tarea.descripcion}". Fecha de vencimiento: ${tarea.fecha_vencimiento}`;
+    window.open(`https://wa.me/${telefono}?text=${encodeURIComponent(mensaje)}`, '_blank');
   };
 
   useEffect(() => {
@@ -86,9 +96,8 @@ function Tasks({ userData, playNotification }) {
     cargarTasks();
   }
 
-  function nombreUsuario(id) {
-    const u = users.find((user) => String(user.id) === String(id));
-    return u ? u.nombre : 'Usuario';
+  function getUsuario(id) {
+    return users.find((user) => String(user.id) === String(id));
   }
 
   return (
@@ -133,10 +142,14 @@ function Tasks({ userData, playNotification }) {
       <div style={{ display: 'grid', gap: '20px' }}>
         {tasks.map((t) => {
           const vencida = esVencida(t.fecha_vencimiento, t.estado);
+          const usuarioAsignado = getUsuario(t.asignado_a);
           return (
             <div key={t.id} style={{ ...cardStyle, borderColor: vencida ? '#ff4444' : '#333' }}>
               <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '10px', borderBottom: '1px solid #333', paddingBottom: '5px' }}>
-                👤 De: {nombreUsuario(t.creado_por)} ➡️ Para: {nombreUsuario(t.asignado_a)}
+                👤 De: {getUsuario(t.creado_por)?.nombre || 'Admin'} ➡️ Para: {usuarioAsignado?.nombre || 'Usuario'}
+                <button onClick={() => enviarWhatsApp(t, usuarioAsignado)} style={{ marginLeft: '10px', background: 'none', border: 'none', color: '#25D366', cursor: 'pointer', fontSize: '0.9rem' }}>
+                  📱 WhatsApp
+                </button>
                 <span style={{ float: 'right', color: vencida ? '#ff4444' : '#fff' }}>{vencida ? '⚠️ VENCIDA' : `📅 ${t.fecha_vencimiento}`}</span>
               </div>
               <p style={{ margin: '10px 0', fontSize: '1.1rem' }}>{t.descripcion}</p>
