@@ -37,15 +37,29 @@ function AgendaMensualPro({ userData }) {
 
   const generarHorarios = () => {
     const arr = [];
-    for (let h = 9; h <= 12; h++) {
-      for (let m = 0; m < 60; m += 45) {
-        if (h === 12 && m > 45) break;
-        arr.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+    
+    // Mañana: bloques de 45 min de 09:00 a 12:45
+    // 09:00, 09:45, 10:30, 11:15, 12:00, 12:45
+    let horaMa = 9, minMa = 0;
+    while (horaMa < 13 || (horaMa === 12 && minMa <= 45)) {
+      if (horaMa === 13) break;
+      arr.push(`${String(horaMa).padStart(2, '0')}:${String(minMa).padStart(2, '0')}`);
+      minMa += 45;
+      if (minMa >= 60) {
+        horaMa += 1;
+        minMa -= 60;
       }
     }
-    for (let h = 14; h <= 20; h++) {
-      for (let m = 0; m < 60; m += 45) {
-        arr.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+
+    // Tarde: bloques de 45 min de 14:00 a 20:30
+    // 14:00, 14:45, 15:30, 16:15, 17:00, 17:45, 18:30, 19:15, 20:00, 20:45 (se detiene antes de las 21)
+    let horaTa = 14, minTa = 0;
+    while (horaTa < 21) {
+      arr.push(`${String(horaTa).padStart(2, '0')}:${String(minTa).padStart(2, '0')}`);
+      minTa += 45;
+      if (minTa >= 60) {
+        horaTa += 1;
+        minTa -= 60;
       }
     }
     return arr;
