@@ -89,7 +89,6 @@ function Tasks({ userData, playNotification }) {
       const u = users.find(user => String(user.id) === String(userId));
       if (u && u.telefono) {
         const nombreUsuario = u.nombre || "Usuario";
-        // Mensaje exacto de la imagen
         const mensaje = `🔔 Hola ${nombreUsuario.toUpperCase()}, tienes una nueva tarea pendiente en la plataforma.\n\nPor favor, ingresa al sistema para ver los detalles y completar la gestión.`;
         window.open(`https://wa.me/${u.telefono}?text=${encodeURIComponent(mensaje)}`, '_blank');
       }
@@ -139,6 +138,23 @@ function Tasks({ userData, playNotification }) {
         </div>
         <button onClick={crearTask} style={btnEnviarStyle}>CREAR TAREA</button>
       </div>
+
+      {/* --- SECCIÓN DE FILTROS RECUPERADA --- */}
+      {esAdmin && (
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+          <select style={inputStyle} value={usuarioFiltro} onChange={(e) => setUsuarioFiltro(e.target.value)}>
+            <option value="">Todos los usuarios</option>
+            {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+          </select>
+          <select style={inputStyle} value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)}>
+            <option value="">Todos los estados</option>
+            <option value="pendiente">Pendientes</option>
+            <option value="completada">Completadas</option>
+            <option value="vencida">Vencidas</option>
+          </select>
+        </div>
+      )}
+      {/* ------------------------------------- */}
 
       <div style={{ display: 'grid', gap: '20px' }}>
         {tasks.map((t) => {
