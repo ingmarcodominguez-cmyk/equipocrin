@@ -27,6 +27,7 @@ function AgendaFija({ userData }) {
 
   const generarHorarios = () => {
     const arr = [];
+    // Rangos ajustados para bloques de 45 min
     const rangos = [{ inicio: 9, fin: 12, minFin: 30 }, { inicio: 14, fin: 20, minFin: 0 }];
     rangos.forEach(({ inicio, fin, minFin }) => {
       let h = inicio, m = 0;
@@ -75,7 +76,6 @@ function AgendaFija({ userData }) {
   return (
     <div style={{ color: '#fff', padding: '20px', maxWidth: '1200px', margin: 'auto' }}>
       
-      {/* Botones de navegación (solo visibles o útiles para cambiar vista) */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
         <button onClick={() => setVistaActiva('agenda')} style={btnTabStyle(vistaActiva === 'agenda')}>📅 Agenda</button>
         <button onClick={() => setVistaActiva('auditoria')} style={btnTabStyle(vistaActiva === 'auditoria')}>🔎 Auditoría</button>
@@ -110,13 +110,21 @@ function AgendaFija({ userData }) {
               {dias.map(d => <button key={d} onClick={() => setDiaConsulta(d)} style={btnTabStyle(diaConsulta === d)}>{d.substring(0,3)}</button>)}
             </div>
             <div style={cardStyle}>
-              {horasDelDia.map(s => (
-                <div key={s.id} style={filaStyle}>
-                  <span style={{ fontWeight: 'bold', width: '80px' }}>{s.hora}</span>
-                  <span style={{ flexGrow: 1 }}>{s.paciente_nombre}</span>
-                  <button onClick={() => iniciarEdicion(s)} style={{background: 'none', border: 'none', color: '#00f2ff', cursor: 'pointer'}}>✏️</button>
-                </div>
-              ))}
+              {horasDelDia.map(s => {
+                const profesional = users.find(u => String(u.id) === String(s.profesional_id));
+                return (
+                  <div key={s.id} style={filaStyle}>
+                    <span style={{ fontWeight: 'bold', width: '80px' }}>{s.hora}</span>
+                    <span style={{ flexGrow: 1 }}>
+                      {s.paciente_nombre}
+                      <span style={{ color: '#888', fontSize: '0.85rem', marginLeft: '8px' }}>
+                        ({profesional ? profesional.nombre : 'Sin profesional'})
+                      </span>
+                    </span>
+                    <button onClick={() => iniciarEdicion(s)} style={{background: 'none', border: 'none', color: '#00f2ff', cursor: 'pointer'}}>✏️</button>
+                  </div>
+                )
+              })}
             </div>
           </div>
         </>
