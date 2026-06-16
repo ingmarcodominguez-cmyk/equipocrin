@@ -6,7 +6,6 @@ function AgendaFija({ userData }) {
   const [pacientes, setPacientes] = useState([])
   const [users, setUsers] = useState([])
   
-  // Estado para controlar la vista en móvil
   const [vistaActiva, setVistaActiva] = useState('agenda') 
   
   const [dia, setDia] = useState('Lunes')
@@ -27,7 +26,6 @@ function AgendaFija({ userData }) {
 
   const generarHorarios = () => {
     const arr = [];
-    // Rangos ajustados para bloques de 45 min
     const rangos = [{ inicio: 9, fin: 12, minFin: 30 }, { inicio: 14, fin: 20, minFin: 0 }];
     rangos.forEach(({ inicio, fin, minFin }) => {
       let h = inicio, m = 0;
@@ -60,6 +58,13 @@ function AgendaFija({ userData }) {
     await cargarDatos(); alert('Sesión guardada');
   }
 
+  async function eliminarSesion(id) {
+    if (window.confirm("¿Estás seguro de eliminar esta sesión fija?")) {
+      await supabase.from('sesiones_fijas').delete().eq('id', id);
+      await cargarDatos();
+    }
+  }
+
   function iniciarEdicion(s) {
     setEditId(s.id); setDia(s.dia_semana); setHora(s.hora); setHorarioManual('');
     setPacienteSeleccionado(String(s.paciente_id)); setPrestadorSeleccionado(String(s.profesional_id));
@@ -77,8 +82,8 @@ function AgendaFija({ userData }) {
     <div style={{ color: '#fff', padding: '20px', maxWidth: '1200px', margin: 'auto' }}>
       
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-        <button onClick={() => setVistaActiva('agenda')} style={btnTabStyle(vistaActiva === 'agenda')}>📅 Agenda</button>
-        <button onClick={() => setVistaActiva('auditoria')} style={btnTabStyle(vistaActiva === 'auditoria')}>🔎 Auditoría</button>
+        <button onClick={() => setVistaActiva('agenda')} style={btnTabStyle(vistaActiva === 'agenda')}>📅 Agenda del Profesional</button>
+        <button onClick={() => setVistaActiva('auditoria')} style={btnTabStyle(vistaActiva === 'auditoria')}>🔎 Agenda del Paciente</button>
       </div>
 
       {vistaActiva === 'agenda' ? (
@@ -121,7 +126,10 @@ function AgendaFija({ userData }) {
                         ({profesional ? profesional.nombre : 'Sin profesional'})
                       </span>
                     </span>
-                    <button onClick={() => iniciarEdicion(s)} style={{background: 'none', border: 'none', color: '#00f2ff', cursor: 'pointer'}}>✏️</button>
+                    <div style={{display: 'flex', gap: '10px'}}>
+                      <button onClick={() => iniciarEdicion(s)} style={{background: 'none', border: 'none', cursor: 'pointer'}}>✏️</button>
+                      <button onClick={() => eliminarSesion(s.id)} style={{background: 'none', border: 'none', cursor: 'pointer'}}>🗑️</button>
+                    </div>
                   </div>
                 )
               })}
