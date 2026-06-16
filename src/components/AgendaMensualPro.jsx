@@ -56,7 +56,6 @@ function AgendaMensualPro({ userData }) {
 
   const prestaciones = ['Turno primera vez', 'Evaluacion', 'Reunion', 'Entrenamiento', 'Devolucion','Visita A Instituciones'];
 
-  // ... (función generarHorarios y guardarTurno se mantienen igual)
   const generarHorarios = () => {
     const arr = [];
     let horaMa = 9, minMa = 0;
@@ -96,7 +95,6 @@ function AgendaMensualPro({ userData }) {
   return (
     <div style={{ padding: '0', backgroundColor: '#ffffff', color: '#000000', borderRadius: '0', fontSize: '14px', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       
-      {/* CABECERA CON NUEVOS FILTROS */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', margin: '20px auto', width: '95%', maxWidth: '900px', flexWrap: 'wrap' }}>
         <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1))}>←</button>
         <h2 style={{ fontSize: '18px', margin: 0, alignSelf: 'center' }}>{mesActual.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase()}</h2>
@@ -142,7 +140,11 @@ function AgendaMensualPro({ userData }) {
                   return (
                     <div key={t.id} onClick={(e) => { e.stopPropagation(); setTurnoEditando(t); setForm({...t, hora: hora, prestacion: prest}); setDiaSeleccionado(dN); }} style={{ fontSize: '11px', background: t.estado === 'realizado' ? '#d4edda' : t.estado === 'cancelado' ? '#f8d7da' : '#eefaff', padding: '4px', cursor: 'pointer', borderRadius: '4px', border: '1px solid #ddd' }}>
                       <div style={{ color: '#0056b3', fontWeight: 'bold', fontSize: '12px' }}>{t.paciente_nombre.toUpperCase()}</div>
-                      <div><strong>{hora}</strong> | <em>{prest}</em> | {prof}</div>
+                      <div>
+                        <strong>{hora}</strong> | 
+                        <span style={{ color: '#663399', fontWeight: 'bold' }}> {prest} </span> | 
+                        <b style={{ color: '#000' }}>{prof}</b>
+                      </div>
                     </div>
                   )
                 })}
