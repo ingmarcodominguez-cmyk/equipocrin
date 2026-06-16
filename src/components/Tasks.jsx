@@ -84,16 +84,20 @@ function Tasks({ userData, playNotification }) {
     }
   }
 
-  function confirmarEnvioWhatsApp() {
-    tareasPendientesEnvio.forEach(userId => {
+  async function confirmarEnvioWhatsApp() {
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    
+    for (const userId of tareasPendientesEnvio) {
       const u = users.find(user => String(user.id) === String(userId));
       if (u && u.telefono) {
         const nombreUsuario = u.nombre || "Usuario";
         const mensaje = `🔔 Hola ${nombreUsuario.toUpperCase()}, tienes una nueva tarea pendiente en la plataforma.\n\nPor favor, ingresa al sistema para ver los detalles y completar la gestión.`;
         window.open(`https://wa.me/${u.telefono}?text=${encodeURIComponent(mensaje)}`, '_blank');
+        await sleep(1500);
       }
-    });
+    }
     setMostrarConfirmacion(false);
+    setTareasPendientesEnvio([]);
   }
 
   const toggleAsignado = (userId) => { setAsignados(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]); };
@@ -139,7 +143,6 @@ function Tasks({ userData, playNotification }) {
         <button onClick={crearTask} style={btnEnviarStyle}>CREAR TAREA</button>
       </div>
 
-      {/* --- SECCIÓN DE FILTROS RECUPERADA --- */}
       {esAdmin && (
         <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
           <select style={inputStyle} value={usuarioFiltro} onChange={(e) => setUsuarioFiltro(e.target.value)}>
@@ -154,7 +157,6 @@ function Tasks({ userData, playNotification }) {
           </select>
         </div>
       )}
-      {/* ------------------------------------- */}
 
       <div style={{ display: 'grid', gap: '20px' }}>
         {tasks.map((t) => {
