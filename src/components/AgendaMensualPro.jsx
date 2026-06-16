@@ -14,14 +14,13 @@ function AgendaMensualPro({ userData }) {
     hora: '09:00', observaciones: '', estado: 'pendiente' 
   })
 
+  // MODIFICACIÓN AQUÍ: Agregamos PROFESIONAL_PLUS a la lista de acceso total
   const rol = userData?.rol?.toUpperCase() || "";
-  const esAdmin = (rol === 'ADMINISTRACION' || rol === 'DIRECCION');
+  const esAdmin = ['ADMINISTRACION', 'DIRECCION', 'PROFESIONAL_PLUS'].includes(rol);
 
-  // EFECTO PARA ACTUALIZACIÓN EN TIEMPO REAL
   useEffect(() => {
     cargarDatos();
     
-    // Abrimos un canal de escucha para cambios en la tabla 'turnos'
     const channel = supabase
       .channel('agenda_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'turnos' }, () => {
@@ -39,8 +38,12 @@ function AgendaMensualPro({ userData }) {
     if (u) setUsers(u);
   }
 
-  let turnosVisibles = esAdmin ? turnos : turnos.filter(t => String(t.profesional_id || '').trim() === String(userData?.id || '').trim());
+  // Si esAdmin (incluyendo PROFESIONAL_PLUS), ve todos. Si no, solo los propios.
+  let turnosVisibles = esAdmin 
+    ? turnos 
+    : turnos.filter(t => String(t.profesional_id || '').trim() === String(userData?.id || '').trim());
   
+  // El filtro por profesional sigue disponible para quienes tienen acceso total
   if (esAdmin && filtroProfesional) {
     turnosVisibles = turnosVisibles.filter(t => String(t.profesional_id) === String(filtroProfesional));
   }
@@ -87,7 +90,6 @@ function AgendaMensualPro({ userData }) {
     
     setDiaSeleccionado(null);
     setTurnoEditando(null);
-    // Ya no es necesario llamar cargarDatos() aquí, el Realtime lo hará por nosotros
   }
 
   const diasEnMes = new Date(mesActual.getFullYear(), mesActual.getMonth() + 1, 0).getDate();
