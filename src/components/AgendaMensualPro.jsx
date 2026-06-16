@@ -14,7 +14,6 @@ function AgendaMensualPro({ userData }) {
     hora: '09:00', observaciones: '', estado: 'pendiente' 
   })
 
-  // MODIFICACIÓN AQUÍ: Agregamos PROFESIONAL_PLUS a la lista de acceso total
   const rol = userData?.rol?.toUpperCase() || "";
   const esAdmin = ['ADMINISTRACION', 'DIRECCION', 'PROFESIONAL_PLUS'].includes(rol);
 
@@ -38,12 +37,10 @@ function AgendaMensualPro({ userData }) {
     if (u) setUsers(u);
   }
 
-  // Si esAdmin (incluyendo PROFESIONAL_PLUS), ve todos. Si no, solo los propios.
   let turnosVisibles = esAdmin 
     ? turnos 
     : turnos.filter(t => String(t.profesional_id || '').trim() === String(userData?.id || '').trim());
   
-  // El filtro por profesional sigue disponible para quienes tienen acceso total
   if (esAdmin && filtroProfesional) {
     turnosVisibles = turnosVisibles.filter(t => String(t.profesional_id) === String(filtroProfesional));
   }
@@ -140,8 +137,13 @@ function AgendaMensualPro({ userData }) {
                   const prest = parts[1]?.replace('[', '') || '';
                   const prof = parts[2]?.replace('[', '') || 'N/A';
                   return (
-                    <div key={t.id} onClick={(e) => { e.stopPropagation(); setTurnoEditando(t); setForm({...t, hora: hora, prestacion: prest}); setDiaSeleccionado(dN); }} style={{ fontSize: '11px', background: t.estado === 'realizado' ? '#d4edda' : t.estado === 'cancelado' ? '#f8d7da' : '#eefaff', padding: '5px', cursor: 'pointer', borderRadius: '4px', border: '1px solid #ddd', color: '#333' }}>
-                      <strong>{hora}</strong> | {t.paciente_nombre} | <em>{prest}</em> | <b>{prof}</b>
+                    <div key={t.id} onClick={(e) => { e.stopPropagation(); setTurnoEditando(t); setForm({...t, hora: hora, prestacion: prest}); setDiaSeleccionado(dN); }} style={{ fontSize: '12px', background: t.estado === 'realizado' ? '#d4edda' : t.estado === 'cancelado' ? '#f8d7da' : '#eefaff', padding: '6px', cursor: 'pointer', borderRadius: '4px', border: '1px solid #ddd', color: '#333' }}>
+                      <div style={{ color: '#0056b3', fontWeight: 'bold', fontSize: '13px', marginBottom: '2px' }}>
+                        {t.paciente_nombre.toUpperCase()}
+                      </div>
+                      <div>
+                        <strong>{hora}</strong> | <em>{prest}</em> | <b>{prof}</b>
+                      </div>
                     </div>
                   )
                 })}
