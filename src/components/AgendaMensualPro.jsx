@@ -20,10 +20,8 @@ function AgendaMensualPro({ userData }) {
   const rol = userData?.rol?.toUpperCase() || "";
   const esAdmin = ['ADMINISTRACION', 'DIRECCION', 'PROFESIONAL_PLUS'].includes(rol);
 
-  // Restauración de la función generadora de horarios
   const generarHorarios = () => {
     const arr = [];
-    // Mañana: 09:00 a 12:45
     let horaMa = 9, minMa = 0;
     while (horaMa < 13 || (horaMa === 12 && minMa <= 45)) {
       if (horaMa === 13) break;
@@ -31,7 +29,6 @@ function AgendaMensualPro({ userData }) {
       minMa += 45;
       if (minMa >= 60) { horaMa += 1; minMa -= 60; }
     }
-    // Tarde: 14:00 a 20:15
     let horaTa = 14, minTa = 0;
     while (horaTa < 21) {
       arr.push(`${String(horaTa).padStart(2, '0')}:${String(minTa).padStart(2, '0')}`);
@@ -61,18 +58,7 @@ function AgendaMensualPro({ userData }) {
     if (u) setUsers(u);
   }
 
-  let turnosVisibles = esAdmin 
-    ? turnos 
-    : turnos.filter(t => String(t.profesional_id || '').trim() === String(userData?.id || '').trim());
-  
-  if (filtroProfesional) turnosVisibles = turnosVisibles.filter(t => String(t.profesional_id) === String(filtroProfesional));
-  if (filtroPaciente) turnosVisibles = turnosVisibles.filter(t => t.paciente_nombre.toLowerCase().includes(filtroPaciente.toLowerCase()));
-  if (filtroEstado) turnosVisibles = turnosVisibles.filter(t => t.estado === filtroEstado);
-
-  const prestaciones = ['Turno primera vez', 'Evaluacion', 'Reunion', 'Entrenamiento', 'Devolucion','Visita A Instituciones'];
-
   async function guardarTurno() {
-    // Si hay horario especial escrito, se usa ese, sino el del desplegable
     const horaFinal = form.horario_especial || form.hora;
     const fechaISO = `${mesActual.getFullYear()}-${String(mesActual.getMonth() + 1).padStart(2, '0')}-${String(diaSeleccionado).padStart(2, '0')}T${horaFinal}:00`;
     const profesionalObj = users.find(u => String(u.id) === String(form.profesional_id));
@@ -88,17 +74,31 @@ function AgendaMensualPro({ userData }) {
     setDiaSeleccionado(null); setTurnoEditando(null);
   }
 
+  async function eliminarTurno() {
+    if (!turnoEditando) return;
+    if (window.confirm("¿Estás seguro de que quieres eliminar este turno definitivamente?")) {
+      await supabase.from('turnos').delete().eq('id', turnoEditando.id);
+      setDiaSeleccionado(null);
+      setTurnoEditando(null);
+    }
+  }
+
+  let turnosVisibles = esAdmin ? turnos : turnos.filter(t => String(t.profesional_id || '').trim() === String(userData?.id || '').trim());
+  if (filtroProfesional) turnosVisibles = turnosVisibles.filter(t => String(t.profesional_id) === String(filtroProfesional));
+  if (filtroPaciente) turnosVisibles = turnosVisibles.filter(t => t.paciente_nombre.toLowerCase().includes(filtroPaciente.toLowerCase()));
+  if (filtroEstado) turnosVisibles = turnosVisibles.filter(t => t.estado === filtroEstado);
+
+  const prestaciones = ['Turno primera vez', 'Evaluacion', 'Reunion', 'Entrenamiento', 'Devolucion','Visita A Instituciones'];
   const diasEnMes = new Date(mesActual.getFullYear(), mesActual.getMonth() + 1, 0).getDate();
   const offset = (new Date(mesActual.getFullYear(), mesActual.getMonth(), 1).getDay() + 6) % 7;
 
   return (
-    <div style={{ padding: '0', backgroundColor: '#ffffff', color: '#000000', borderRadius: '0', fontSize: '14px', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ padding: '0', backgroundColor: '#ffffff', color: '#000000', fontSize: '14px', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       
       <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', margin: '20px auto', width: '95%', maxWidth: '900px', flexWrap: 'wrap' }}>
         <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1))}>←</button>
         <h2 style={{ fontSize: '18px', margin: 0, alignSelf: 'center' }}>{mesActual.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase()}</h2>
         <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1))}>→</button>
-        
         {esAdmin && (
           <>
             <select value={filtroProfesional} onChange={e => setFiltroProfesional(e.target.value)} style={{ padding: '5px' }}>
@@ -140,9 +140,7 @@ function AgendaMensualPro({ userData }) {
                     <div key={t.id} onClick={(e) => { e.stopPropagation(); setTurnoEditando(t); setForm({...t, hora: hora, prestacion: prest}); setDiaSeleccionado(dN); }} style={{ fontSize: '11px', background: t.estado === 'realizado' ? '#d4edda' : t.estado === 'cancelado' ? '#f8d7da' : '#eefaff', padding: '4px', cursor: 'pointer', borderRadius: '4px', border: '1px solid #ddd' }}>
                       <div style={{ color: '#0056b3', fontWeight: 'bold', fontSize: '12px' }}>{t.paciente_nombre.toUpperCase()}</div>
                       <div>
-                        <strong>{hora}</strong> | 
-                        <span style={{ color: '#663399', fontWeight: 'bold' }}> {prest} </span> | 
-                        <b style={{ color: '#000' }}>{prof}</b>
+                        <strong>{hora}</strong> | <span style={{ color: '#663399', fontWeight: 'bold' }}> {prest} </span> | <b style={{ color: '#000' }}>{prof}</b>
                       </div>
                     </div>
                   )
@@ -153,7 +151,6 @@ function AgendaMensualPro({ userData }) {
         })}
       </div>
 
-      {/* MODAL DE EDICIÓN */}
       {diaSeleccionado && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ background: '#ffffff', padding: '20px', width: '320px', borderRadius: '15px' }}>
@@ -170,9 +167,14 @@ function AgendaMensualPro({ userData }) {
             
             <select value={form.estado} onChange={e => setForm({...form, estado: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}}><option value="pendiente">⏳ Pendiente</option><option value="realizado">✅ Realizado</option><option value="cancelado">❌ Cancelado</option></select>
             
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={guardarTurno} style={{flex: 1, padding: '10px', background: '#007bff', color: '#fff', border: 'none', borderRadius: '5px'}}>GUARDAR</button>
-              <button onClick={() => setDiaSeleccionado(null)} style={{flex: 1, padding: '10px', background: '#ccc', border: 'none', borderRadius: '5px'}}>CERRAR</button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={guardarTurno} style={{flex: 1, padding: '10px', background: '#007bff', color: '#fff', border: 'none', borderRadius: '5px'}}>GUARDAR</button>
+                <button onClick={() => setDiaSeleccionado(null)} style={{flex: 1, padding: '10px', background: '#ccc', border: 'none', borderRadius: '5px'}}>CERRAR</button>
+              </div>
+              {turnoEditando && (
+                <button onClick={eliminarTurno} style={{padding: '10px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '5px'}}>ELIMINAR TURNO</button>
+              )}
             </div>
           </div>
         </div>
