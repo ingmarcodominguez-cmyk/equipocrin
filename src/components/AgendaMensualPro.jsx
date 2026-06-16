@@ -8,18 +8,40 @@ function AgendaMensualPro({ userData }) {
   const [diaSeleccionado, setDiaSeleccionado] = useState(null)
   const [turnoEditando, setTurnoEditando] = useState(null)
   
-  // NUEVOS ESTADOS PARA FILTROS
   const [filtroProfesional, setFiltroProfesional] = useState('')
   const [filtroPaciente, setFiltroPaciente] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
   
   const [form, setForm] = useState({ 
     paciente_nombre: '', profesional_id: '', prestacion: 'Turno primera vez', 
-    hora: '09:00', observaciones: '', estado: 'pendiente' 
+    hora: '09:00', observaciones: '', estado: 'pendiente', horario_especial: '' 
   })
 
   const rol = userData?.rol?.toUpperCase() || "";
   const esAdmin = ['ADMINISTRACION', 'DIRECCION', 'PROFESIONAL_PLUS'].includes(rol);
+
+  // Restauración de la función generadora de horarios
+  const generarHorarios = () => {
+    const arr = [];
+    // Mañana: 09:00 a 12:45
+    let horaMa = 9, minMa = 0;
+    while (horaMa < 13 || (horaMa === 12 && minMa <= 45)) {
+      if (horaMa === 13) break;
+      arr.push(`${String(horaMa).padStart(2, '0')}:${String(minMa).padStart(2, '0')}`);
+      minMa += 45;
+      if (minMa >= 60) { horaMa += 1; minMa -= 60; }
+    }
+    // Tarde: 14:00 a 20:15
+    let horaTa = 14, minTa = 0;
+    while (horaTa < 21) {
+      arr.push(`${String(horaTa).padStart(2, '0')}:${String(minTa).padStart(2, '0')}`);
+      minTa += 45;
+      if (minTa >= 60) { horaTa += 1; minTa -= 60; }
+    }
+    return arr;
+  };
+
+  const listaHorarios = generarHorarios();
 
   useEffect(() => {
     cargarDatos();
@@ -39,46 +61,23 @@ function AgendaMensualPro({ userData }) {
     if (u) setUsers(u);
   }
 
-  // LÓGICA DE FILTRADO MULTI-CRITERIO
   let turnosVisibles = esAdmin 
     ? turnos 
     : turnos.filter(t => String(t.profesional_id || '').trim() === String(userData?.id || '').trim());
   
-  if (filtroProfesional) {
-    turnosVisibles = turnosVisibles.filter(t => String(t.profesional_id) === String(filtroProfesional));
-  }
-  if (filtroPaciente) {
-    turnosVisibles = turnosVisibles.filter(t => t.paciente_nombre.toLowerCase().includes(filtroPaciente.toLowerCase()));
-  }
-  if (filtroEstado) {
-    turnosVisibles = turnosVisibles.filter(t => t.estado === filtroEstado);
-  }
+  if (filtroProfesional) turnosVisibles = turnosVisibles.filter(t => String(t.profesional_id) === String(filtroProfesional));
+  if (filtroPaciente) turnosVisibles = turnosVisibles.filter(t => t.paciente_nombre.toLowerCase().includes(filtroPaciente.toLowerCase()));
+  if (filtroEstado) turnosVisibles = turnosVisibles.filter(t => t.estado === filtroEstado);
 
   const prestaciones = ['Turno primera vez', 'Evaluacion', 'Reunion', 'Entrenamiento', 'Devolucion','Visita A Instituciones'];
 
-  const generarHorarios = () => {
-    const arr = [];
-    let horaMa = 9, minMa = 0;
-    while (horaMa < 13 || (horaMa === 12 && minMa <= 45)) {
-      if (horaMa === 13) break;
-      arr.push(`${String(horaMa).padStart(2, '0')}:${String(minMa).padStart(2, '0')}`);
-      minMa += 45;
-      if (minMa >= 60) { horaMa += 1; minMa -= 60; }
-    }
-    let horaTa = 14, minTa = 0;
-    while (horaTa < 21) {
-      arr.push(`${String(horaTa).padStart(2, '0')}:${String(minTa).padStart(2, '0')}`);
-      minTa += 45;
-      if (minTa >= 60) { horaTa += 1; minTa -= 60; }
-    }
-    return arr;
-  };
-
   async function guardarTurno() {
-    const fechaISO = `${mesActual.getFullYear()}-${String(mesActual.getMonth() + 1).padStart(2, '0')}-${String(diaSeleccionado).padStart(2, '0')}T${form.hora}:00`;
+    // Si hay horario especial escrito, se usa ese, sino el del desplegable
+    const horaFinal = form.horario_especial || form.hora;
+    const fechaISO = `${mesActual.getFullYear()}-${String(mesActual.getMonth() + 1).padStart(2, '0')}-${String(diaSeleccionado).padStart(2, '0')}T${horaFinal}:00`;
     const profesionalObj = users.find(u => String(u.id) === String(form.profesional_id));
     const nombreProf = profesionalObj ? profesionalObj.nombre : 'Sin Prof.';
-    const obsEmpaquetadas = `[${form.hora}] [${form.prestacion}] [${nombreProf}] ${form.observaciones}`;
+    const obsEmpaquetadas = `[${horaFinal}] [${form.prestacion}] [${nombreProf}] ${form.observaciones}`;
     const payload = { paciente_nombre: form.paciente_nombre, profesional_id: form.profesional_id, fecha_inicio: fechaISO, observaciones: obsEmpaquetadas, estado: form.estado };
 
     if (turnoEditando) {
@@ -130,7 +129,7 @@ function AgendaMensualPro({ userData }) {
           });
           return (
             <div key={i} style={{ minHeight: '100px', background: '#ffffff', padding: '5px', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd', position: 'relative' }}>
-              <div onClick={() => { setDiaSeleccionado(dN); setTurnoEditando(null); setForm({ paciente_nombre: '', profesional_id: '', prestacion: 'Turno primera vez', hora: '09:00', observaciones: '', estado: 'pendiente' }); }} style={{ cursor: 'pointer', color: '#007bff', fontWeight: 'bold' }}>{dN} +</div>
+              <div onClick={() => { setDiaSeleccionado(dN); setTurnoEditando(null); setForm({...form, paciente_nombre: '', estado: 'pendiente', horario_especial: ''}); }} style={{ cursor: 'pointer', color: '#007bff', fontWeight: 'bold' }}>{dN} +</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 {tD.sort((a,b) => (a.observaciones?.split(']')[0] || '').localeCompare(b.observaciones?.split(']')[0] || '')).map(t => {
                   const parts = t.observaciones?.split(']') || [];
@@ -162,8 +161,15 @@ function AgendaMensualPro({ userData }) {
             <input placeholder="Paciente" value={form.paciente_nombre} onChange={e => setForm({...form, paciente_nombre: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}} />
             <select value={form.prestacion} onChange={e => setForm({...form, prestacion: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}}>{prestaciones.map(p => <option key={p} value={p}>{p}</option>)}</select>
             <select value={form.profesional_id} onChange={e => setForm({...form, profesional_id: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}}><option value="">Profesional...</option>{users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
-            <input value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}} />
+            
+            <label style={{fontSize: '12px', fontWeight: 'bold'}}>Horario Especial (Prioritario):</label>
+            <input placeholder="Ej: 13:15" value={form.horario_especial} onChange={e => setForm({...form, horario_especial: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}} />
+            
+            <label style={{fontSize: '12px', fontWeight: 'bold'}}>Horario Normal (Cada 45 min):</label>
+            <select value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}}>{listaHorarios.map(h => <option key={h} value={h}>{h}</option>)}</select>
+            
             <select value={form.estado} onChange={e => setForm({...form, estado: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}}><option value="pendiente">⏳ Pendiente</option><option value="realizado">✅ Realizado</option><option value="cancelado">❌ Cancelado</option></select>
+            
             <div style={{ display: 'flex', gap: '10px' }}>
               <button onClick={guardarTurno} style={{flex: 1, padding: '10px', background: '#007bff', color: '#fff', border: 'none', borderRadius: '5px'}}>GUARDAR</button>
               <button onClick={() => setDiaSeleccionado(null)} style={{flex: 1, padding: '10px', background: '#ccc', border: 'none', borderRadius: '5px'}}>CERRAR</button>
