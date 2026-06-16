@@ -48,7 +48,7 @@ function AgendaMensualPro({ userData }) {
     turnosVisibles = turnosVisibles.filter(t => String(t.profesional_id) === String(filtroProfesional));
   }
 
-  const prestaciones = ['Turno primera vez', 'Evaluacion', 'Reunion', 'Entrenamiento', 'Devolucion'];
+  const prestaciones = ['Turno primera vez', 'Evaluacion', 'Reunion', 'Entrenamiento', 'Devolucion','Visita Instituciones'];
 
   const generarHorarios = () => {
     const arr = [];
