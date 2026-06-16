@@ -39,7 +39,6 @@ function AgendaMensualPro({ userData }) {
     const arr = [];
     
     // Mañana: bloques de 45 min de 09:00 a 12:45
-    // 09:00, 09:45, 10:30, 11:15, 12:00, 12:45
     let horaMa = 9, minMa = 0;
     while (horaMa < 13 || (horaMa === 12 && minMa <= 45)) {
       if (horaMa === 13) break;
@@ -52,7 +51,6 @@ function AgendaMensualPro({ userData }) {
     }
 
     // Tarde: bloques de 45 min de 14:00 a 20:30
-    // 14:00, 14:45, 15:30, 16:15, 17:00, 17:45, 18:30, 19:15, 20:00, 20:45 (se detiene antes de las 21)
     let horaTa = 14, minTa = 0;
     while (horaTa < 21) {
       arr.push(`${String(horaTa).padStart(2, '0')}:${String(minTa).padStart(2, '0')}`);
@@ -93,20 +91,18 @@ function AgendaMensualPro({ userData }) {
   const diasEnMes = new Date(mesActual.getFullYear(), mesActual.getMonth() + 1, 0).getDate();
   const offset = (new Date(mesActual.getFullYear(), mesActual.getMonth(), 1).getDay() + 6) % 7;
 
-  // ESTILOS CORREGIDOS PARA ELIMINAR ESPACIOS NEGROS
   return (
     <div style={{ 
-      padding: '0', // MODIFICADO: Eliminado padding para que el calendario llegue al borde
-      backgroundColor: '#ffffff', // Asegurado fondo blanco en todo el contenedor
+      padding: '0', 
+      backgroundColor: '#ffffff', 
       color: '#000000', 
-      borderRadius: '0', // MODIFICADO: Eliminado borderRadius para un look más limpio
+      borderRadius: '0', 
       fontSize: '14px', 
       minHeight: '100vh',
       display: 'flex',
       flexDirection: 'column'
     }}>
       
-      {/* Cabecera con márgenes laterales para que no toque los bordes */}
       <div style={{ 
         display: 'flex', 
         justifyContent: 'center', 
@@ -120,20 +116,18 @@ function AgendaMensualPro({ userData }) {
         <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1))}>Siguiente →</button>
       </div>
 
-      {/* Grid del calendario CORREGIDO */}
       <div style={{ 
         display: 'grid', 
         gridTemplateColumns: 'repeat(7, 1fr)', 
-        backgroundColor: '#ffffff', // MODIFICADO: Fondo blanco en la grilla para eliminar huecos negros
-        borderTop: '1px solid #ddd', // Borde superior para separar de la cabecera
-        flex: 1, // Permite que el grid use todo el espacio vertical disponible
-        width: '100%' // Asegura que cubra todo el ancho
+        backgroundColor: '#ffffff', 
+        borderTop: '1px solid #ddd', 
+        flex: 1, 
+        width: '100%' 
       }}>
-        {/* Encabezados de días */}
         {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => (
           <div key={d} style={{ 
             textAlign: 'center', 
-            background: '#f8f9fa', // Un gris muy claro para diferenciar la cabecera
+            background: '#f8f9fa', 
             padding: '12px 10px', 
             fontWeight: 'bold', 
             borderRight: '1px solid #ddd',
@@ -143,7 +137,6 @@ function AgendaMensualPro({ userData }) {
           </div>
         ))}
 
-        {/* Celdas vacías (offset) */}
         {[...Array(offset)].map((_, i) => (
           <div key={`off-${i}`} style={{ 
             background: '#ffffff', 
@@ -153,7 +146,6 @@ function AgendaMensualPro({ userData }) {
           }} />
         ))}
 
-        {/* Celdas de días con turnos */}
         {[...Array(diasEnMes)].map((_, i) => {
           const dN = i + 1;
           const tD = (turnosVisibles || []).filter(t => {
@@ -165,12 +157,11 @@ function AgendaMensualPro({ userData }) {
             <div key={i} style={{ 
               minHeight: '120px', 
               background: '#ffffff', 
-              padding: '10px 5px 5px 5px', // Padding interno ajustado
+              padding: '10px 5px 5px 5px', 
               borderRight: '1px solid #ddd',
               borderBottom: '1px solid #ddd',
-              position: 'relative' // Para posicionar el número del día
+              position: 'relative' 
             }}>
-              {/* Número del día (+) */}
               <div onClick={() => { 
                 setDiaSeleccionado(dN); 
                 setTurnoEditando(null); 
@@ -185,9 +176,12 @@ function AgendaMensualPro({ userData }) {
                 {dN} +
               </div>
 
-              {/* Listado de turnos dentro de la celda */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {tD.map(t => {
+                {tD.sort((a, b) => {
+                  const horaA = (a.observaciones?.split(']')[0] || '').replace('[', '');
+                  const horaB = (b.observaciones?.split(']')[0] || '').replace('[', '');
+                  return horaA.localeCompare(horaB);
+                }).map(t => {
                   const parts = t.observaciones?.split(']') || [];
                   const hora = parts[0]?.replace('[', '') || '--:--';
                   const prest = parts[1]?.replace('[', '') || '';
@@ -217,12 +211,10 @@ function AgendaMensualPro({ userData }) {
         })}
       </div>
 
-      {/* Modal / Formulario (Sin cambios en lógica, solo asegurado fondo blanco) */}
       {diaSeleccionado && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ background: '#ffffff', padding: '25px', width: '350px', borderRadius: '15px', color: '#000000' }}>
             <h3>{turnoEditando ? 'Editar Turno' : 'Nuevo Turno'}</h3>
-            {/* ...resto del formulario... */}
             <input placeholder="Paciente" value={form.paciente_nombre} onChange={e => setForm({...form, paciente_nombre: e.target.value})} style={{width: '100%', marginBottom: 15, padding: '10px'}} />
             <select value={form.prestacion} onChange={e => setForm({...form, prestacion: e.target.value})} style={{width: '100%', marginBottom: 15, padding: '10px'}}>{prestaciones.map(p => <option key={p} value={p}>{p}</option>)}</select>
             <select value={form.profesional_id} onChange={e => setForm({...form, profesional_id: e.target.value})} style={{width: '100%', marginBottom: 15, padding: '10px'}}><option value="">Seleccionar Profesional...</option>{users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
