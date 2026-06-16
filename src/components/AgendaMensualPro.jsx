@@ -7,7 +7,6 @@ function AgendaMensualPro({ userData }) {
   const [mesActual, setMesActual] = useState(new Date())
   const [diaSeleccionado, setDiaSeleccionado] = useState(null)
   const [turnoEditando, setTurnoEditando] = useState(null)
-  // ESTADO PARA EL FILTRO DE PROFESIONAL
   const [filtroProfesional, setFiltroProfesional] = useState('')
   
   const [form, setForm] = useState({ 
@@ -18,8 +17,19 @@ function AgendaMensualPro({ userData }) {
   const rol = userData?.rol?.toUpperCase() || "";
   const esAdmin = (rol === 'ADMINISTRACION' || rol === 'DIRECCION');
 
+  // EFECTO PARA ACTUALIZACIÓN EN TIEMPO REAL
   useEffect(() => {
     cargarDatos();
+    
+    // Abrimos un canal de escucha para cambios en la tabla 'turnos'
+    const channel = supabase
+      .channel('agenda_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'turnos' }, () => {
+        cargarDatos();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [mesActual]);
 
   async function cargarDatos() {
@@ -29,10 +39,8 @@ function AgendaMensualPro({ userData }) {
     if (u) setUsers(u);
   }
 
-  // Lógica de filtrado: Profesional -> Rol -> Id
   let turnosVisibles = esAdmin ? turnos : turnos.filter(t => String(t.profesional_id || '').trim() === String(userData?.id || '').trim());
   
-  // Si es admin y hay un filtro seleccionado, aplicamos el filtro extra
   if (esAdmin && filtroProfesional) {
     turnosVisibles = turnosVisibles.filter(t => String(t.profesional_id) === String(filtroProfesional));
   }
@@ -79,7 +87,7 @@ function AgendaMensualPro({ userData }) {
     
     setDiaSeleccionado(null);
     setTurnoEditando(null);
-    cargarDatos();
+    // Ya no es necesario llamar cargarDatos() aquí, el Realtime lo hará por nosotros
   }
 
   const diasEnMes = new Date(mesActual.getFullYear(), mesActual.getMonth() + 1, 0).getDate();
@@ -93,7 +101,6 @@ function AgendaMensualPro({ userData }) {
         <h2 style={{ fontSize: '20px', margin: 0 }}>{mesActual.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase()}</h2>
         <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1))}>Siguiente →</button>
         
-        {/* FILTRO DE PROFESIONALES PARA ADMINS */}
         {esAdmin && (
           <select value={filtroProfesional} onChange={e => setFiltroProfesional(e.target.value)} style={{ padding: '5px', borderRadius: '4px' }}>
             <option value="">Todos los Profesionales</option>
