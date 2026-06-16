@@ -7,13 +7,14 @@ function AgendaMensualPro({ userData }) {
   const [mesActual, setMesActual] = useState(new Date())
   const [diaSeleccionado, setDiaSeleccionado] = useState(null)
   const [turnoEditando, setTurnoEditando] = useState(null)
+  // ESTADO PARA EL FILTRO DE PROFESIONAL
+  const [filtroProfesional, setFiltroProfesional] = useState('')
   
   const [form, setForm] = useState({ 
     paciente_nombre: '', profesional_id: '', prestacion: 'Turno primera vez', 
     hora: '09:00', observaciones: '', estado: 'pendiente' 
   })
 
-  // 1. Lógica de roles: Dirección también ve todo
   const rol = userData?.rol?.toUpperCase() || "";
   const esAdmin = (rol === 'ADMINISTRACION' || rol === 'DIRECCION');
 
@@ -28,37 +29,30 @@ function AgendaMensualPro({ userData }) {
     if (u) setUsers(u);
   }
 
-  // 2. Filtro: Si no es Admin/Dirección, filtra obligatoriamente por su ID
-  const turnosVisibles = esAdmin 
-    ? turnos 
-    : turnos.filter(t => String(t.profesional_id || '').trim() === String(userData?.id || '').trim());
+  // Lógica de filtrado: Profesional -> Rol -> Id
+  let turnosVisibles = esAdmin ? turnos : turnos.filter(t => String(t.profesional_id || '').trim() === String(userData?.id || '').trim());
+  
+  // Si es admin y hay un filtro seleccionado, aplicamos el filtro extra
+  if (esAdmin && filtroProfesional) {
+    turnosVisibles = turnosVisibles.filter(t => String(t.profesional_id) === String(filtroProfesional));
+  }
 
   const prestaciones = ['Turno primera vez', 'Evaluacion', 'Reunion', 'Entrenamiento', 'Devolucion'];
 
   const generarHorarios = () => {
     const arr = [];
-    
-    // Mañana: bloques de 45 min de 09:00 a 12:45
     let horaMa = 9, minMa = 0;
     while (horaMa < 13 || (horaMa === 12 && minMa <= 45)) {
       if (horaMa === 13) break;
       arr.push(`${String(horaMa).padStart(2, '0')}:${String(minMa).padStart(2, '0')}`);
       minMa += 45;
-      if (minMa >= 60) {
-        horaMa += 1;
-        minMa -= 60;
-      }
+      if (minMa >= 60) { horaMa += 1; minMa -= 60; }
     }
-
-    // Tarde: bloques de 45 min de 14:00 a 20:30
     let horaTa = 14, minTa = 0;
     while (horaTa < 21) {
       arr.push(`${String(horaTa).padStart(2, '0')}:${String(minTa).padStart(2, '0')}`);
       minTa += 45;
-      if (minTa >= 60) {
-        horaTa += 1;
-        minTa -= 60;
-      }
+      if (minTa >= 60) { horaTa += 1; minTa -= 60; }
     }
     return arr;
   };
@@ -92,59 +86,28 @@ function AgendaMensualPro({ userData }) {
   const offset = (new Date(mesActual.getFullYear(), mesActual.getMonth(), 1).getDay() + 6) % 7;
 
   return (
-    <div style={{ 
-      padding: '0', 
-      backgroundColor: '#ffffff', 
-      color: '#000000', 
-      borderRadius: '0', 
-      fontSize: '14px', 
-      minHeight: '100vh',
-      display: 'flex',
-      flexDirection: 'column'
-    }}>
+    <div style={{ padding: '0', backgroundColor: '#ffffff', color: '#000000', borderRadius: '0', fontSize: '14px', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        gap: '20px', 
-        margin: '20px auto', 
-        width: 'calc(100% - 40px)',
-        maxWidth: '800px'
-      }}>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', margin: '20px auto', width: 'calc(100% - 40px)', maxWidth: '800px', flexWrap: 'wrap' }}>
         <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1))}>← Anterior</button>
         <h2 style={{ fontSize: '20px', margin: 0 }}>{mesActual.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase()}</h2>
         <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1))}>Siguiente →</button>
+        
+        {/* FILTRO DE PROFESIONALES PARA ADMINS */}
+        {esAdmin && (
+          <select value={filtroProfesional} onChange={e => setFiltroProfesional(e.target.value)} style={{ padding: '5px', borderRadius: '4px' }}>
+            <option value="">Todos los Profesionales</option>
+            {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+          </select>
+        )}
       </div>
 
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(7, 1fr)', 
-        backgroundColor: '#ffffff', 
-        borderTop: '1px solid #ddd', 
-        flex: 1, 
-        width: '100%' 
-      }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', backgroundColor: '#ffffff', borderTop: '1px solid #ddd', flex: 1, width: '100%' }}>
         {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => (
-          <div key={d} style={{ 
-            textAlign: 'center', 
-            background: '#f8f9fa', 
-            padding: '12px 10px', 
-            fontWeight: 'bold', 
-            borderRight: '1px solid #ddd',
-            borderBottom: '1px solid #ddd'
-          }}>
-            {d}
-          </div>
+          <div key={d} style={{ textAlign: 'center', background: '#f8f9fa', padding: '12px 10px', fontWeight: 'bold', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }}>{d}</div>
         ))}
 
-        {[...Array(offset)].map((_, i) => (
-          <div key={`off-${i}`} style={{ 
-            background: '#ffffff', 
-            minHeight: '120px', 
-            borderRight: '1px solid #ddd',
-            borderBottom: '1px solid #ddd' 
-          }} />
-        ))}
+        {[...Array(offset)].map((_, i) => <div key={`off-${i}`} style={{ background: '#ffffff', minHeight: '120px', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }} />)}
 
         {[...Array(diasEnMes)].map((_, i) => {
           const dN = i + 1;
@@ -154,27 +117,8 @@ function AgendaMensualPro({ userData }) {
           });
           
           return (
-            <div key={i} style={{ 
-              minHeight: '120px', 
-              background: '#ffffff', 
-              padding: '10px 5px 5px 5px', 
-              borderRight: '1px solid #ddd',
-              borderBottom: '1px solid #ddd',
-              position: 'relative' 
-            }}>
-              <div onClick={() => { 
-                setDiaSeleccionado(dN); 
-                setTurnoEditando(null); 
-                setForm({ paciente_nombre: '', profesional_id: '', prestacion: 'Turno primera vez', hora: '09:00', observaciones: '', estado: 'pendiente' }); 
-              }} style={{ 
-                cursor: 'pointer', 
-                color: '#007bff', 
-                fontWeight: 'bold',
-                marginBottom: '10px',
-                display: 'inline-block'
-              }}>
-                {dN} +
-              </div>
+            <div key={i} style={{ minHeight: '120px', background: '#ffffff', padding: '10px 5px 5px 5px', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd', position: 'relative' }}>
+              <div onClick={() => { setDiaSeleccionado(dN); setTurnoEditando(null); setForm({ paciente_nombre: '', profesional_id: '', prestacion: 'Turno primera vez', hora: '09:00', observaciones: '', estado: 'pendiente' }); }} style={{ cursor: 'pointer', color: '#007bff', fontWeight: 'bold', marginBottom: '10px', display: 'inline-block' }}>{dN} +</div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 {tD.sort((a, b) => {
@@ -187,20 +131,7 @@ function AgendaMensualPro({ userData }) {
                   const prest = parts[1]?.replace('[', '') || '';
                   const prof = parts[2]?.replace('[', '') || 'N/A';
                   return (
-                    <div key={t.id} onClick={(e) => { 
-                      e.stopPropagation(); 
-                      setTurnoEditando(t); 
-                      setForm({...t, hora: hora, prestacion: prest}); 
-                      setDiaSeleccionado(dN); 
-                    }} style={{ 
-                      fontSize: '11px', 
-                      background: t.estado === 'realizado' ? '#d4edda' : t.estado === 'cancelado' ? '#f8d7da' : '#eefaff', 
-                      padding: '5px', 
-                      cursor: 'pointer', 
-                      borderRadius: '4px', 
-                      border: '1px solid #ddd',
-                      color: '#333'
-                    }}>
+                    <div key={t.id} onClick={(e) => { e.stopPropagation(); setTurnoEditando(t); setForm({...t, hora: hora, prestacion: prest}); setDiaSeleccionado(dN); }} style={{ fontSize: '11px', background: t.estado === 'realizado' ? '#d4edda' : t.estado === 'cancelado' ? '#f8d7da' : '#eefaff', padding: '5px', cursor: 'pointer', borderRadius: '4px', border: '1px solid #ddd', color: '#333' }}>
                       <strong>{hora}</strong> | {t.paciente_nombre} | <em>{prest}</em> | <b>{prof}</b>
                     </div>
                   )
