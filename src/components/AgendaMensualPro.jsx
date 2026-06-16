@@ -7,7 +7,11 @@ function AgendaMensualPro({ userData }) {
   const [mesActual, setMesActual] = useState(new Date())
   const [diaSeleccionado, setDiaSeleccionado] = useState(null)
   const [turnoEditando, setTurnoEditando] = useState(null)
+  
+  // NUEVOS ESTADOS PARA FILTROS
   const [filtroProfesional, setFiltroProfesional] = useState('')
+  const [filtroPaciente, setFiltroPaciente] = useState('')
+  const [filtroEstado, setFiltroEstado] = useState('')
   
   const [form, setForm] = useState({ 
     paciente_nombre: '', profesional_id: '', prestacion: 'Turno primera vez', 
@@ -19,14 +23,12 @@ function AgendaMensualPro({ userData }) {
 
   useEffect(() => {
     cargarDatos();
-    
     const channel = supabase
       .channel('agenda_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'turnos' }, () => {
         cargarDatos();
       })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [mesActual]);
 
@@ -37,16 +39,24 @@ function AgendaMensualPro({ userData }) {
     if (u) setUsers(u);
   }
 
+  // LÓGICA DE FILTRADO MULTI-CRITERIO
   let turnosVisibles = esAdmin 
     ? turnos 
     : turnos.filter(t => String(t.profesional_id || '').trim() === String(userData?.id || '').trim());
   
-  if (esAdmin && filtroProfesional) {
+  if (filtroProfesional) {
     turnosVisibles = turnosVisibles.filter(t => String(t.profesional_id) === String(filtroProfesional));
+  }
+  if (filtroPaciente) {
+    turnosVisibles = turnosVisibles.filter(t => t.paciente_nombre.toLowerCase().includes(filtroPaciente.toLowerCase()));
+  }
+  if (filtroEstado) {
+    turnosVisibles = turnosVisibles.filter(t => t.estado === filtroEstado);
   }
 
   const prestaciones = ['Turno primera vez', 'Evaluacion', 'Reunion', 'Entrenamiento', 'Devolucion','Visita A Instituciones'];
 
+  // ... (función generarHorarios y guardarTurno se mantienen igual)
   const generarHorarios = () => {
     const arr = [];
     let horaMa = 9, minMa = 0;
@@ -70,23 +80,14 @@ function AgendaMensualPro({ userData }) {
     const profesionalObj = users.find(u => String(u.id) === String(form.profesional_id));
     const nombreProf = profesionalObj ? profesionalObj.nombre : 'Sin Prof.';
     const obsEmpaquetadas = `[${form.hora}] [${form.prestacion}] [${nombreProf}] ${form.observaciones}`;
-    
-    const payload = { 
-      paciente_nombre: form.paciente_nombre, 
-      profesional_id: form.profesional_id, 
-      fecha_inicio: fechaISO, 
-      observaciones: obsEmpaquetadas, 
-      estado: form.estado 
-    };
+    const payload = { paciente_nombre: form.paciente_nombre, profesional_id: form.profesional_id, fecha_inicio: fechaISO, observaciones: obsEmpaquetadas, estado: form.estado };
 
     if (turnoEditando) {
       await supabase.from('turnos').update(payload).eq('id', turnoEditando.id);
     } else {
       await supabase.from('turnos').insert([payload]);
     }
-    
-    setDiaSeleccionado(null);
-    setTurnoEditando(null);
+    setDiaSeleccionado(null); setTurnoEditando(null);
   }
 
   const diasEnMes = new Date(mesActual.getFullYear(), mesActual.getMonth() + 1, 0).getDate();
@@ -95,55 +96,53 @@ function AgendaMensualPro({ userData }) {
   return (
     <div style={{ padding: '0', backgroundColor: '#ffffff', color: '#000000', borderRadius: '0', fontSize: '14px', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', margin: '20px auto', width: 'calc(100% - 40px)', maxWidth: '800px', flexWrap: 'wrap' }}>
-        <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1))}>← Anterior</button>
-        <h2 style={{ fontSize: '20px', margin: 0 }}>{mesActual.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase()}</h2>
-        <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1))}>Siguiente →</button>
+      {/* CABECERA CON NUEVOS FILTROS */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', margin: '20px auto', width: '95%', maxWidth: '900px', flexWrap: 'wrap' }}>
+        <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1))}>←</button>
+        <h2 style={{ fontSize: '18px', margin: 0, alignSelf: 'center' }}>{mesActual.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase()}</h2>
+        <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1))}>→</button>
         
         {esAdmin && (
-          <select value={filtroProfesional} onChange={e => setFiltroProfesional(e.target.value)} style={{ padding: '5px', borderRadius: '4px' }}>
-            <option value="">Todos los Profesionales</option>
-            {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-          </select>
+          <>
+            <select value={filtroProfesional} onChange={e => setFiltroProfesional(e.target.value)} style={{ padding: '5px' }}>
+              <option value="">Profesional</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+            </select>
+            <input placeholder="Buscar Paciente..." onChange={e => setFiltroPaciente(e.target.value)} style={{ padding: '5px', width: '120px' }} />
+            <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)} style={{ padding: '5px' }}>
+              <option value="">Estado</option>
+              <option value="pendiente">Pendiente</option>
+              <option value="realizado">Realizado</option>
+              <option value="cancelado">Cancelado</option>
+            </select>
+          </>
         )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', backgroundColor: '#ffffff', borderTop: '1px solid #ddd', flex: 1, width: '100%' }}>
         {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => (
-          <div key={d} style={{ textAlign: 'center', background: '#f8f9fa', padding: '12px 10px', fontWeight: 'bold', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }}>{d}</div>
+          <div key={d} style={{ textAlign: 'center', background: '#f8f9fa', padding: '10px', fontWeight: 'bold', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }}>{d}</div>
         ))}
-
-        {[...Array(offset)].map((_, i) => <div key={`off-${i}`} style={{ background: '#ffffff', minHeight: '120px', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }} />)}
-
+        {[...Array(offset)].map((_, i) => <div key={`off-${i}`} style={{ background: '#fcfcfc', minHeight: '100px', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }} />)}
         {[...Array(diasEnMes)].map((_, i) => {
           const dN = i + 1;
           const tD = (turnosVisibles || []).filter(t => {
             const f = new Date(t.fecha_inicio);
             return f.getUTCDate() === dN && f.getUTCMonth() === mesActual.getMonth() && f.getUTCFullYear() === mesActual.getFullYear();
           });
-          
           return (
-            <div key={i} style={{ minHeight: '120px', background: '#ffffff', padding: '10px 5px 5px 5px', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd', position: 'relative' }}>
-              <div onClick={() => { setDiaSeleccionado(dN); setTurnoEditando(null); setForm({ paciente_nombre: '', profesional_id: '', prestacion: 'Turno primera vez', hora: '09:00', observaciones: '', estado: 'pendiente' }); }} style={{ cursor: 'pointer', color: '#007bff', fontWeight: 'bold', marginBottom: '10px', display: 'inline-block' }}>{dN} +</div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {tD.sort((a, b) => {
-                  const horaA = (a.observaciones?.split(']')[0] || '').replace('[', '');
-                  const horaB = (b.observaciones?.split(']')[0] || '').replace('[', '');
-                  return horaA.localeCompare(horaB);
-                }).map(t => {
+            <div key={i} style={{ minHeight: '100px', background: '#ffffff', padding: '5px', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd', position: 'relative' }}>
+              <div onClick={() => { setDiaSeleccionado(dN); setTurnoEditando(null); setForm({ paciente_nombre: '', profesional_id: '', prestacion: 'Turno primera vez', hora: '09:00', observaciones: '', estado: 'pendiente' }); }} style={{ cursor: 'pointer', color: '#007bff', fontWeight: 'bold' }}>{dN} +</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                {tD.sort((a,b) => (a.observaciones?.split(']')[0] || '').localeCompare(b.observaciones?.split(']')[0] || '')).map(t => {
                   const parts = t.observaciones?.split(']') || [];
                   const hora = parts[0]?.replace('[', '') || '--:--';
                   const prest = parts[1]?.replace('[', '') || '';
                   const prof = parts[2]?.replace('[', '') || 'N/A';
                   return (
-                    <div key={t.id} onClick={(e) => { e.stopPropagation(); setTurnoEditando(t); setForm({...t, hora: hora, prestacion: prest}); setDiaSeleccionado(dN); }} style={{ fontSize: '12px', background: t.estado === 'realizado' ? '#d4edda' : t.estado === 'cancelado' ? '#f8d7da' : '#eefaff', padding: '6px', cursor: 'pointer', borderRadius: '4px', border: '1px solid #ddd', color: '#333' }}>
-                      <div style={{ color: '#0056b3', fontWeight: 'bold', fontSize: '13px', marginBottom: '2px' }}>
-                        {t.paciente_nombre.toUpperCase()}
-                      </div>
-                      <div>
-                        <strong>{hora}</strong> | <em>{prest}</em> | <b>{prof}</b>
-                      </div>
+                    <div key={t.id} onClick={(e) => { e.stopPropagation(); setTurnoEditando(t); setForm({...t, hora: hora, prestacion: prest}); setDiaSeleccionado(dN); }} style={{ fontSize: '11px', background: t.estado === 'realizado' ? '#d4edda' : t.estado === 'cancelado' ? '#f8d7da' : '#eefaff', padding: '4px', cursor: 'pointer', borderRadius: '4px', border: '1px solid #ddd' }}>
+                      <div style={{ color: '#0056b3', fontWeight: 'bold', fontSize: '12px' }}>{t.paciente_nombre.toUpperCase()}</div>
+                      <div><strong>{hora}</strong> | <em>{prest}</em> | {prof}</div>
                     </div>
                   )
                 })}
@@ -153,21 +152,19 @@ function AgendaMensualPro({ userData }) {
         })}
       </div>
 
+      {/* MODAL DE EDICIÓN */}
       {diaSeleccionado && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#ffffff', padding: '25px', width: '350px', borderRadius: '15px', color: '#000000' }}>
+          <div style={{ background: '#ffffff', padding: '20px', width: '320px', borderRadius: '15px' }}>
             <h3>{turnoEditando ? 'Editar Turno' : 'Nuevo Turno'}</h3>
-            <input placeholder="Paciente" value={form.paciente_nombre} onChange={e => setForm({...form, paciente_nombre: e.target.value})} style={{width: '100%', marginBottom: 15, padding: '10px'}} />
-            <select value={form.prestacion} onChange={e => setForm({...form, prestacion: e.target.value})} style={{width: '100%', marginBottom: 15, padding: '10px'}}>{prestaciones.map(p => <option key={p} value={p}>{p}</option>)}</select>
-            <select value={form.profesional_id} onChange={e => setForm({...form, profesional_id: e.target.value})} style={{width: '100%', marginBottom: 15, padding: '10px'}}><option value="">Seleccionar Profesional...</option>{users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: 15 }}>
-              <select value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} style={{padding: '10px'}}>{generarHorarios().map(h => <option key={h} value={h}>{h}</option>)}</select>
-              <input placeholder="Manual (HH:MM)" value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} style={{padding: '10px'}} />
-            </div>
-            <select value={form.estado} onChange={e => setForm({...form, estado: e.target.value})} style={{width: '100%', marginBottom: 15, padding: '10px'}}><option value="pendiente">⏳ Pendiente</option><option value="realizado">✅ Realizado</option><option value="cancelado">❌ Cancelado</option></select>
+            <input placeholder="Paciente" value={form.paciente_nombre} onChange={e => setForm({...form, paciente_nombre: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}} />
+            <select value={form.prestacion} onChange={e => setForm({...form, prestacion: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}}>{prestaciones.map(p => <option key={p} value={p}>{p}</option>)}</select>
+            <select value={form.profesional_id} onChange={e => setForm({...form, profesional_id: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}}><option value="">Profesional...</option>{users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
+            <input value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}} />
+            <select value={form.estado} onChange={e => setForm({...form, estado: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}}><option value="pendiente">⏳ Pendiente</option><option value="realizado">✅ Realizado</option><option value="cancelado">❌ Cancelado</option></select>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={guardarTurno} style={{flex: 1, padding: '12px', background: '#007bff', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer'}}>GUARDAR</button>
-              <button onClick={() => setDiaSeleccionado(null)} style={{flex: 1, padding: '12px', background: '#ccc', border: 'none', borderRadius: '8px', cursor: 'pointer'}}>CERRAR</button>
+              <button onClick={guardarTurno} style={{flex: 1, padding: '10px', background: '#007bff', color: '#fff', border: 'none', borderRadius: '5px'}}>GUARDAR</button>
+              <button onClick={() => setDiaSeleccionado(null)} style={{flex: 1, padding: '10px', background: '#ccc', border: 'none', borderRadius: '5px'}}>CERRAR</button>
             </div>
           </div>
         </div>
