@@ -138,17 +138,31 @@ function AgendaFija({ userData }) {
         </>
       ) : (
         <div style={cardStyle}>
-          <h3 style={{ color: '#00f2ff' }}>🔎 Auditoría Paciente</h3>
+          <h3 style={{ color: '#00f2ff' }}>🔎 Agenda del Paciente</h3>
           <input style={{...inputStyle, width: '100%', marginBottom: '10px'}} placeholder="Buscar nombre..." onChange={(e) => setFiltroPaciente(e.target.value)} />
           <select style={{...inputStyle, width: '100%'}} onChange={(e) => setPacienteConsultaId(e.target.value)} size={8}>
             {pacientesFiltrados.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
+          
           <div style={{marginTop: '10px'}}>
-            {sesiones.filter(s => String(s.paciente_id) === String(pacienteConsultaId)).map(s => (
-              <div key={s.id} style={{ padding: '8px', background: '#1a1a1a', borderRadius: '5px', marginTop: '5px', fontSize: '0.8rem' }}>
-                <strong>{s.dia_semana}</strong> - {s.hora} hs | {users.find(u => u.id === s.profesional_id)?.nombre}
-              </div>
-            ))}
+            {dias.map(diaSemana => {
+              const sesionesDelDia = sesiones
+                .filter(s => String(s.paciente_id) === String(pacienteConsultaId) && s.dia_semana === diaSemana)
+                .sort((a, b) => a.hora.localeCompare(b.hora));
+
+              if (sesionesDelDia.length === 0) return null;
+
+              return (
+                <div key={diaSemana} style={{ marginBottom: '15px' }}>
+                  <h4 style={{ color: '#00f2ff', margin: '10px 0 5px 0', borderBottom: '1px solid #333' }}>{diaSemana}</h4>
+                  {sesionesDelDia.map(s => (
+                    <div key={s.id} style={{ padding: '8px', background: '#1a1a1a', borderRadius: '5px', marginTop: '5px', fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between' }}>
+                      <span><strong>{s.hora} hs</strong> | {users.find(u => u.id === s.profesional_id)?.nombre}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
