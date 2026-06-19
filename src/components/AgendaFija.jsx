@@ -146,8 +146,12 @@ function AgendaFija({ userData }) {
           
           <div style={{marginTop: '10px'}}>
             {dias.map(diaSemana => {
+              // --- CAMBIO AQUÍ: Filtrado por nombre ---
+              const pSel = pacientes.find(p => String(p.id) === String(pacienteConsultaId));
+              const nombreP = pSel ? pSel.nombre : '';
+
               const sesionesDelDia = sesiones
-                .filter(s => String(s.paciente_id) === String(pacienteConsultaId) && s.dia_semana === diaSemana)
+                .filter(s => s.paciente_nombre === nombreP && s.dia_semana === diaSemana)
                 .sort((a, b) => a.hora.localeCompare(b.hora));
 
               if (sesionesDelDia.length === 0) return null;
