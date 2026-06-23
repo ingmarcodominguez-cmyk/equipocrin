@@ -1,18 +1,72 @@
 import { useState, useRef } from 'react'
+import confetti from 'canvas-confetti'
 import AgendaMensualPro from './AgendaMensualPro.jsx'
 import AgendaFija from './AgendaFija.jsx'
 import Tasks from './Tasks.jsx'
-import GestionPacientes from './GestionPacientes.jsx' // 1. Importación
-import logo from '../assets/photo.jpg'; 
+import GestionPacientes from './GestionPacientes.jsx'
+import logo from '../assets/photo.jpg'
 
 function Layout({ userData, logout }) {
-  const [vista, setVista] = useState('bienvenida'); 
-  const audioRef = useRef(new Audio('/notificacion.mp3'));
-  const playNotification = () => audioRef.current.play().catch(e => {});
+  const [vista, setVista] = useState('bienvenida')
+  const [mostrandoMessi, setMostrandoMessi] = useState(false)
+  const audioRef = useRef(new Audio('/notificacion.mp3'))
+  const playNotification = () => audioRef.current.play().catch(e => {})
   
-  const rol = userData?.rol?.toUpperCase() || "";
-  const tieneAccesoTotal = ['ADMINISTRACION', 'DIRECCION', 'PROFESIONAL_PLUS'].includes(rol);
-  const esAdminOrDir = ['ADMINISTRACION', 'DIRECCION'].includes(rol); // 2. Nuevo permiso
+  const rol = userData?.rol?.toUpperCase() || ""
+  const tieneAccesoTotal = ['ADMINISTRACION', 'DIRECCION', 'PROFESIONAL_PLUS'].includes(rol)
+  const esAdminOrDir = ['ADMINISTRACION', 'DIRECCION'].includes(rol)
+
+  const entrarAlMenuConFestejo = () => {
+    // Dispara el confeti
+    confetti({ 
+      particleCount: 200, 
+      spread: 100, 
+      origin: { y: 0.6 }, 
+      colors: ['#75AADB', '#FFFFFF'] 
+    })
+    
+    // Muestra el festejo
+    setMostrandoMessi(true)
+    
+    // Vuelve al menú después de 3 segundos
+    setTimeout(() => {
+      setMostrandoMessi(false)
+      setVista('hub')
+    }, 3000)
+  }
+
+  // Pantalla de festejo que se activa al entrar
+  if (mostrandoMessi) {
+    return (
+      <div style={{ 
+        backgroundColor: 'black', 
+        height: '100vh', 
+        display: 'flex', 
+        flexDirection: 'column', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        position: 'relative' 
+      }}>
+        <h1 style={{ 
+          color: '#fff', 
+          fontSize: '50px', 
+          fontFamily: 'cursive', 
+          transform: 'rotate(-15deg)', 
+          position: 'absolute',
+          top: '15%',
+          zIndex: 2
+        }}>
+          ¡Vamos Argentina!
+        </h1>
+        
+        <img 
+          src="/messi-festejo.png" 
+          alt="Messi" 
+          style={{ width: '80%', maxWidth: '400px', zIndex: 1 }} 
+        />
+      </div>
+    )
+  }
 
   return (
     <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif' }}>
@@ -22,7 +76,7 @@ function Layout({ userData, logout }) {
           <img src={logo} alt="Logo" style={{ width: 220, borderRadius: '20px', marginBottom: 30 }} />
           <h1>Bienvenido</h1>
           <h2 style={{ color: '#00f2ff', textTransform: 'uppercase' }}>{userData?.nombre || 'Usuario'}</h2>
-          <button onClick={() => setVista('hub')} style={btnHubStyle}>ENTRAR AL MENÚ</button>
+          <button onClick={entrarAlMenuConFestejo} style={btnHubStyle}>ENTRAR AL MENÚ</button>
         </div>
       )}
 
@@ -36,7 +90,6 @@ function Layout({ userData, logout }) {
             <button onClick={() => setVista('tareas')} style={btnHubStyle}>✅ TAREAS</button>
             <button onClick={() => setVista('profesionales')} style={btnHubStyle}>⚙️ AGENDA FIJA</button>
             
-            {/* 3. Botón condicional */}
             {esAdminOrDir && (
               <button onClick={() => setVista('pacientes')} style={btnHubStyle}>👤 GESTIÓN PACIENTES</button>
             )}
@@ -45,7 +98,6 @@ function Layout({ userData, logout }) {
         </div>
       )}
 
-      {/* 4. Incluimos 'pacientes' en la lista de vistas permitidas */}
       {['agenda', 'tareas', 'profesionales', 'pacientes'].includes(vista) && (
         <div style={{ maxWidth: '1200px', margin: 'auto' }}>
           <button onClick={() => setVista('hub')} style={btnVolverStyle}>← VOLVER</button>

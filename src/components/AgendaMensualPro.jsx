@@ -62,20 +62,25 @@ function AgendaMensualPro({ userData }) {
     const horaSeleccionada = form.horario_especial || form.hora;
     const fechaSeleccionada = `${mesActual.getFullYear()}-${String(mesActual.getMonth() + 1).padStart(2, '0')}-${String(diaSeleccionado).padStart(2, '0')}`;
     
-    // --- NUEVA VALIDACIÓN DE SOLAPAMIENTO ---
+    // --- LÓGICA DE VALIDACIÓN CORREGIDA ---
     const existeConflicto = turnos.some(t => {
+      // 1. Identificamos si estamos editando
+      const esElMismoTurno = turnoEditando ? String(t.id) === String(turnoEditando.id) : false;
+      
+      // 2. SI ES EL MISMO TURNO, IGNORAMOS EL CONFLICTO (permite guardar cambios de estado)
+      if (esElMismoTurno) return false;
+
+      // 3. Si no es el mismo, buscamos conflictos reales con OTROS turnos
       const tFecha = new Date(t.fecha_inicio).toISOString().split('T')[0];
       const tHora = t.observaciones?.split(']')[0]?.replace('[', '');
-      const esElMismoTurno = turnoEditando ? t.id === turnoEditando.id : false;
       
-      return !esElMismoTurno && 
-             String(t.profesional_id) === String(form.profesional_id) && 
+      return String(t.profesional_id) === String(form.profesional_id) && 
              tFecha === fechaSeleccionada && 
              tHora === horaSeleccionada;
     });
 
     if (existeConflicto) {
-      alert("¡Cuidado! El profesional ya tiene un turno asignado en ese horario.");
+      alert("¡Cuidado! El profesional ya tiene OTRO turno asignado en ese horario.");
       return; 
     }
     // ----------------------------------------
@@ -103,6 +108,7 @@ function AgendaMensualPro({ userData }) {
     }
   }
 
+  // --- Renderizado y filtros ---
   let turnosVisibles = esAdmin ? turnos : turnos.filter(t => String(t.profesional_id || '').trim() === String(userData?.id || '').trim());
   if (filtroProfesional) turnosVisibles = turnosVisibles.filter(t => String(t.profesional_id) === String(filtroProfesional));
   if (filtroPaciente) turnosVisibles = turnosVisibles.filter(t => t.paciente_nombre.toLowerCase().includes(filtroPaciente.toLowerCase()));
@@ -114,26 +120,10 @@ function AgendaMensualPro({ userData }) {
 
   return (
     <div style={{ padding: '0', backgroundColor: '#ffffff', color: '#000000', fontSize: '14px', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      
       <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', margin: '20px auto', width: '95%', maxWidth: '900px', flexWrap: 'wrap' }}>
         <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1))}>←</button>
         <h2 style={{ fontSize: '18px', margin: 0, alignSelf: 'center' }}>{mesActual.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase()}</h2>
         <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1))}>→</button>
-        {esAdmin && (
-          <>
-            <select value={filtroProfesional} onChange={e => setFiltroProfesional(e.target.value)} style={{ padding: '5px' }}>
-              <option value="">Profesional</option>
-              {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-            </select>
-            <input placeholder="Buscar Paciente..." onChange={e => setFiltroPaciente(e.target.value)} style={{ padding: '5px', width: '120px' }} />
-            <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)} style={{ padding: '5px' }}>
-              <option value="">Estado</option>
-              <option value="pendiente">Pendiente</option>
-              <option value="realizado">Realizado</option>
-              <option value="cancelado">Cancelado</option>
-            </select>
-          </>
-        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', backgroundColor: '#ffffff', borderTop: '1px solid #ddd', flex: 1, width: '100%' }}>
@@ -159,9 +149,7 @@ function AgendaMensualPro({ userData }) {
                   return (
                     <div key={t.id} onClick={(e) => { e.stopPropagation(); setTurnoEditando(t); setForm({...t, hora: hora, prestacion: prest}); setDiaSeleccionado(dN); }} style={{ fontSize: '11px', background: t.estado === 'realizado' ? '#d4edda' : t.estado === 'cancelado' ? '#f8d7da' : '#eefaff', padding: '4px', cursor: 'pointer', borderRadius: '4px', border: '1px solid #ddd' }}>
                       <div style={{ color: '#0056b3', fontWeight: 'bold', fontSize: '12px' }}>{t.paciente_nombre.toUpperCase()}</div>
-                      <div>
-                        <strong>{hora}</strong> | <span style={{ color: '#663399', fontWeight: 'bold' }}> {prest} </span> | <b style={{ color: '#000' }}>{prof}</b>
-                      </div>
+                      <div><strong>{hora}</strong> | {prest} | <b>{prof}</b></div>
                     </div>
                   )
                 })}
@@ -178,13 +166,8 @@ function AgendaMensualPro({ userData }) {
             <input placeholder="Paciente" value={form.paciente_nombre} onChange={e => setForm({...form, paciente_nombre: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}} />
             <select value={form.prestacion} onChange={e => setForm({...form, prestacion: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}}>{prestaciones.map(p => <option key={p} value={p}>{p}</option>)}</select>
             <select value={form.profesional_id} onChange={e => setForm({...form, profesional_id: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}}><option value="">Profesional...</option>{users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
-            
-            <label style={{fontSize: '12px', fontWeight: 'bold'}}>Horario Especial (Prioritario):</label>
             <input placeholder="Ej: 13:15" value={form.horario_especial} onChange={e => setForm({...form, horario_especial: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}} />
-            
-            <label style={{fontSize: '12px', fontWeight: 'bold'}}>Horario Normal (Cada 45 min):</label>
             <select value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}}>{listaHorarios.map(h => <option key={h} value={h}>{h}</option>)}</select>
-            
             <select value={form.estado} onChange={e => setForm({...form, estado: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}}><option value="pendiente">⏳ Pendiente</option><option value="realizado">✅ Realizado</option><option value="cancelado">❌ Cancelado</option></select>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

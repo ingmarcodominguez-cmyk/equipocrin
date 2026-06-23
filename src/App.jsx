@@ -43,27 +43,14 @@ function App() {
 
   if (cargando) return <div style={{ padding: 20 }}>Cargando sistema...</div>
 
-  // agregado por chat gpt 
-if (
-  session
-  &&
-  !userData
-) {
+  if (session && !userData) {
+    return (
+      <div style={{ padding: 20 }}>
+        Cargando perfil...
+      </div>
+    )
+  }
 
-  return (
-    <div
-      style={{
-        padding: 20
-      }}
-    >
-      Cargando perfil...
-    </div>
-  )
-}
-
-
-
-  // LOGIN (Mantenemos el padding aquí para que el formulario se vea bien)
   if (!session) {
     return (
       <div style={{ padding: 20 }}>
@@ -77,7 +64,6 @@ if (
     )
   }
 
-  // SISTEMA: Quitamos el padding: 20 para que el Layout ocupe el 100% de la pantalla
   return (
     <div style={{ width: '100vw', height: '100vh', margin: 0, padding: 0 }}>
       <Layout userData={userData} logout={logout} />
@@ -86,4 +72,3 @@ if (
 }
 
 export default App
-
