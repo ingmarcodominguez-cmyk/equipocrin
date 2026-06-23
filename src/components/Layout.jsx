@@ -21,7 +21,7 @@ function Layout({ userData, logout }) {
     const img = new Image();
     img.src = '/messi-festejo.png';
 
-    // 2. Solo disparamos el festejo cuando la imagen ya cargó completamente
+    // 2. Disparamos el festejo solo cuando la imagen ya está lista
     img.onload = () => {
       confetti({ 
         particleCount: 200, 
@@ -32,10 +32,11 @@ function Layout({ userData, logout }) {
       
       setMostrandoMessi(true);
       
+      // 3. Duración aumentada a 5 segundos
       setTimeout(() => {
         setMostrandoMessi(false);
         setVista('hub');
-      }, 3000);
+      }, 5000);
     };
   };
 
@@ -47,25 +48,13 @@ function Layout({ userData, logout }) {
         display: 'flex', 
         flexDirection: 'column', 
         alignItems: 'center', 
-        justifyContent: 'center', 
-        position: 'relative' 
+        justifyContent: 'center' 
       }}>
-        <h1 style={{ 
-          color: '#fff', 
-          fontSize: '50px', 
-          fontFamily: 'cursive', 
-          transform: 'rotate(-15deg)', 
-          position: 'absolute',
-          top: '15%',
-          zIndex: 2
-        }}>
-          ¡Vamos Argentina!
-        </h1>
-        
+        {/* Mostramos solo la imagen que ya contiene el texto integrado */}
         <img 
           src="/messi-festejo.png" 
           alt="Messi" 
-          style={{ width: '80%', maxWidth: '400px', zIndex: 1 }} 
+          style={{ width: '90%', maxWidth: '500px' }} 
         />
       </div>
     )
