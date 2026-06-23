@@ -140,9 +140,42 @@ function AgendaFija({ userData }) {
         <div style={cardStyle}>
           <h3 style={{ color: '#00f2ff' }}>🔎 Agenda del Paciente</h3>
           <input style={{...inputStyle, width: '100%', marginBottom: '10px'}} placeholder="Buscar nombre..." onChange={(e) => setFiltroPaciente(e.target.value)} />
-          <select style={{...inputStyle, width: '100%'}} onChange={(e) => setPacienteConsultaId(e.target.value)} size={8}>
-            {pacientesFiltrados.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
+          <div style={{
+            maxHeight: '200px',
+            overflowY: 'auto',
+            border: '1px solid #444',
+            borderRadius: '8px',
+            background: '#000',
+            boxSizing: 'border-box'
+          }}>
+            {pacientesFiltrados.length === 0 ? (
+              <div style={{ padding: '10px', color: '#888', fontSize: '0.9rem', textAlign: 'center' }}>
+                No se encontraron pacientes
+              </div>
+            ) : (
+              pacientesFiltrados.map(p => {
+                const esSeleccionado = String(p.id) === String(pacienteConsultaId);
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => setPacienteConsultaId(p.id)}
+                    style={{
+                      padding: '10px 12px',
+                      cursor: 'pointer',
+                      background: esSeleccionado ? '#00f2ff' : 'transparent',
+                      color: esSeleccionado ? '#000' : '#fff',
+                      fontWeight: esSeleccionado ? 'bold' : 'normal',
+                      borderBottom: '1px solid #111',
+                      fontSize: '0.9rem',
+                      transition: 'background 0.2s, color 0.2s'
+                    }}
+                  >
+                    {p.nombre}
+                  </div>
+                );
+              })
+            )}
+          </div>
           
           <div style={{marginTop: '10px'}}>
             {dias.map(diaSemana => {

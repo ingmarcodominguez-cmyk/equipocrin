@@ -59,11 +59,31 @@ function AgendaMensualPro({ userData }) {
   }
 
   async function guardarTurno() {
-    const horaFinal = form.horario_especial || form.hora;
-    const fechaISO = `${mesActual.getFullYear()}-${String(mesActual.getMonth() + 1).padStart(2, '0')}-${String(diaSeleccionado).padStart(2, '0')}T${horaFinal}:00`;
+    const horaSeleccionada = form.horario_especial || form.hora;
+    const fechaSeleccionada = `${mesActual.getFullYear()}-${String(mesActual.getMonth() + 1).padStart(2, '0')}-${String(diaSeleccionado).padStart(2, '0')}`;
+    
+    // --- NUEVA VALIDACIÓN DE SOLAPAMIENTO ---
+    const existeConflicto = turnos.some(t => {
+      const tFecha = new Date(t.fecha_inicio).toISOString().split('T')[0];
+      const tHora = t.observaciones?.split(']')[0]?.replace('[', '');
+      const esElMismoTurno = turnoEditando ? t.id === turnoEditando.id : false;
+      
+      return !esElMismoTurno && 
+             String(t.profesional_id) === String(form.profesional_id) && 
+             tFecha === fechaSeleccionada && 
+             tHora === horaSeleccionada;
+    });
+
+    if (existeConflicto) {
+      alert("¡Cuidado! El profesional ya tiene un turno asignado en ese horario.");
+      return; 
+    }
+    // ----------------------------------------
+
+    const fechaISO = `${fechaSeleccionada}T${horaSeleccionada}:00`;
     const profesionalObj = users.find(u => String(u.id) === String(form.profesional_id));
     const nombreProf = profesionalObj ? profesionalObj.nombre : 'Sin Prof.';
-    const obsEmpaquetadas = `[${horaFinal}] [${form.prestacion}] [${nombreProf}] ${form.observaciones}`;
+    const obsEmpaquetadas = `[${horaSeleccionada}] [${form.prestacion}] [${nombreProf}] ${form.observaciones}`;
     const payload = { paciente_nombre: form.paciente_nombre, profesional_id: form.profesional_id, fecha_inicio: fechaISO, observaciones: obsEmpaquetadas, estado: form.estado };
 
     if (turnoEditando) {
