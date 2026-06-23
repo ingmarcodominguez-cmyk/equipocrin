@@ -17,25 +17,28 @@ function Layout({ userData, logout }) {
   const esAdminOrDir = ['ADMINISTRACION', 'DIRECCION'].includes(rol)
 
   const entrarAlMenuConFestejo = () => {
-    // Dispara el confeti
-    confetti({ 
-      particleCount: 200, 
-      spread: 100, 
-      origin: { y: 0.6 }, 
-      colors: ['#75AADB', '#FFFFFF'] 
-    })
-    
-    // Muestra el festejo
-    setMostrandoMessi(true)
-    
-    // Vuelve al menú después de 3 segundos
-    setTimeout(() => {
-      setMostrandoMessi(false)
-      setVista('hub')
-    }, 3000)
-  }
+    // 1. Precargamos la imagen en memoria
+    const img = new Image();
+    img.src = '/messi-festejo.png';
 
-  // Pantalla de festejo que se activa al entrar
+    // 2. Solo disparamos el festejo cuando la imagen ya cargó completamente
+    img.onload = () => {
+      confetti({ 
+        particleCount: 200, 
+        spread: 100, 
+        origin: { y: 0.6 }, 
+        colors: ['#75AADB', '#FFFFFF'] 
+      });
+      
+      setMostrandoMessi(true);
+      
+      setTimeout(() => {
+        setMostrandoMessi(false);
+        setVista('hub');
+      }, 3000);
+    };
+  };
+
   if (mostrandoMessi) {
     return (
       <div style={{ 
