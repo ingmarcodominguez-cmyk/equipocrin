@@ -49,41 +49,31 @@ function AgendaFija({ userData }) {
   const puedeEditar = (s) => esAdminOdireccion || String(s.profesional_id) === String(userData.id);
 
   async function guardarSesion() {
-    if (editId) {
-      const s = sesiones.find(s => s.id === editId);
-      if (!puedeEditar(s)) { alert("No tenés permiso para editar esta sesión."); return; }
-    }
-    
     const horaFinal = horarioManual.trim() !== '' ? horarioManual : hora;
     const p = pacientes.find(p => String(p.id) === String(pacienteSeleccionado));
     const payload = { paciente_id: pacienteSeleccionado, paciente_nombre: p?.nombre || 'Desconocido', profesional_id: prestadorSeleccionado, dia_semana: dia, hora: horaFinal, asistencia: 'Pendiente' };
     
     if (editId) { await supabase.from('sesiones_fijas').update(payload).eq('id', editId); setEditId(null); } 
     else { await supabase.from('sesiones_fijas').insert([payload]); }
-    
     await cargarDatos(); alert('Sesión guardada');
   }
 
   async function eliminarSesion(id) {
-    const s = sesiones.find(s => s.id === id);
-    if (!puedeEditar(s)) { alert("No tenés permiso para borrar esta sesión."); return; }
-    
-    if (window.confirm("¿Estás seguro de eliminar esta sesión fija?")) {
+    if (window.confirm("¿Estás seguro de eliminar esta sesión?")) {
       await supabase.from('sesiones_fijas').delete().eq('id', id);
       await cargarDatos();
     }
   }
 
   function iniciarEdicion(s) {
-    if (!puedeEditar(s)) { alert("Solo podés editar tus propias sesiones."); return; }
     setEditId(s.id); setDia(s.dia_semana); setHora(s.hora); setHorarioManual('');
     setPacienteSeleccionado(String(s.paciente_id)); setPrestadorSeleccionado(String(s.profesional_id));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  const sesionesVisibles = profesionalFiltroId ? sesiones.filter(s => s.profesional_id === profesionalFiltroId) : sesiones;
+  const sesionesVisibles = profesionalFiltroId ? sesiones.filter(s => String(s.profesional_id) === String(profesionalFiltroId)) : sesiones;
   const horasDelDia = sesionesVisibles.filter(s => s.dia_semana === diaConsulta).sort((a,b) => a.hora.localeCompare(b.hora));
-  const pacientesFiltrados = pacientes.filter(p => p.nombre.toLowerCase().includes(filtroPaciente.toLowerCase()));
+  const pacientesFiltrados = pacientes.filter(p => p.nombre && p.nombre.toLowerCase().includes(filtroPaciente.toLowerCase()));
 
   return (
     <div style={{ color: '#fff', padding: '20px', maxWidth: '1200px', margin: 'auto' }}>
@@ -147,6 +137,24 @@ function AgendaFija({ userData }) {
               </div>
             ))}
           </div>
+          
+          {pacienteConsultaId && dias.map(dia => {
+            const turnosDelDia = sesiones.filter(s => s.paciente_id == pacienteConsultaId && s.dia_semana === dia).sort((a,b) => a.hora.localeCompare(b.hora));
+            if (turnosDelDia.length === 0) return null;
+            return (
+              <div key={dia} style={{ marginTop: '20px', borderTop: '1px solid #333', paddingTop: '10px' }}>
+                <h4 style={{ color: '#00f2ff' }}>{dia.toUpperCase()}</h4>
+                {turnosDelDia.map(s => {
+                  const prof = users.find(u => String(u.id) === String(s.profesional_id));
+                  return (
+                    <div key={s.id} style={{ padding: '4px 0' }}>
+                      {s.hora} - {s.paciente_nombre} <span style={{ color: '#888' }}>({prof?.nombre || 'Sin profesional'})</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
