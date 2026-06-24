@@ -5,6 +5,7 @@ function AgendaFija({ userData }) {
   const [sesiones, setSesiones] = useState([])
   const [pacientes, setPacientes] = useState([])
   const [users, setUsers] = useState([])
+  const [guardando, setGuardando] = useState(false)
   
   const [vistaActiva, setVistaActiva] = useState('agenda') 
   const [dia, setDia] = useState('Lunes')
@@ -49,19 +50,37 @@ function AgendaFija({ userData }) {
   const puedeEditar = (s) => esAdminOdireccion || String(s.profesional_id) === String(userData.id);
 
   async function guardarSesion() {
-    const horaFinal = horarioManual.trim() !== '' ? horarioManual : hora;
     const p = pacientes.find(p => String(p.id) === String(pacienteSeleccionado));
-    const payload = { paciente_id: pacienteSeleccionado, paciente_nombre: p?.nombre || 'Desconocido', profesional_id: prestadorSeleccionado, dia_semana: dia, hora: horaFinal, asistencia: 'Pendiente' };
+    if (!p) { alert("Error: Seleccioná un paciente válido."); return; }
     
-    if (editId) { await supabase.from('sesiones_fijas').update(payload).eq('id', editId); setEditId(null); } 
-    else { await supabase.from('sesiones_fijas').insert([payload]); }
-    await cargarDatos(); alert('Sesión guardada');
+    setGuardando(true);
+    const payload = { 
+      paciente_id: p.id, 
+      paciente_nombre: p.nombre, 
+      profesional_id: prestadorSeleccionado, 
+      dia_semana: dia, 
+      hora: horarioManual.trim() !== '' ? horarioManual : hora, 
+      asistencia: 'Pendiente' 
+    };
+    
+    try {
+      if (editId) {
+        await supabase.from('sesiones_fijas').update(payload).eq('id', editId);
+        setSesiones(prev => prev.map(s => s.id === editId ? { ...s, ...payload } : s));
+        setEditId(null);
+      } else {
+        const { data } = await supabase.from('sesiones_fijas').insert([payload]).select();
+        if (data) setSesiones(prev => [...prev, ...data]);
+      }
+      setHorarioManual('');
+    } catch (e) { alert("Error al guardar"); }
+    setGuardando(false);
   }
 
   async function eliminarSesion(id) {
-    if (window.confirm("¿Estás seguro de eliminar esta sesión?")) {
+    if (window.confirm("¿Seguro de eliminar?")) {
       await supabase.from('sesiones_fijas').delete().eq('id', id);
-      await cargarDatos();
+      setSesiones(prev => prev.filter(s => s.id !== id));
     }
   }
 
@@ -73,7 +92,7 @@ function AgendaFija({ userData }) {
 
   const sesionesVisibles = profesionalFiltroId ? sesiones.filter(s => String(s.profesional_id) === String(profesionalFiltroId)) : sesiones;
   const horasDelDia = sesionesVisibles.filter(s => s.dia_semana === diaConsulta).sort((a,b) => a.hora.localeCompare(b.hora));
-  const pacientesFiltrados = pacientes.filter(p => p.nombre && p.nombre.toLowerCase().includes(filtroPaciente.toLowerCase()));
+  const pacientesFiltrados = pacientes.filter(p => p.nombre && p.nombre.toLowerCase().includes(filtroPaciente.toLowerCase().trim()));
 
   return (
     <div style={{ color: '#fff', padding: '20px', maxWidth: '1200px', margin: 'auto' }}>
@@ -85,15 +104,14 @@ function AgendaFija({ userData }) {
       {vistaActiva === 'agenda' ? (
         <>
           <div style={{...cardStyle, marginBottom: '20px'}}>
-            <h3 style={{ color: '#00f2ff' }}>{editId ? '✏️ Editar Sesión' : '➕ Nueva Sesión'}</h3>
+            <h3>{editId ? '✏️ Editar Sesión' : '➕ Nueva Sesión'}</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
               <select style={inputStyle} value={dia} onChange={(e) => setDia(e.target.value)}>{dias.map(d => <option key={d} value={d}>{d}</option>)}</select>
               <select style={inputStyle} value={hora} onChange={(e) => { setHora(e.target.value); setHorarioManual(''); }}>{generarHorarios().map(h => <option key={h} value={h}>{h}</option>)}</select>
               <input style={inputStyle} placeholder="Hora manual" value={horarioManual} onChange={(e) => setHorarioManual(e.target.value)} />
               <select style={inputStyle} value={pacienteSeleccionado} onChange={(e) => setPacienteSeleccionado(e.target.value)}><option value="">Paciente...</option>{pacientes.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select>
               <select style={inputStyle} value={prestadorSeleccionado} onChange={(e) => setPrestadorSeleccionado(e.target.value)}><option value="">Profesional...</option>{users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
-              <button onClick={guardarSesion} style={btnAccionStyle}>{editId ? 'ACTUALIZAR' : 'GUARDAR'}</button>
-              {editId && <button onClick={() => setEditId(null)} style={{...btnAccionStyle, background: '#444'}}>CANCELAR</button>}
+              <button disabled={guardando} onClick={guardarSesion} style={btnAccionStyle}>{guardando ? '...' : (editId ? 'ACTUALIZAR' : 'GUARDAR')}</button>
             </div>
           </div>
 
@@ -117,8 +135,8 @@ function AgendaFija({ userData }) {
                     <span style={{ flexGrow: 1 }}>{s.paciente_nombre} <span style={{ color: '#888', fontSize: '0.8rem' }}>({profesional?.nombre})</span></span>
                     {puedeEditar(s) && (
                       <div style={{display: 'flex', gap: '10px'}}>
-                        <button onClick={() => iniciarEdicion(s)} style={{background: 'none', border: 'none', cursor: 'pointer'}}>✏️</button>
-                        <button onClick={() => eliminarSesion(s.id)} style={{background: 'none', border: 'none', cursor: 'pointer'}}>🗑️</button>
+                        <button onClick={() => iniciarEdicion(s)} style={{background:'none', border:'none', cursor:'pointer'}}>✏️</button>
+                        <button onClick={() => eliminarSesion(s.id)} style={{background:'none', border:'none', cursor:'pointer'}}>🗑️</button>
                       </div>
                     )}
                   </div>
@@ -137,21 +155,15 @@ function AgendaFija({ userData }) {
               </div>
             ))}
           </div>
-          
           {pacienteConsultaId && dias.map(dia => {
             const turnosDelDia = sesiones.filter(s => s.paciente_id == pacienteConsultaId && s.dia_semana === dia).sort((a,b) => a.hora.localeCompare(b.hora));
             if (turnosDelDia.length === 0) return null;
             return (
               <div key={dia} style={{ marginTop: '20px', borderTop: '1px solid #333', paddingTop: '10px' }}>
                 <h4 style={{ color: '#00f2ff' }}>{dia.toUpperCase()}</h4>
-                {turnosDelDia.map(s => {
-                  const prof = users.find(u => String(u.id) === String(s.profesional_id));
-                  return (
-                    <div key={s.id} style={{ padding: '4px 0' }}>
-                      {s.hora} - {s.paciente_nombre} <span style={{ color: '#888' }}>({prof?.nombre || 'Sin profesional'})</span>
-                    </div>
-                  )
-                })}
+                {turnosDelDia.map(s => (
+                  <div key={s.id}>{s.hora} - {users.find(u => u.id == s.profesional_id)?.nombre || 'Sin profesional'}</div>
+                ))}
               </div>
             )
           })}
