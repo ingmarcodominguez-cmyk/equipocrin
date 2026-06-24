@@ -7,7 +7,6 @@ function AgendaFija({ userData }) {
   const [users, setUsers] = useState([])
   
   const [vistaActiva, setVistaActiva] = useState('agenda') 
-  
   const [dia, setDia] = useState('Lunes')
   const [hora, setHora] = useState('09:00')
   const [horarioManual, setHorarioManual] = useState('')
@@ -47,7 +46,14 @@ function AgendaFija({ userData }) {
     setSesiones(sData || []); setPacientes(pData || []); setUsers(uData || []);
   }
 
+  const puedeEditar = (s) => esAdminOdireccion || String(s.profesional_id) === String(userData.id);
+
   async function guardarSesion() {
+    if (editId) {
+      const s = sesiones.find(s => s.id === editId);
+      if (!puedeEditar(s)) { alert("No tenés permiso para editar esta sesión."); return; }
+    }
+    
     const horaFinal = horarioManual.trim() !== '' ? horarioManual : hora;
     const p = pacientes.find(p => String(p.id) === String(pacienteSeleccionado));
     const payload = { paciente_id: pacienteSeleccionado, paciente_nombre: p?.nombre || 'Desconocido', profesional_id: prestadorSeleccionado, dia_semana: dia, hora: horaFinal, asistencia: 'Pendiente' };
@@ -59,6 +65,9 @@ function AgendaFija({ userData }) {
   }
 
   async function eliminarSesion(id) {
+    const s = sesiones.find(s => s.id === id);
+    if (!puedeEditar(s)) { alert("No tenés permiso para borrar esta sesión."); return; }
+    
     if (window.confirm("¿Estás seguro de eliminar esta sesión fija?")) {
       await supabase.from('sesiones_fijas').delete().eq('id', id);
       await cargarDatos();
@@ -66,24 +75,21 @@ function AgendaFija({ userData }) {
   }
 
   function iniciarEdicion(s) {
+    if (!puedeEditar(s)) { alert("Solo podés editar tus propias sesiones."); return; }
     setEditId(s.id); setDia(s.dia_semana); setHora(s.hora); setHorarioManual('');
     setPacienteSeleccionado(String(s.paciente_id)); setPrestadorSeleccionado(String(s.profesional_id));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  let sesionesVisibles = esAdminOdireccion 
-    ? (profesionalFiltroId ? sesiones.filter(s => s.profesional_id === profesionalFiltroId) : sesiones)
-    : sesiones.filter(s => s.profesional_id === userData.id);
-
+  const sesionesVisibles = profesionalFiltroId ? sesiones.filter(s => s.profesional_id === profesionalFiltroId) : sesiones;
   const horasDelDia = sesionesVisibles.filter(s => s.dia_semana === diaConsulta).sort((a,b) => a.hora.localeCompare(b.hora));
   const pacientesFiltrados = pacientes.filter(p => p.nombre.toLowerCase().includes(filtroPaciente.toLowerCase()));
 
   return (
     <div style={{ color: '#fff', padding: '20px', maxWidth: '1200px', margin: 'auto' }}>
-      
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-        <button onClick={() => setVistaActiva('agenda')} style={btnTabStyle(vistaActiva === 'agenda')}>📅 Agenda del Profesional</button>
-        <button onClick={() => setVistaActiva('auditoria')} style={btnTabStyle(vistaActiva === 'auditoria')}>🔎 Agenda del Paciente</button>
+        <button onClick={() => setVistaActiva('agenda')} style={btnTabStyle(vistaActiva === 'agenda')}>📅 Agenda</button>
+        <button onClick={() => setVistaActiva('auditoria')} style={btnTabStyle(vistaActiva === 'auditoria')}>🔎 Por Paciente</button>
       </div>
 
       {vistaActiva === 'agenda' ? (
@@ -104,12 +110,10 @@ function AgendaFija({ userData }) {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ color: '#00f2ff' }}>📅 Agenda</h2>
-              {esAdminOdireccion && (
-                <select style={inputStyle} onChange={(e) => setProfesionalFiltroId(e.target.value)}>
-                  <option value="">Todos los profesionales</option>
-                  {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                </select>
-              )}
+              <select style={inputStyle} onChange={(e) => setProfesionalFiltroId(e.target.value)}>
+                <option value="">Todos los profesionales</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+              </select>
             </div>
             <div style={{ display: 'flex', gap: '5px', marginBottom: '10px', flexWrap: 'wrap' }}>
               {dias.map(d => <button key={d} onClick={() => setDiaConsulta(d)} style={btnTabStyle(diaConsulta === d)}>{d.substring(0,3)}</button>)}
@@ -120,16 +124,13 @@ function AgendaFija({ userData }) {
                 return (
                   <div key={s.id} style={filaStyle}>
                     <span style={{ fontWeight: 'bold', width: '80px' }}>{s.hora}</span>
-                    <span style={{ flexGrow: 1 }}>
-                      {s.paciente_nombre}
-                      <span style={{ color: '#888', fontSize: '0.85rem', marginLeft: '8px' }}>
-                        ({profesional ? profesional.nombre : 'Sin profesional'})
-                      </span>
-                    </span>
-                    <div style={{display: 'flex', gap: '10px'}}>
-                      <button onClick={() => iniciarEdicion(s)} style={{background: 'none', border: 'none', cursor: 'pointer'}}>✏️</button>
-                      <button onClick={() => eliminarSesion(s.id)} style={{background: 'none', border: 'none', cursor: 'pointer'}}>🗑️</button>
-                    </div>
+                    <span style={{ flexGrow: 1 }}>{s.paciente_nombre} <span style={{ color: '#888', fontSize: '0.8rem' }}>({profesional?.nombre})</span></span>
+                    {puedeEditar(s) && (
+                      <div style={{display: 'flex', gap: '10px'}}>
+                        <button onClick={() => iniciarEdicion(s)} style={{background: 'none', border: 'none', cursor: 'pointer'}}>✏️</button>
+                        <button onClick={() => eliminarSesion(s.id)} style={{background: 'none', border: 'none', cursor: 'pointer'}}>🗑️</button>
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -138,68 +139,13 @@ function AgendaFija({ userData }) {
         </>
       ) : (
         <div style={cardStyle}>
-          <h3 style={{ color: '#00f2ff' }}>🔎 Agenda del Paciente</h3>
-          <input style={{...inputStyle, width: '100%', marginBottom: '10px'}} placeholder="Buscar nombre..." onChange={(e) => setFiltroPaciente(e.target.value)} />
-          <div style={{
-            maxHeight: '200px',
-            overflowY: 'auto',
-            border: '1px solid #444',
-            borderRadius: '8px',
-            background: '#000',
-            boxSizing: 'border-box'
-          }}>
-            {pacientesFiltrados.length === 0 ? (
-              <div style={{ padding: '10px', color: '#888', fontSize: '0.9rem', textAlign: 'center' }}>
-                No se encontraron pacientes
+          <input style={{...inputStyle, width: '100%'}} placeholder="Buscar paciente..." onChange={(e) => setFiltroPaciente(e.target.value)} />
+          <div style={{ maxHeight: '200px', overflowY: 'auto', marginTop: '10px' }}>
+            {pacientesFiltrados.map(p => (
+              <div key={p.id} onClick={() => setPacienteConsultaId(p.id)} style={{ padding: '10px', background: p.id === pacienteConsultaId ? '#00f2ff' : 'transparent', color: p.id === pacienteConsultaId ? '#000' : '#fff', cursor: 'pointer' }}>
+                {p.nombre}
               </div>
-            ) : (
-              pacientesFiltrados.map(p => {
-                const esSeleccionado = String(p.id) === String(pacienteConsultaId);
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => setPacienteConsultaId(p.id)}
-                    style={{
-                      padding: '10px 12px',
-                      cursor: 'pointer',
-                      background: esSeleccionado ? '#00f2ff' : 'transparent',
-                      color: esSeleccionado ? '#000' : '#fff',
-                      fontWeight: esSeleccionado ? 'bold' : 'normal',
-                      borderBottom: '1px solid #111',
-                      fontSize: '0.9rem',
-                      transition: 'background 0.2s, color 0.2s'
-                    }}
-                  >
-                    {p.nombre}
-                  </div>
-                );
-              })
-            )}
-          </div>
-          
-          <div style={{marginTop: '10px'}}>
-            {dias.map(diaSemana => {
-              // --- CAMBIO AQUÍ: Filtrado por nombre ---
-              const pSel = pacientes.find(p => String(p.id) === String(pacienteConsultaId));
-              const nombreP = pSel ? pSel.nombre : '';
-
-              const sesionesDelDia = sesiones
-                .filter(s => s.paciente_nombre === nombreP && s.dia_semana === diaSemana)
-                .sort((a, b) => a.hora.localeCompare(b.hora));
-
-              if (sesionesDelDia.length === 0) return null;
-
-              return (
-                <div key={diaSemana} style={{ marginBottom: '15px' }}>
-                  <h4 style={{ color: '#00f2ff', margin: '10px 0 5px 0', borderBottom: '1px solid #333' }}>{diaSemana}</h4>
-                  {sesionesDelDia.map(s => (
-                    <div key={s.id} style={{ padding: '8px', background: '#1a1a1a', borderRadius: '5px', marginTop: '5px', fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between' }}>
-                      <span><strong>{s.hora} hs</strong> | {users.find(u => u.id === s.profesional_id)?.nombre}</span>
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
+            ))}
           </div>
         </div>
       )}
@@ -208,17 +154,9 @@ function AgendaFija({ userData }) {
 }
 
 const cardStyle = { background: '#0a0a0a', border: '1px solid #333', borderRadius: '15px', padding: '20px' };
-const inputStyle = { background: '#000', border: '1px solid #444', color: '#fff', padding: '8px', borderRadius: '8px', boxSizing: 'border-box' };
+const inputStyle = { background: '#000', border: '1px solid #444', color: '#fff', padding: '8px', borderRadius: '8px' };
 const btnAccionStyle = { background: '#00f2ff', color: '#000', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', padding: '8px' };
 const filaStyle = { padding: '10px', borderBottom: '1px solid #222', display: 'flex', alignItems: 'center' };
-const btnTabStyle = (activo) => ({ 
-  padding: '10px 15px', 
-  borderRadius: '8px', 
-  border: 'none', 
-  background: activo ? '#00f2ff' : '#222', 
-  color: activo ? '#000' : '#fff', 
-  cursor: 'pointer', 
-  fontWeight: 'bold' 
-});
+const btnTabStyle = (activo) => ({ padding: '10px 15px', borderRadius: '8px', border: 'none', background: activo ? '#00f2ff' : '#222', color: activo ? '#000' : '#fff', cursor: 'pointer', fontWeight: 'bold' });
 
 export default AgendaFija;
