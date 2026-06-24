@@ -9,6 +9,7 @@ function AgendaMensualPro({ userData }) {
   const [turnoEditando, setTurnoEditando] = useState(null)
   
   const [filtroFecha, setFiltroFecha] = useState(null)
+  const [filtroFechaInput, setFiltroFechaInput] = useState('') // Estado para controlar visualmente el input
   const [filtroProfesional, setFiltroProfesional] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
   
@@ -100,6 +101,12 @@ function AgendaMensualPro({ userData }) {
     }
   }
 
+  // Función para resetear el filtro
+  const limpiarFiltroFecha = () => {
+    setFiltroFecha(null);
+    setFiltroFechaInput('');
+  };
+
   let turnosVisibles = esAdmin ? turnos : turnos.filter(t => String(t.profesional_id || '').trim() === String(userData?.id || '').trim());
   if (filtroProfesional) turnosVisibles = turnosVisibles.filter(t => String(t.profesional_id) === String(filtroProfesional));
   if (filtroEstado) turnosVisibles = turnosVisibles.filter(t => t.estado === filtroEstado);
@@ -111,12 +118,26 @@ function AgendaMensualPro({ userData }) {
   return (
     <div style={{ padding: '0', backgroundColor: '#ffffff', color: '#000000', fontSize: '14px', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', margin: '20px auto', width: '95%', maxWidth: '900px', flexWrap: 'wrap' }}>
-        <button onClick={() => {setFiltroFecha(null); setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1))}}>←</button>
+        <button onClick={() => {limpiarFiltroFecha(); setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1))}}>←</button>
         <h2 style={{ fontSize: '18px', margin: 0, alignSelf: 'center' }}>{mesActual.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase()}</h2>
-        <button onClick={() => {setFiltroFecha(null); setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1))}}>→</button>
+        <button onClick={() => {limpiarFiltroFecha(); setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1))}}>→</button>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', marginBottom: '20px', padding: '0 10px' }}>
+        
+        <button 
+          onClick={limpiarFiltroFecha} 
+          disabled={!filtroFecha}
+          style={{ 
+            width: '100%', maxWidth: '300px', padding: '10px', 
+            background: filtroFecha ? '#dc3545' : '#ccc', color: '#fff', 
+            border: 'none', borderRadius: '8px', cursor: filtroFecha ? 'pointer' : 'default', 
+            fontWeight: 'bold', fontSize: '14px' 
+          }}
+        >
+          {filtroFecha ? '✖ QUITAR FILTRO DE FECHA' : 'SIN FILTRO DE FECHA'}
+        </button>
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: '100%', maxWidth: '300px' }}>
           <select value={filtroProfesional} onChange={e => setFiltroProfesional(e.target.value)} style={{padding: '10px', fontSize: '16px'}}>
             <option value="">Todos los Profesionales</option>
@@ -127,27 +148,24 @@ function AgendaMensualPro({ userData }) {
             <label style={{ fontSize: '10px', color: '#666', fontWeight: 'bold', textAlign: 'center' }}>FECHA</label>
             <input 
               type="date" 
+              value={filtroFechaInput}
               onChange={e => { 
                 if(e.target.value) {
+                  setFiltroFechaInput(e.target.value);
                   const f = new Date(e.target.value);
                   setFiltroFecha(f.getUTCDate());
                   setMesActual(new Date(f.getFullYear(), f.getMonth(), 1));
                 } else {
-                  setFiltroFecha(null);
+                  limpiarFiltroFecha();
                 }
               }} 
               style={{padding: '10px', fontSize: '16px'}} 
             />
           </div>
         </div>
-        
-        {filtroFecha && (
-          <button onClick={() => setFiltroFecha(null)} style={{ width: '100%', maxWidth: '300px', padding: '12px', fontSize: '14px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-            QUITAR FILTRO DE FECHA
-          </button>
-        )}
       </div>
 
+      {/* Calendario */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', backgroundColor: '#ffffff', borderTop: '1px solid #ddd', flex: 1, width: '100%' }}>
         {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => (
           <div key={d} style={{ textAlign: 'center', background: '#f8f9fa', padding: '10px', fontWeight: 'bold', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }}>{d}</div>
@@ -185,6 +203,7 @@ function AgendaMensualPro({ userData }) {
         })}
       </div>
 
+      {/* Modal */}
       {diaSeleccionado && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ background: '#ffffff', padding: '20px', width: '320px', borderRadius: '15px' }}>
