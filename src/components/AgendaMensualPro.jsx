@@ -116,15 +116,15 @@ function AgendaMensualPro({ userData }) {
         <button onClick={() => {setFiltroFecha(null); setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1))}}>→</button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
-          <select value={filtroProfesional} onChange={e => setFiltroProfesional(e.target.value)} style={{padding: '5px'}}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', marginBottom: '20px', padding: '0 10px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: '100%', maxWidth: '300px' }}>
+          <select value={filtroProfesional} onChange={e => setFiltroProfesional(e.target.value)} style={{padding: '10px', fontSize: '16px'}}>
             <option value="">Todos los Profesionales</option>
             {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
           </select>
           
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <label style={{ fontSize: '10px', color: '#666', marginBottom: '2px', fontWeight: 'bold' }}>FECHA</label>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <label style={{ fontSize: '10px', color: '#666', fontWeight: 'bold', textAlign: 'center' }}>FECHA</label>
             <input 
               type="date" 
               onChange={e => { 
@@ -136,14 +136,14 @@ function AgendaMensualPro({ userData }) {
                   setFiltroFecha(null);
                 }
               }} 
-              style={{padding: '5px'}} 
+              style={{padding: '10px', fontSize: '16px'}} 
             />
           </div>
         </div>
         
         {filtroFecha && (
-          <button onClick={() => setFiltroFecha(null)} style={{ padding: '5px 10px', fontSize: '12px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-            LIMPIAR FECHA
+          <button onClick={() => setFiltroFecha(null)} style={{ width: '100%', maxWidth: '300px', padding: '12px', fontSize: '14px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+            QUITAR FILTRO DE FECHA
           </button>
         )}
       </div>
