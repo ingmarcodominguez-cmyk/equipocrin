@@ -68,12 +68,16 @@ function AgendaFija({ userData }) {
         await supabase.from('sesiones_fijas').update(payload).eq('id', editId);
         setSesiones(prev => prev.map(s => s.id === editId ? { ...s, ...payload } : s));
         setEditId(null);
+        alert('✅ Sesión actualizada con éxito');
       } else {
         const { data } = await supabase.from('sesiones_fijas').insert([payload]).select();
-        if (data) setSesiones(prev => [...prev, ...data]);
+        if (data) {
+          setSesiones(prev => [...prev, ...data]);
+          alert('✅ Sesión cargada con éxito');
+        }
       }
       setHorarioManual('');
-    } catch (e) { alert("Error al guardar"); }
+    } catch (e) { alert("Error al guardar: " + e.message); }
     setGuardando(false);
   }
 
@@ -81,6 +85,7 @@ function AgendaFija({ userData }) {
     if (window.confirm("¿Seguro de eliminar?")) {
       await supabase.from('sesiones_fijas').delete().eq('id', id);
       setSesiones(prev => prev.filter(s => s.id !== id));
+      alert('🗑️ Sesión eliminada');
     }
   }
 
@@ -112,6 +117,7 @@ function AgendaFija({ userData }) {
               <select style={inputStyle} value={pacienteSeleccionado} onChange={(e) => setPacienteSeleccionado(e.target.value)}><option value="">Paciente...</option>{pacientes.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select>
               <select style={inputStyle} value={prestadorSeleccionado} onChange={(e) => setPrestadorSeleccionado(e.target.value)}><option value="">Profesional...</option>{users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
               <button disabled={guardando} onClick={guardarSesion} style={btnAccionStyle}>{guardando ? '...' : (editId ? 'ACTUALIZAR' : 'GUARDAR')}</button>
+              {editId && <button onClick={() => setEditId(null)} style={{...btnAccionStyle, background:'#444'}}>CANCELAR</button>}
             </div>
           </div>
 
