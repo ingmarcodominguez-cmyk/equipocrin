@@ -8,9 +8,7 @@ function AgendaMensualPro({ userData }) {
   const [diaSeleccionado, setDiaSeleccionado] = useState(null)
   const [turnoEditando, setTurnoEditando] = useState(null)
   
-  // NUEVO ESTADO: Para controlar si hay un filtro de fecha activo
   const [filtroFecha, setFiltroFecha] = useState(null)
-  
   const [filtroProfesional, setFiltroProfesional] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
   
@@ -118,25 +116,36 @@ function AgendaMensualPro({ userData }) {
         <button onClick={() => {setFiltroFecha(null); setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1))}}>→</button>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <select value={filtroProfesional} onChange={e => setFiltroProfesional(e.target.value)} style={{padding: '5px'}}>
-          <option value="">Todos los Profesionales</option>
-          {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-        </select>
-        <input 
-          type="date" 
-          onChange={e => { 
-            if(e.target.value) {
-              const f = new Date(e.target.value);
-              setFiltroFecha(f.getUTCDate());
-              setMesActual(new Date(f.getFullYear(), f.getMonth(), 1));
-            } else {
-              setFiltroFecha(null);
-            }
-          }} 
-          style={{padding: '5px'}} 
-        />
-        {filtroFecha && <button onClick={() => setFiltroFecha(null)}>Limpiar Fecha</button>}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <select value={filtroProfesional} onChange={e => setFiltroProfesional(e.target.value)} style={{padding: '5px'}}>
+            <option value="">Todos los Profesionales</option>
+            {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+          </select>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <label style={{ fontSize: '10px', color: '#666', marginBottom: '2px', fontWeight: 'bold' }}>FECHA</label>
+            <input 
+              type="date" 
+              onChange={e => { 
+                if(e.target.value) {
+                  const f = new Date(e.target.value);
+                  setFiltroFecha(f.getUTCDate());
+                  setMesActual(new Date(f.getFullYear(), f.getMonth(), 1));
+                } else {
+                  setFiltroFecha(null);
+                }
+              }} 
+              style={{padding: '5px'}} 
+            />
+          </div>
+        </div>
+        
+        {filtroFecha && (
+          <button onClick={() => setFiltroFecha(null)} style={{ padding: '5px 10px', fontSize: '12px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+            LIMPIAR FECHA
+          </button>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', backgroundColor: '#ffffff', borderTop: '1px solid #ddd', flex: 1, width: '100%' }}>
@@ -146,7 +155,6 @@ function AgendaMensualPro({ userData }) {
         {[...Array(offset)].map((_, i) => <div key={`off-${i}`} style={{ background: '#fcfcfc', minHeight: '100px', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }} />)}
         {[...Array(diasEnMes)].map((_, i) => {
           const dN = i + 1;
-          // LÓGICA: Si hay filtroFecha activo y no es el día, el contenedor queda vacío
           if (filtroFecha && dN !== filtroFecha) {
              return <div key={i} style={{ background: '#f9f9f9', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }} />;
           }
@@ -176,8 +184,7 @@ function AgendaMensualPro({ userData }) {
           )
         })}
       </div>
-      
-      {/* (Modal de edición igual al original...) */}
+
       {diaSeleccionado && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ background: '#ffffff', padding: '20px', width: '320px', borderRadius: '15px' }}>
