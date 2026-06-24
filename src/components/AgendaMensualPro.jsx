@@ -8,8 +8,10 @@ function AgendaMensualPro({ userData }) {
   const [diaSeleccionado, setDiaSeleccionado] = useState(null)
   const [turnoEditando, setTurnoEditando] = useState(null)
   
+  // NUEVO ESTADO: Para controlar si hay un filtro de fecha activo
+  const [filtroFecha, setFiltroFecha] = useState(null)
+  
   const [filtroProfesional, setFiltroProfesional] = useState('')
-  const [filtroPaciente, setFiltroPaciente] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
   
   const [form, setForm] = useState({ 
@@ -62,18 +64,11 @@ function AgendaMensualPro({ userData }) {
     const horaSeleccionada = form.horario_especial || form.hora;
     const fechaSeleccionada = `${mesActual.getFullYear()}-${String(mesActual.getMonth() + 1).padStart(2, '0')}-${String(diaSeleccionado).padStart(2, '0')}`;
     
-    // --- LÓGICA DE VALIDACIÓN CORREGIDA ---
     const existeConflicto = turnos.some(t => {
-      // 1. Identificamos si estamos editando
       const esElMismoTurno = turnoEditando ? String(t.id) === String(turnoEditando.id) : false;
-      
-      // 2. SI ES EL MISMO TURNO, IGNORAMOS EL CONFLICTO (permite guardar cambios de estado)
       if (esElMismoTurno) return false;
-
-      // 3. Si no es el mismo, buscamos conflictos reales con OTROS turnos
       const tFecha = new Date(t.fecha_inicio).toISOString().split('T')[0];
       const tHora = t.observaciones?.split(']')[0]?.replace('[', '');
-      
       return String(t.profesional_id) === String(form.profesional_id) && 
              tFecha === fechaSeleccionada && 
              tHora === horaSeleccionada;
@@ -83,7 +78,6 @@ function AgendaMensualPro({ userData }) {
       alert("¡Cuidado! El profesional ya tiene OTRO turno asignado en ese horario.");
       return; 
     }
-    // ----------------------------------------
 
     const fechaISO = `${fechaSeleccionada}T${horaSeleccionada}:00`;
     const profesionalObj = users.find(u => String(u.id) === String(form.profesional_id));
@@ -108,10 +102,8 @@ function AgendaMensualPro({ userData }) {
     }
   }
 
-  // --- Renderizado y filtros ---
   let turnosVisibles = esAdmin ? turnos : turnos.filter(t => String(t.profesional_id || '').trim() === String(userData?.id || '').trim());
   if (filtroProfesional) turnosVisibles = turnosVisibles.filter(t => String(t.profesional_id) === String(filtroProfesional));
-  if (filtroPaciente) turnosVisibles = turnosVisibles.filter(t => t.paciente_nombre.toLowerCase().includes(filtroPaciente.toLowerCase()));
   if (filtroEstado) turnosVisibles = turnosVisibles.filter(t => t.estado === filtroEstado);
 
   const prestaciones = ['Turno primera vez', 'Evaluacion', 'Reunion', 'Entrenamiento', 'Devolucion','Visita A Instituciones'];
@@ -121,9 +113,30 @@ function AgendaMensualPro({ userData }) {
   return (
     <div style={{ padding: '0', backgroundColor: '#ffffff', color: '#000000', fontSize: '14px', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', margin: '20px auto', width: '95%', maxWidth: '900px', flexWrap: 'wrap' }}>
-        <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1))}>←</button>
+        <button onClick={() => {setFiltroFecha(null); setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1))}}>←</button>
         <h2 style={{ fontSize: '18px', margin: 0, alignSelf: 'center' }}>{mesActual.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase()}</h2>
-        <button onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1))}>→</button>
+        <button onClick={() => {setFiltroFecha(null); setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1))}}>→</button>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <select value={filtroProfesional} onChange={e => setFiltroProfesional(e.target.value)} style={{padding: '5px'}}>
+          <option value="">Todos los Profesionales</option>
+          {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+        </select>
+        <input 
+          type="date" 
+          onChange={e => { 
+            if(e.target.value) {
+              const f = new Date(e.target.value);
+              setFiltroFecha(f.getUTCDate());
+              setMesActual(new Date(f.getFullYear(), f.getMonth(), 1));
+            } else {
+              setFiltroFecha(null);
+            }
+          }} 
+          style={{padding: '5px'}} 
+        />
+        {filtroFecha && <button onClick={() => setFiltroFecha(null)}>Limpiar Fecha</button>}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', backgroundColor: '#ffffff', borderTop: '1px solid #ddd', flex: 1, width: '100%' }}>
@@ -133,6 +146,11 @@ function AgendaMensualPro({ userData }) {
         {[...Array(offset)].map((_, i) => <div key={`off-${i}`} style={{ background: '#fcfcfc', minHeight: '100px', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }} />)}
         {[...Array(diasEnMes)].map((_, i) => {
           const dN = i + 1;
+          // LÓGICA: Si hay filtroFecha activo y no es el día, el contenedor queda vacío
+          if (filtroFecha && dN !== filtroFecha) {
+             return <div key={i} style={{ background: '#f9f9f9', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }} />;
+          }
+
           const tD = (turnosVisibles || []).filter(t => {
             const f = new Date(t.fecha_inicio);
             return f.getUTCDate() === dN && f.getUTCMonth() === mesActual.getMonth() && f.getUTCFullYear() === mesActual.getFullYear();
@@ -158,7 +176,8 @@ function AgendaMensualPro({ userData }) {
           )
         })}
       </div>
-
+      
+      {/* (Modal de edición igual al original...) */}
       {diaSeleccionado && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ background: '#ffffff', padding: '20px', width: '320px', borderRadius: '15px' }}>

@@ -36,7 +36,7 @@ function Layout({ userData, logout }) {
       setTimeout(() => {
         setMostrandoMessi(false);
         setVista('hub');
-      }, 5000);
+      }, 2000);
     };
   };
 
