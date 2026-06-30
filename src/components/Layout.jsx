@@ -9,6 +9,13 @@ import MovimientosPrestadores from './MovimientosPrestadores.jsx'
 import logo from '../assets/photo.jpg'
 
 function Layout({ userData, logout }) {
+  // --- INTERRUPTOR DE BLOQUEO ---
+  const MANTENIMIENTO = true; 
+  if (MANTENIMIENTO) {
+    return <div style={{ backgroundColor: '#000', height: '100vh', width: '100%' }}></div>;
+  }
+  // -------------------------------
+
   const [vista, setVista] = useState('bienvenida')
   const [mostrandoMessi, setMostrandoMessi] = useState(false)
   const audioRef = useRef(new Audio('/notificacion.mp3'))
@@ -71,14 +78,14 @@ function Layout({ userData, logout }) {
             <button onClick={() => setVista('profesionales')} style={btnHubStyle}>⚙️ AGENDA FIJA</button>
             
             {esAdminOrDir && (
-              <>
-                <button onClick={() => setVista('pacientes')} style={btnHubStyle}>👤 GESTIÓN PACIENTES</button>
-                <button onClick={() => setVista('movimientos')} style={{...btnHubStyle, borderColor: '#75AADB'}}>📊 MOV. PRESTADORES</button>
-              </>
+              <button onClick={() => setVista('pacientes')} style={btnHubStyle}>👤 GESTIÓN PACIENTES</button>
             )}
 
             {esDireccion && (
-              <button onClick={() => setVista('estados')} style={{...btnHubStyle, borderColor: '#00f2ff'}}>💰 ESTADOS DE CUENTA</button>
+              <>
+                <button onClick={() => setVista('movimientos')} style={{...btnHubStyle, borderColor: '#75AADB'}}>📊 MOV. PRESTADORES</button>
+                <button onClick={() => setVista('estados')} style={{...btnHubStyle, borderColor: '#00f2ff'}}>💰 ESTADOS DE CUENTA</button>
+              </>
             )}
           </div>
           <button onClick={logout} style={btnCerrarStyle}>Cerrar Sesión</button>
