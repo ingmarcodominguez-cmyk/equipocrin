@@ -4,7 +4,8 @@ import AgendaMensualPro from './AgendaMensualPro.jsx'
 import AgendaFija from './AgendaFija.jsx'
 import Tasks from './Tasks.jsx'
 import GestionPacientes from './GestionPacientes.jsx'
-import EstadosCuenta from './EstadosCuenta.jsx' // Importamos el nuevo componente
+import EstadosCuenta from './EstadosCuenta.jsx'
+import MovimientosPrestadores from './MovimientosPrestadores.jsx'
 import logo from '../assets/photo.jpg'
 
 function Layout({ userData, logout }) {
@@ -16,7 +17,7 @@ function Layout({ userData, logout }) {
   const rol = userData?.rol?.toUpperCase() || ""
   const tieneAccesoTotal = ['ADMINISTRACION', 'DIRECCION', 'PROFESIONAL_PLUS'].includes(rol)
   const esAdminOrDir = ['ADMINISTRACION', 'DIRECCION'].includes(rol)
-  const esDireccion = rol === 'DIRECCION' // Condición específica para Dirección
+  const esDireccion = rol === 'DIRECCION'
 
   const entrarAlMenuConFestejo = () => {
     const img = new Image();
@@ -70,7 +71,10 @@ function Layout({ userData, logout }) {
             <button onClick={() => setVista('profesionales')} style={btnHubStyle}>⚙️ AGENDA FIJA</button>
             
             {esAdminOrDir && (
-              <button onClick={() => setVista('pacientes')} style={btnHubStyle}>👤 GESTIÓN PACIENTES</button>
+              <>
+                <button onClick={() => setVista('pacientes')} style={btnHubStyle}>👤 GESTIÓN PACIENTES</button>
+                <button onClick={() => setVista('movimientos')} style={{...btnHubStyle, borderColor: '#75AADB'}}>📊 MOV. PRESTADORES</button>
+              </>
             )}
 
             {esDireccion && (
@@ -81,7 +85,7 @@ function Layout({ userData, logout }) {
         </div>
       )}
 
-      {['agenda', 'tareas', 'profesionales', 'pacientes', 'estados'].includes(vista) && (
+      {['agenda', 'tareas', 'profesionales', 'pacientes', 'estados', 'movimientos'].includes(vista) && (
         <div style={{ maxWidth: '1200px', margin: 'auto' }}>
           <button onClick={() => setVista('hub')} style={btnVolverStyle}>← VOLVER</button>
           <div style={{ backgroundColor: '#111', padding: 20, borderRadius: 15, marginTop: 10 }}>
@@ -90,6 +94,7 @@ function Layout({ userData, logout }) {
             {vista === 'profesionales' && <AgendaFija userData={userData} />}
             {vista === 'pacientes' && <GestionPacientes />}
             {vista === 'estados' && <EstadosCuenta />}
+            {vista === 'movimientos' && <MovimientosPrestadores />}
           </div>
         </div>
       )}
