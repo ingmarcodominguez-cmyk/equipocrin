@@ -10,7 +10,7 @@ import logo from '../assets/photo.jpg'
 
 function Layout({ userData, logout }) {
   // --- INTERRUPTOR DE BLOQUEO ---
-  const MANTENIMIENTO = true; 
+  const MANTENIMIENTO = false; 
   if (MANTENIMIENTO) {
     return <div style={{ backgroundColor: '#000', height: '100vh', width: '100%' }}></div>;
   }
