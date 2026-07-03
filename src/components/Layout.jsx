@@ -1,11 +1,11 @@
 import { useState, useRef } from 'react'
-import confetti from 'canvas-confetti'
 import AgendaMensualPro from './AgendaMensualPro.jsx'
 import AgendaFija from './AgendaFija.jsx'
 import Tasks from './Tasks.jsx'
 import GestionPacientes from './GestionPacientes.jsx'
 import EstadosCuenta from './EstadosCuenta.jsx'
 import MovimientosPrestadores from './MovimientosPrestadores.jsx'
+import Documentos from './Documentos.jsx' // Asegúrate de tener este archivo creado
 import logo from '../assets/photo.jpg'
 
 function Layout({ userData, logout }) {
@@ -16,8 +16,7 @@ function Layout({ userData, logout }) {
   }
   // -------------------------------
 
-  const [vista, setVista] = useState('bienvenida')
-  const [mostrandoMessi, setMostrandoMessi] = useState(false)
+  const [vista, setVista] = useState('hub') // Arrancamos directo en el hub
   const audioRef = useRef(new Audio('/notificacion.mp3'))
   const playNotification = () => audioRef.current.play().catch(e => {})
   
@@ -26,50 +25,16 @@ function Layout({ userData, logout }) {
   const esAdminOrDir = ['ADMINISTRACION', 'DIRECCION'].includes(rol)
   const esDireccion = rol === 'DIRECCION'
 
-  const entrarAlMenuConFestejo = () => {
-    const img = new Image();
-    img.src = '/messi-festejo.png';
-
-    img.onload = () => {
-      confetti({ 
-        particleCount: 200, 
-        spread: 100, 
-        origin: { y: 0.6 }, 
-        colors: ['#75AADB', '#FFFFFF'] 
-      });
-      
-      setMostrandoMessi(true);
-      
-      setTimeout(() => {
-        setMostrandoMessi(false);
-        setVista('hub');
-      }, 2000);
-    };
-  };
-
-  if (mostrandoMessi) {
-    return (
-      <div style={{ backgroundColor: 'black', height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-        <img src="/messi-festejo.png" alt="Messi" style={{ width: '90%', maxWidth: '500px' }} />
-      </div>
-    )
-  }
-
   return (
     <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif' }}>
       
-      {vista === 'bienvenida' && (
-        <div style={{ textAlign: 'center', marginTop: '15vh' }}>
-          <img src={logo} alt="Logo" style={{ width: 220, borderRadius: '20px', marginBottom: 30 }} />
-          <h1>Bienvenido</h1>
-          <h2 style={{ color: '#00f2ff', textTransform: 'uppercase' }}>{userData?.nombre || 'Usuario'}</h2>
-          <button onClick={entrarAlMenuConFestejo} style={btnHubStyle}>ENTRAR AL MENÚ</button>
-        </div>
-      )}
-
       {vista === 'hub' && (
         <div style={{ maxWidth: '600px', margin: 'auto', paddingTop: '5vh' }}>
-          <h2 style={{ textAlign: 'center' }}>Menú Principal</h2>
+          <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+             <img src={logo} alt="Logo" style={{ width: 120, borderRadius: '20px' }} />
+             <h2>Hola, {userData?.nombre || 'Usuario'}</h2>
+          </div>
+          
           <div style={{ display: 'grid', gap: '20px' }}>
             {tieneAccesoTotal && (
               <button onClick={() => setVista('agenda')} style={btnHubStyle}>📅 AGENDA MENSUAL</button>
@@ -78,7 +43,10 @@ function Layout({ userData, logout }) {
             <button onClick={() => setVista('profesionales')} style={btnHubStyle}>⚙️ AGENDA FIJA</button>
             
             {esAdminOrDir && (
-              <button onClick={() => setVista('pacientes')} style={btnHubStyle}>👤 GESTIÓN PACIENTES</button>
+              <>
+                <button onClick={() => setVista('pacientes')} style={btnHubStyle}>👤 GESTIÓN PACIENTES</button>
+                <button onClick={() => setVista('documentos')} style={{...btnHubStyle, borderColor: '#fff'}}>📁 DOCUMENTOS</button>
+              </>
             )}
 
             {esDireccion && (
@@ -92,9 +60,9 @@ function Layout({ userData, logout }) {
         </div>
       )}
 
-      {['agenda', 'tareas', 'profesionales', 'pacientes', 'estados', 'movimientos'].includes(vista) && (
+      {['agenda', 'tareas', 'profesionales', 'pacientes', 'estados', 'movimientos', 'documentos'].includes(vista) && (
         <div style={{ maxWidth: '1200px', margin: 'auto' }}>
-          <button onClick={() => setVista('hub')} style={btnVolverStyle}>← VOLVER</button>
+          <button onClick={() => setVista('hub')} style={btnVolverStyle}>← VOLVER AL MENÚ</button>
           <div style={{ backgroundColor: '#111', padding: 20, borderRadius: 15, marginTop: 10 }}>
             {vista === 'agenda' && <AgendaMensualPro userData={userData} />}
             {vista === 'tareas' && <Tasks userData={userData} playNotification={playNotification} />}
@@ -102,6 +70,7 @@ function Layout({ userData, logout }) {
             {vista === 'pacientes' && <GestionPacientes />}
             {vista === 'estados' && <EstadosCuenta />}
             {vista === 'movimientos' && <MovimientosPrestadores />}
+            {vista === 'documentos' && <Documentos />}
           </div>
         </div>
       )}
