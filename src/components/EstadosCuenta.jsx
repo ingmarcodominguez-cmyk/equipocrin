@@ -35,9 +35,10 @@ function EstadosCuenta() {
       return;
     }
 
+    // Identificamos el concepto base: el que no sea "Recargo"
     const conceptosPorDeuda = {};
     movimientos.forEach(mov => {
-      if (mov.id_deuda && mov.id_deuda !== 0 && mov.debe > 0) {
+      if (mov.id_deuda && mov.id_deuda !== 0 && mov.debe > 0 && !mov.concepto.toLowerCase().includes("recargo")) {
         conceptosPorDeuda[mov.id_deuda] = mov.concepto;
       }
     });
@@ -48,8 +49,10 @@ function EstadosCuenta() {
       if (!mov.id_deuda || mov.id_deuda === 0) continue;
 
       const clave = mov.id_deuda;
+      // Usamos el concepto base detectado o el del movimiento si es único
       let nombreParaMostrar = conceptosPorDeuda[clave] || mov.concepto;
 
+      // Sub-rutina de traducción para "Acuerdo único"
       if (nombreParaMostrar === "Acuerdo único" && mov.id_acuerdo) {
         const { data: acuerdoData } = await supabase
           .from('acuerdos')
@@ -86,7 +89,6 @@ function EstadosCuenta() {
     <div style={{ padding: '20px', color: 'white', fontFamily: 'Arial' }}>
       <h1>Cuenta Corriente</h1>
       
-      {/* Tabla Principal con todas las columnas */}
       <table border="1" style={{ width: '100%', borderCollapse: 'collapse', borderColor: '#555', marginTop: '20px' }}>
         <thead style={{ backgroundColor: '#444' }}>
           <tr>
@@ -117,7 +119,6 @@ function EstadosCuenta() {
         </tbody>
       </table>
 
-      {/* Modal de Detalle */}
       {pacienteSeleccionado && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: '#222', padding: '25px', borderRadius: '8px', width: '600px', color: 'white' }}>
