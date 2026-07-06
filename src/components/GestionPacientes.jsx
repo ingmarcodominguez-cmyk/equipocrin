@@ -36,7 +36,7 @@ function GestionPacientes() {
   const pacientesFiltrados = busqueda.trim() === '' 
     ? [] 
     : pacientes.filter(p => 
-        p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
+        (p.nombre && p.nombre.toLowerCase().includes(busqueda.toLowerCase())) || 
         (p.dni && p.dni.includes(busqueda))
       );
 
@@ -92,7 +92,6 @@ function GestionPacientes() {
         </div>
       )}
 
-      {/* TÍTULO DINÁMICO */}
       <h2 style={{ color: '#00f2ff' }}>{editId ? '✏️ Editando Paciente' : '➕ Cargar nuevo paciente'}</h2>
       
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px', background: '#1a1a1a', padding: '20px', borderRadius: '10px' }}>
@@ -126,31 +125,31 @@ function GestionPacientes() {
       />
 
       {busqueda.trim() !== '' && (
-        <div style={{ overflowX: 'auto', background: '#111', padding: '10px', borderRadius: '10px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div style={{ width: '100%', marginTop: '20px', background: '#111', padding: '10px', borderRadius: '10px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '0.9rem' }}>
             <thead>
               <tr style={{ background: '#222', textAlign: 'left' }}>
-                <th style={{ padding: '12px' }}>Acción</th>
-                <th style={{ padding: '12px' }}>Nombre</th>
-                <th style={{ padding: '12px' }}>Edad</th>
-                <th style={{ padding: '12px' }}>Fecha Nac.</th>
-                <th style={{ padding: '12px' }}>DNI</th>
-                <th style={{ padding: '12px' }}>Teléfono</th>
-                <th style={{ padding: '12px' }}>Obra Social</th>
-                <th style={{ padding: '12px' }}>Diagnóstico</th>
+                <th style={{ width: '80px', padding: '10px' }}>Acción</th>
+                <th style={{ padding: '10px' }}>Nombre</th>
+                <th style={{ width: '50px', padding: '10px' }}>Edad</th>
+                <th style={{ padding: '100px', padding: '10px' }}>Fecha Nac.</th>
+                <th style={{ padding: '10px' }}>DNI</th>
+                <th style={{ padding: '10px' }}>Teléfono</th>
+                <th style={{ padding: '10px' }}>Obra Social</th>
+                <th style={{ padding: '10px' }}>Diagnóstico</th>
               </tr>
             </thead>
             <tbody>
               {pacientesFiltrados.map(p => (
                 <tr key={p.id} style={{ borderBottom: '1px solid #333' }}>
-                  <td style={{ padding: '12px' }}><button onClick={() => iniciarEdicion(p)} style={{ background: 'none', border: 'none', color: '#00f2ff', cursor: 'pointer' }}>✏️ Editar</button></td>
-                  <td style={{ padding: '12px' }}>{p.nombre}</td>
-                  <td style={{ padding: '12px' }}>{p.edad}</td>
-                  <td style={{ padding: '12px' }}>{p.fecha_nacimiento}</td>
-                  <td style={{ padding: '12px' }}>{p.dni}</td>
-                  <td style={{ padding: '12px' }}>{p.telefono}</td>
-                  <td style={{ padding: '12px' }}>{p.obra_social}</td>
-                  <td style={{ padding: '12px' }}>{p.diagnostico}</td>
+                  <td style={{ padding: '10px' }}><button onClick={() => iniciarEdicion(p)} style={{ background: 'none', border: 'none', color: '#00f2ff', cursor: 'pointer' }}>✏️ Editar</button></td>
+                  <td style={{ padding: '10px', wordBreak: 'break-word' }}>{p.nombre}</td>
+                  <td style={{ padding: '10px' }}>{p.edad}</td>
+                  <td style={{ padding: '10px' }}>{p.fecha_nacimiento}</td>
+                  <td style={{ padding: '10px' }}>{p.dni}</td>
+                  <td style={{ padding: '10px' }}>{p.telefono}</td>
+                  <td style={{ padding: '10px' }}>{p.obra_social}</td>
+                  <td style={{ padding: '10px', wordBreak: 'break-word' }}>{p.diagnostico}</td>
                 </tr>
               ))}
             </tbody>
