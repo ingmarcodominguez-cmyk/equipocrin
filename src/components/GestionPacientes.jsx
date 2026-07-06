@@ -5,8 +5,8 @@ function GestionPacientes() {
   const [aviso, setAviso] = useState(false);
   const [pacientes, setPacientes] = useState([])
   const [editId, setEditId] = useState(null)
+  const [busqueda, setBusqueda] = useState(''); 
   
-  // Estados para los campos de fecha separados
   const [dia, setDia] = useState('');
   const [mes, setMes] = useState('');
   const [anio, setAnio] = useState('');
@@ -33,6 +33,13 @@ function GestionPacientes() {
     if (data) setPacientes(data);
   }
 
+  const pacientesFiltrados = busqueda.trim() === '' 
+    ? [] 
+    : pacientes.filter(p => 
+        p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
+        (p.dni && p.dni.includes(busqueda))
+      );
+
   const calcularEdad = (fecha) => {
     if (!fecha) return 0;
     const hoy = new Date();
@@ -49,7 +56,6 @@ function GestionPacientes() {
       nombre: p.nombre, dni: p.dni, domicilio: p.domicilio, 
       escuela: p.escuela, telefono: p.telefono, obra_social: p.obra_social, diagnostico: p.diagnostico
     });
-    // Desglosar fecha YYYY-MM-DD
     if (p.fecha_nacimiento) {
       const [y, m, d] = p.fecha_nacimiento.split('-');
       setAnio(y); setMes(m); setDia(d);
@@ -86,13 +92,13 @@ function GestionPacientes() {
         </div>
       )}
 
-      <h2 style={{ color: '#00f2ff' }}>{editId ? '✏️ Editando Paciente' : 'Gestión de Pacientes'}</h2>
+      {/* TÍTULO DINÁMICO */}
+      <h2 style={{ color: '#00f2ff' }}>{editId ? '✏️ Editando Paciente' : '➕ Cargar nuevo paciente'}</h2>
       
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px', background: '#1a1a1a', padding: '20px', borderRadius: '10px' }}>
         <input placeholder="Nombre Completo" value={form.nombre} onChange={e => setForm({...form, nombre: e.target.value})} style={inputStyle} />
         <input placeholder="DNI" value={form.dni} onChange={e => setForm({...form, dni: e.target.value})} style={inputStyle} />
         
-        {/* NUEVOS CAMPOS DE FECHA */}
         <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
           <input type="number" placeholder="Día" value={dia} onChange={e => setDia(e.target.value)} style={{...inputStyle, width: '30%'}} />
           <input type="number" placeholder="Mes" value={mes} onChange={e => setMes(e.target.value)} style={{...inputStyle, width: '30%'}} />
@@ -111,33 +117,46 @@ function GestionPacientes() {
         {editId && <button onClick={() => { setEditId(null); setForm({nombre: '', dni: '', domicilio: '', escuela: '', telefono: '', obra_social: '', diagnostico: ''}); setDia(''); setMes(''); setAnio(''); }} style={{...btnStyle, borderColor: '#666', color: '#ccc'}}>CANCELAR</button>}
       </div>
 
-      <h3 style={{ marginTop: '30px', color: '#00f2ff' }}>Listado de Pacientes</h3>
-      <div style={{ overflowX: 'auto', background: '#111', padding: '10px', borderRadius: '10px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: '#222', textAlign: 'left' }}>
-              <th style={{ padding: '12px' }}>Acción</th>
-              <th style={{ padding: '12px' }}>Nombre</th>
-              <th style={{ padding: '12px' }}>Edad</th>
-              <th style={{ padding: '12px' }}>DNI</th>
-              <th style={{ padding: '12px' }}>Teléfono</th>
-              <th style={{ padding: '12px' }}>Obra Social</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pacientes.map(p => (
-              <tr key={p.id} style={{ borderBottom: '1px solid #333' }}>
-                <td style={{ padding: '12px' }}><button onClick={() => iniciarEdicion(p)} style={{ background: 'none', border: 'none', color: '#00f2ff', cursor: 'pointer' }}>✏️ Editar</button></td>
-                <td style={{ padding: '12px' }}>{p.nombre}</td>
-                <td style={{ padding: '12px' }}>{p.edad}</td>
-                <td style={{ padding: '12px' }}>{p.dni}</td>
-                <td style={{ padding: '12px' }}>{p.telefono}</td>
-                <td style={{ padding: '12px' }}>{p.obra_social}</td>
+      <h3 style={{ marginTop: '30px', color: '#00f2ff' }}>Buscador de Pacientes</h3>
+      <input 
+        placeholder="🔍 Escriba un nombre o DNI para empezar a buscar..." 
+        value={busqueda} 
+        onChange={e => setBusqueda(e.target.value)} 
+        style={{...inputStyle, width: '100%', marginBottom: '15px', borderColor: '#00f2ff'}} 
+      />
+
+      {busqueda.trim() !== '' && (
+        <div style={{ overflowX: 'auto', background: '#111', padding: '10px', borderRadius: '10px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: '#222', textAlign: 'left' }}>
+                <th style={{ padding: '12px' }}>Acción</th>
+                <th style={{ padding: '12px' }}>Nombre</th>
+                <th style={{ padding: '12px' }}>Edad</th>
+                <th style={{ padding: '12px' }}>Fecha Nac.</th>
+                <th style={{ padding: '12px' }}>DNI</th>
+                <th style={{ padding: '12px' }}>Teléfono</th>
+                <th style={{ padding: '12px' }}>Obra Social</th>
+                <th style={{ padding: '12px' }}>Diagnóstico</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {pacientesFiltrados.map(p => (
+                <tr key={p.id} style={{ borderBottom: '1px solid #333' }}>
+                  <td style={{ padding: '12px' }}><button onClick={() => iniciarEdicion(p)} style={{ background: 'none', border: 'none', color: '#00f2ff', cursor: 'pointer' }}>✏️ Editar</button></td>
+                  <td style={{ padding: '12px' }}>{p.nombre}</td>
+                  <td style={{ padding: '12px' }}>{p.edad}</td>
+                  <td style={{ padding: '12px' }}>{p.fecha_nacimiento}</td>
+                  <td style={{ padding: '12px' }}>{p.dni}</td>
+                  <td style={{ padding: '12px' }}>{p.telefono}</td>
+                  <td style={{ padding: '12px' }}>{p.obra_social}</td>
+                  <td style={{ padding: '12px' }}>{p.diagnostico}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

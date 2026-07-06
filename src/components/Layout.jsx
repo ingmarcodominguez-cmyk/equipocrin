@@ -5,7 +5,7 @@ import Tasks from './Tasks.jsx'
 import GestionPacientes from './GestionPacientes.jsx'
 import EstadosCuenta from './EstadosCuenta.jsx'
 import MovimientosPrestadores from './MovimientosPrestadores.jsx'
-import Documentos from './Documentos.jsx' // Asegúrate de tener este archivo creado
+import Documentos from './Documentos.jsx'
 import logo from '../assets/photo.jpg'
 
 function Layout({ userData, logout }) {
@@ -16,7 +16,7 @@ function Layout({ userData, logout }) {
   }
   // -------------------------------
 
-  const [vista, setVista] = useState('hub') // Arrancamos directo en el hub
+  const [vista, setVista] = useState('hub') 
   const audioRef = useRef(new Audio('/notificacion.mp3'))
   const playNotification = () => audioRef.current.play().catch(e => {})
   
@@ -24,6 +24,9 @@ function Layout({ userData, logout }) {
   const tieneAccesoTotal = ['ADMINISTRACION', 'DIRECCION', 'PROFESIONAL_PLUS'].includes(rol)
   const esAdminOrDir = ['ADMINISTRACION', 'DIRECCION'].includes(rol)
   const esDireccion = rol === 'DIRECCION'
+  
+  // Definimos la condición para ver documentos
+  const puedeVerDocumentos = ['DIRECCION', 'PROFESIONAL_PLUS'].includes(rol)
 
   return (
     <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif' }}>
@@ -42,10 +45,18 @@ function Layout({ userData, logout }) {
             <button onClick={() => setVista('tareas')} style={btnHubStyle}>✅ TAREAS</button>
             <button onClick={() => setVista('profesionales')} style={btnHubStyle}>⚙️ AGENDA FIJA</button>
             
+            {/* GESTIÓN PACIENTES ACCESIBLE PARA TODOS */}
+            <button onClick={() => setVista('pacientes')} style={{...btnHubStyle, borderColor: '#00f2ff'}}>👤 GESTIÓN PACIENTES</button>
+
+            {/* DOCUMENTOS SOLO PARA DIRECCIÓN Y PROFESIONAL_PLUS */}
+            {puedeVerDocumentos && (
+              <button onClick={() => setVista('documentos')} style={{...btnHubStyle, borderColor: '#fff'}}>📁 DOCUMENTOS</button>
+            )}
+
             {esAdminOrDir && (
               <>
-                <button onClick={() => setVista('pacientes')} style={btnHubStyle}>👤 GESTIÓN PACIENTES</button>
-                <button onClick={() => setVista('documentos')} style={{...btnHubStyle, borderColor: '#fff'}}>📁 DOCUMENTOS</button>
+                {/* Si quisieras mantener Documentos aquí también para ADMIN, puedes ajustar la lógica, 
+                    pero según tu pedido lo restrinjo a los roles indicados */}
               </>
             )}
 
