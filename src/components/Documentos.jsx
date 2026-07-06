@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
 export default function Documentos() {
@@ -7,6 +7,7 @@ export default function Documentos() {
   const [archivos, setArchivos] = useState([]);
   const [cargando, setCargando] = useState(false);
 
+  // 1. Cargar lista de pacientes al iniciar
   useEffect(() => {
     const fetchPacientes = async () => {
       const { data, error } = await supabase
@@ -20,24 +21,26 @@ export default function Documentos() {
     fetchPacientes();
   }, []);
 
-  useEffect(() => {
-    if (pacienteSeleccionado) {
-      const fetchArchivos = async () => {
-        setCargando(true);
-        const { data, error } = await supabase
-          .from('documentos_pacientes')
-          .select('*')
-          .eq('id_paciente_excel', pacienteSeleccionado.id_paciente_excel);
+  // 2. Función para buscar archivos (definida con useCallback para que sea estable)
+  const fetchArchivos = useCallback(async () => {
+    if (!pacienteSeleccionado) return;
+    
+    setCargando(true);
+    const { data, error } = await supabase
+      .from('documentos_pacientes')
+      .select('*')
+      .eq('id_paciente_excel', pacienteSeleccionado.id_paciente_excel)
+      .order('created_at', { ascending: false }); // Opcional: muestra los últimos primero
 
-        if (error) console.error("Error al buscar archivos:", error);
-        else setArchivos(data || []);
-        setCargando(false);
-      };
-      fetchArchivos();
-    } else {
-      setArchivos([]);
-    }
+    if (error) console.error("Error al buscar archivos:", error);
+    else setArchivos(data || []);
+    setCargando(false);
   }, [pacienteSeleccionado]);
+
+  // 3. Efecto que dispara la búsqueda cada vez que cambia el paciente
+  useEffect(() => {
+    fetchArchivos();
+  }, [fetchArchivos]);
 
   return (
     <div style={{ padding: '20px', color: '#fff' }}>
@@ -57,11 +60,24 @@ export default function Documentos() {
         ))}
       </select>
 
-      {cargando && <p>Cargando documentos...</p>}
+      {/* Botón de refresco manual */}
+      {pacienteSeleccionado && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h4>Archivos de: {pacienteSeleccionado.nombre}</h4>
+          <button 
+            onClick={fetchArchivos}
+            disabled={cargando}
+            style={{ cursor: 'pointer', padding: '8px 12px', borderRadius: '4px', backgroundColor: '#444', color: 'white', border: 'none' }}
+          >
+            {cargando ? "Actualizando..." : "🔄 Refrescar"}
+          </button>
+        </div>
+      )}
+
+      {cargando && !archivos.length && <p>Cargando documentos...</p>}
 
       {pacienteSeleccionado && !cargando && (
         <div>
-          <h4>Archivos de: {pacienteSeleccionado.nombre}</h4>
           {archivos.length === 0 ? (
             <p>No se encontraron documentos para este paciente.</p>
           ) : (
@@ -71,14 +87,10 @@ export default function Documentos() {
                   <span>{doc.nombre_archivo}</span>
                   <button 
                     onClick={() => {
-  // Construye la URL pública
-  const urlPublica = `https://gqhfrzvtccxrixdtazzs.supabase.co/storage/v1/object/public/documentos_pacientes/${doc.url_storage}`;
-  
-  // Usamos el visor de Google Docs para forzar la visualización en lugar de la descarga
-  const visorGoogle = `https://docs.google.com/viewer?url=${encodeURIComponent(urlPublica)}&embedded=true`;
-  
-  window.open(visorGoogle, '_blank');
-}}
+                      const urlPublica = `https://gqhfrzvtccxrixdtazzs.supabase.co/storage/v1/object/public/documentos_pacientes/${doc.url_storage}`;
+                      const visorGoogle = `https://docs.google.com/viewer?url=${encodeURIComponent(urlPublica)}&embedded=true`;
+                      window.open(visorGoogle, '_blank');
+                    }}
                     style={{ cursor: 'pointer', padding: '5px 10px' }}
                   >
                     👁️ Ver
