@@ -7,6 +7,9 @@ function GestionPacientes() {
   const [editId, setEditId] = useState(null)
   const [busqueda, setBusqueda] = useState(''); 
   
+  // Nuevo estado para el modal
+  const [pacienteSeleccionado, setPacienteSeleccionado] = useState(null);
+
   const [dia, setDia] = useState('');
   const [mes, setMes] = useState('');
   const [anio, setAnio] = useState('');
@@ -60,6 +63,7 @@ function GestionPacientes() {
       const [y, m, d] = p.fecha_nacimiento.split('-');
       setAnio(y); setMes(m); setDia(d);
     }
+    setPacienteSeleccionado(null); // Cerrar modal al editar
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -125,35 +129,36 @@ function GestionPacientes() {
       />
 
       {busqueda.trim() !== '' && (
-        <div style={{ width: '100%', marginTop: '20px', background: '#111', padding: '10px', borderRadius: '10px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '0.9rem' }}>
-            <thead>
-              <tr style={{ background: '#222', textAlign: 'left' }}>
-                <th style={{ width: '80px', padding: '10px' }}>Acción</th>
-                <th style={{ padding: '10px' }}>Nombre</th>
-                <th style={{ width: '50px', padding: '10px' }}>Edad</th>
-                <th style={{ padding: '100px', padding: '10px' }}>Fecha Nac.</th>
-                <th style={{ padding: '10px' }}>DNI</th>
-                <th style={{ padding: '10px' }}>Teléfono</th>
-                <th style={{ padding: '10px' }}>Obra Social</th>
-                <th style={{ padding: '10px' }}>Diagnóstico</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pacientesFiltrados.map(p => (
-                <tr key={p.id} style={{ borderBottom: '1px solid #333' }}>
-                  <td style={{ padding: '10px' }}><button onClick={() => iniciarEdicion(p)} style={{ background: 'none', border: 'none', color: '#00f2ff', cursor: 'pointer' }}>✏️ Editar</button></td>
-                  <td style={{ padding: '10px', wordBreak: 'break-word' }}>{p.nombre}</td>
-                  <td style={{ padding: '10px' }}>{p.edad}</td>
-                  <td style={{ padding: '10px' }}>{p.fecha_nacimiento}</td>
-                  <td style={{ padding: '10px' }}>{p.dni}</td>
-                  <td style={{ padding: '10px' }}>{p.telefono}</td>
-                  <td style={{ padding: '10px' }}>{p.obra_social}</td>
-                  <td style={{ padding: '10px', wordBreak: 'break-word' }}>{p.diagnostico}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div style={{ width: '100%', marginTop: '20px' }}>
+          {pacientesFiltrados.map(p => (
+            <div key={p.id} onClick={() => setPacienteSeleccionado(p)} style={cardStyle}>
+              <div style={{ fontWeight: 'bold', color: '#00f2ff' }}>{p.nombre}</div>
+              <div style={{ fontSize: '0.8rem' }}>DNI: {p.dni}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal de Ficha Vertical */}
+      {pacienteSeleccionado && (
+        <div style={overlayStyle}>
+          <div style={modalStyle}>
+            <h2 style={{ color: '#00f2ff', marginTop: 0 }}>Ficha del Paciente</h2>
+            <div style={{ textAlign: 'left', lineHeight: '1.8' }}>
+              <p><strong>Nombre:</strong> {pacienteSeleccionado.nombre}</p>
+              <p><strong>DNI:</strong> {pacienteSeleccionado.dni}</p>
+              <p><strong>Edad:</strong> {pacienteSeleccionado.edad}</p>
+              <p><strong>Fecha Nac:</strong> {pacienteSeleccionado.fecha_nacimiento}</p>
+              <p><strong>Teléfono:</strong> {pacienteSeleccionado.telefono}</p>
+              <p><strong>Escuela:</strong> {pacienteSeleccionado.escuela}</p>
+              <p><strong>Obra Social:</strong> {pacienteSeleccionado.obra_social}</p>
+              <p><strong>Diagnóstico:</strong> {pacienteSeleccionado.diagnostico}</p>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+              <button onClick={() => iniciarEdicion(pacienteSeleccionado)} style={btnStyle}>EDITAR</button>
+              <button onClick={() => setPacienteSeleccionado(null)} style={{...btnStyle, borderColor: '#666', color: '#ccc'}}>CERRAR</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -162,5 +167,9 @@ function GestionPacientes() {
 
 const inputStyle = { padding: '12px', borderRadius: '8px', border: '1px solid #444', background: '#000', color: '#fff', boxSizing: 'border-box' };
 const btnStyle = { padding: '15px', background: 'transparent', border: '1px solid #00f2ff', color: '#00f2ff', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' };
+const cardStyle = { background: '#1a1a1a', padding: '15px', borderRadius: '8px', marginBottom: '10px', border: '1px solid #333', cursor: 'pointer' };
+
+const overlayStyle = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: '20px' };
+const modalStyle = { background: '#1a1a1a', padding: '25px', borderRadius: '15px', width: '100%', maxWidth: '400px', color: '#fff', border: '1px solid #00f2ff', maxHeight: '90vh', overflowY: 'auto' };
 
 export default GestionPacientes;
