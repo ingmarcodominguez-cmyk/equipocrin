@@ -9,7 +9,7 @@ function AgendaMensualPro({ userData }) {
   const [turnoEditando, setTurnoEditando] = useState(null)
   
   const [filtroFecha, setFiltroFecha] = useState(null)
-  const [filtroFechaInput, setFiltroFechaInput] = useState('') // Estado para controlar visualmente el input
+  const [filtroFechaInput, setFiltroFechaInput] = useState('') 
   const [filtroProfesional, setFiltroProfesional] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
   
@@ -101,7 +101,6 @@ function AgendaMensualPro({ userData }) {
     }
   }
 
-  // Función para resetear el filtro
   const limpiarFiltroFecha = () => {
     setFiltroFecha(null);
     setFiltroFechaInput('');
@@ -165,7 +164,6 @@ function AgendaMensualPro({ userData }) {
         </div>
       </div>
 
-      {/* Calendario */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', backgroundColor: '#ffffff', borderTop: '1px solid #ddd', flex: 1, width: '100%' }}>
         {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => (
           <div key={d} style={{ textAlign: 'center', background: '#f8f9fa', padding: '10px', fontWeight: 'bold', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }}>{d}</div>
@@ -191,7 +189,21 @@ function AgendaMensualPro({ userData }) {
                   const prest = parts[1]?.replace('[', '') || '';
                   const prof = parts[2]?.replace('[', '') || 'N/A';
                   return (
-                    <div key={t.id} onClick={(e) => { e.stopPropagation(); setTurnoEditando(t); setForm({...t, hora: hora, prestacion: prest}); setDiaSeleccionado(dN); }} style={{ fontSize: '11px', background: t.estado === 'realizado' ? '#d4edda' : t.estado === 'cancelado' ? '#f8d7da' : '#eefaff', padding: '4px', cursor: 'pointer', borderRadius: '4px', border: '1px solid #ddd' }}>
+                   <div 
+  key={t.id} 
+  onClick={(e) => { e.stopPropagation(); setTurnoEditando(t); setForm({...t, hora: hora, prestacion: prest}); setDiaSeleccionado(dN); }} 
+  style={{ 
+    fontSize: '11px', 
+    // Aplicamos .trim() para limpiar espacios y comparamos
+    background: prest.trim() === 'Tratamiento' 
+      ? '#fff3cd' 
+      : (t.estado === 'realizado' ? '#d4edda' : t.estado === 'cancelado' ? '#f8d7da' : '#eefaff'), 
+    padding: '4px', 
+    cursor: 'pointer', 
+    borderRadius: '4px', 
+    border: '1px solid #ddd' 
+  }}
+>
                       <div style={{ color: '#0056b3', fontWeight: 'bold', fontSize: '12px' }}>{t.paciente_nombre.toUpperCase()}</div>
                       <div><strong>{hora}</strong> | {prest} | <b>{prof}</b></div>
                     </div>
@@ -203,7 +215,6 @@ function AgendaMensualPro({ userData }) {
         })}
       </div>
 
-      {/* Modal */}
       {diaSeleccionado && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ background: '#ffffff', padding: '20px', width: '320px', borderRadius: '15px' }}>
