@@ -101,7 +101,6 @@ export default function FichaPaciente({ onVolver }) {
 
       setAcuerdos(acuerdosSinCeros);
 
-      // Guardar todos los movimientos detallados y enriquecerlos con la prestación correspondiente
       const movimientosEnriquecidos = (movimientosData || []).map(mov => {
         const acuerdoAsociado = acuerdosConPrestacion.find(ac => String(ac.id_acuerdo) === String(mov.id_acuerdo));
         return {
@@ -111,7 +110,6 @@ export default function FichaPaciente({ onVolver }) {
       });
       setMovimientosDetallados(movimientosEnriquecidos);
 
-      // AGRUPACIÓN POR id_deuda (para la vista de deudas pendientes sin ceros)
       const mapaDeudas = {};
 
       (movimientosData || []).forEach(mov => {
@@ -176,7 +174,6 @@ export default function FichaPaciente({ onVolver }) {
         };
       });
 
-      // FILTRAR: Ocultar los id_deuda cuyo saldo real sea 0
       const deudasConSaldoPendiente = deudasProcesadas.filter(d => Math.abs(d.saldoReal) > 0.01);
 
       setDeudasAgrupadas(deudasConSaldoPendiente);
@@ -227,7 +224,6 @@ export default function FichaPaciente({ onVolver }) {
 
   const sumaTotalDeuda = deudasAgrupadas.reduce((acc, curr) => acc + curr.saldoReal, 0);
 
-  // Totales para el resumen detallado
   const totalDebeGeneral = movimientosDetallados.reduce((acc, m) => acc + parsearMoneda(m.debe), 0);
   const totalHaberGeneral = movimientosDetallados.reduce((acc, m) => acc + parsearMoneda(m.haber), 0);
   const saldoFinalGeneral = totalDebeGeneral - totalHaberGeneral;

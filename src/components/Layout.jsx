@@ -53,13 +53,6 @@ function Layout({ userData, logout }) {
               <button onClick={() => setVista('documentos')} style={{...btnHubStyle, borderColor: '#fff'}}>📁 DOCUMENTOS</button>
             )}
 
-            {esAdminOrDir && (
-              <>
-                {/* Si quisieras mantener Documentos aquí también para ADMIN, puedes ajustar la lógica, 
-                    pero según tu pedido lo restrinjo a los roles indicados */}
-              </>
-            )}
-
             {esDireccion && (
               <>
                 <button onClick={() => setVista('movimientos')} style={{...btnHubStyle, borderColor: '#75AADB'}}>📊 MOV. PRESTADORES</button>

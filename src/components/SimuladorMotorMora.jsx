@@ -8,13 +8,11 @@ export default function SimuladorMotorMora() {
 
   async function ejecutarMotorMora() {
     setCargando(true)
-    // Limpiamos los logs anteriores al iniciar una nueva prueba
     const logs = []
     logs.push(`🚀 Iniciando proceso de mora con fecha de trabajo: ${fechaSimulada}`)
     setLogResultados(logs)
 
     try {
-      // 1. Traemos TODOS los movimientos para calcular saldos reales agrupados por id_deuda
       const { data: todosLosMovimientos, error: errMov } = await supabase
         .from('movimientoscuenta_motor')
         .select('*')
@@ -28,15 +26,14 @@ export default function SimuladorMotorMora() {
         return
       }
 
-      // 2. Identificar las deudas base (cuota_mensual, acuerdo_unico, etc.) que marcan el origen
-      const deudasBase = todosLosMovimientos.filter(m => m.subtipo === 'cuota_mensual' || m.subtipo === 'acuerdo_unico')
+      // REGLA: Filtrar ÚNICAMENTE cuotas mensuales. Los 'acuerdo_unico' (incluyendo evaluaciones) se ignoran por completo.
+      const deudasBase = todosLosMovimientos.filter(m => m.subtipo === 'cuota_mensual')
 
-      logs.push(`🔍 Se encontraron ${deudasBase.length} registros de deuda base para evaluar.`)
+      logs.push(`🔍 Se encontraron ${deudasBase.length} registros de cuotas mensuales base para evaluar (los acuerdos únicos quedan excluidos del motor).`)
       setLogResultados([...logs])
 
       const fechaTrabajo = new Date(fechaSimulada + 'T00:00:00')
 
-      // Buscar último id_movimiento para los nuevos inserts
       const { data: ultMov } = await supabase
         .from('movimientoscuenta_motor')
         .select('id_movimiento')
@@ -49,9 +46,12 @@ export default function SimuladorMotorMora() {
         const idDeudaActual = deudaOriginal.id_deuda || deudaOriginal.id_movimiento
         const fechaVencStr = deudaOriginal.fecha_vencimiento
 
-        if (!fechaVencStr) continue
+        if (!fechaVencStr) {
+          logs.push(`   -> Cuota ID ${idDeudaActual} sin fecha de vencimiento. Omitiendo.`)
+          setLogResultados([...logs])
+          continue
+        }
 
-        // 3. Filtrar todos los movimientos que pertenecen a este id_deuda para calcular su saldo real
         const movimientosDeEstaDeuda = todosLosMovimientos.filter(m => (m.id_deuda || m.id_movimiento) === idDeudaActual)
 
         const totalDebe = movimientosDeEstaDeuda.reduce((acc, m) => acc + parseFloat(m.debe || 0), 0)
@@ -62,7 +62,7 @@ export default function SimuladorMotorMora() {
         setLogResultados([...logs])
 
         if (saldoDeuda <= 0) {
-          logs.push(`   -> La deuda está totalmente saldada (Saldo: $${saldoDeuda}). Sin acciones.`)
+          logs.push(`   -> La cuota está totalmente saldada (Saldo: $${saldoDeuda}). Sin acciones.`)
           setLogResultados([...logs])
           continue
         }
@@ -112,7 +112,7 @@ export default function SimuladorMotorMora() {
             tipo_movimiento: 'deuda',
             subtipo: 'recargo_1',
             id_origen: deudaOriginal.id_movimiento,
-            concepto: 'recargo automático deuda 1',
+            concepto: 'recargo automático cuota 1',
             debe: String(recargo10),
             haber: '0',
             saldo: '0',
@@ -165,7 +165,7 @@ export default function SimuladorMotorMora() {
               tipo_movimiento: 'deuda',
               subtipo: `recargo_${siguienteEscalon}`,
               id_origen: ultimoRecargo.id_movimiento,
-              concepto: `recargo automático deuda ${siguienteEscalon}`,
+              concepto: `recargo automático cuota ${siguienteEscalon}`,
               debe: String(recargo5),
               haber: '0',
               saldo: '0',
@@ -197,7 +197,7 @@ export default function SimuladorMotorMora() {
   return (
     <div style={{ maxWidth: '800px', margin: '20px auto', padding: '25px', background: '#fff', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', color: '#1e293b' }}>
       <h3 style={{ marginBottom: '15px', borderBottom: '2px solid #e2e8f0', paddingBottom: '8px' }}>
-        🧪 Simulador de Motor de Mora (Prueba Limpia por Ejecución)
+        🧪 Simulador de Motor de Mora (Excluyendo Acuerdos Únicos)
       </h3>
       <div style={{ display: 'flex', gap: '15px', alignItems: 'center', marginBottom: '20px', background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
         <div>

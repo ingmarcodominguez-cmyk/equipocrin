@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 
 export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
-  // Estado inicial adaptado sin usar monto_cuota_1
   const [form, setForm] = useState(acuerdoAEditar || {
     fecha_acuerdo: new Date().toISOString().split('T')[0],
     id_paciente: '',
@@ -17,17 +16,14 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
     usuario: ''
   })
 
-  // Listas de datos relacionales
   const [pacientes, setPacientes] = useState([])
   const [prestaciones, setPrestaciones] = useState([])
   
-  // Estados de control para búsqueda y selección
   const [busquedaPaciente, setBusquedaPaciente] = useState('')
   const [pacienteSeleccionadoObj, setPacienteSeleccionadoObj] = useState(null)
   const [prestacionSeleccionada, setPrestacionSeleccionada] = useState(null)
   const [guardando, setGuardando] = useState(false)
 
-  // Cargar lista de pacientes y prestaciones al montar el componente
   useEffect(() => {
     async function cargarDatosIniciales() {
       const { data: dataPacientes, error: errPac } = await supabase
@@ -65,13 +61,11 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
     cargarDatosIniciales()
   }, [acuerdoAEditar])
 
-  // Manejador de cambios generales
   function handleChange(e) {
     const { name, value } = e.target
     setForm({ ...form, [name]: value })
   }
 
-  // Navegación con Enter de campo en campo sin enviar el formulario
   function handleKeyDown(e) {
     if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
       e.preventDefault()
@@ -85,7 +79,6 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
     }
   }
 
-  // Selección de Paciente
   function handleSeleccionarPaciente(paciente) {
     setPacienteSeleccionadoObj(paciente)
     setBusquedaPaciente(paciente.nombre_apellido)
@@ -95,7 +88,6 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
     })
   }
 
-  // Selección de Prestación
   function handlePrestacionChange(e) {
     const idPrestacion = e.target.value
     const prestacionObj = prestaciones.find(p => p.id == idPrestacion || p.id_prestacion == idPrestacion)
@@ -134,6 +126,25 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
   const esUnico = prestacionSeleccionada?.tipo_prestacion?.toLowerCase().includes('unico') || 
                   prestacionSeleccionada?.tipo_prestacion?.toLowerCase().includes('único')
   const esMensual = prestacionSeleccionada?.tipo_prestacion?.toLowerCase().includes('mensual')
+
+  // Función interna para calcular el vencimiento de la cuota inicial por tercios (10, 20 o fin de mes)
+  function calcularVencimientoCuotaInicial(fechaAcuerdoStr) {
+    const [anio, mes, dia] = fechaAcuerdoStr.split('-').map(Number)
+    let diaVenc
+
+    if (dia <= 10) {
+      diaVenc = 10
+    } else if (dia <= 20) {
+      diaVenc = 20
+    } else {
+      // Último día del mes actual
+      diaVenc = new Date(anio, mes, 0).getDate()
+    }
+
+    const mesStr = String(mes).padStart(2, '0')
+    const diaStr = String(diaVenc).padStart(2, '0')
+    return `${anio}-${mesStr}-${diaStr}`
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -188,7 +199,6 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
         error = errUpdate
         idAcuerdoRegistrado = idAcuerdoEditar
       } else {
-        // Al insertar, recuperamos el registro creado para obtener su id_acuerdo
         const { data: dataInsert, error: errInsert } = await supabase
           .from('acuerdos_motor')
           .insert([datosGuardar])
@@ -202,49 +212,45 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
 
       if (error) throw error;
 
-      // Si es un acuerdo NUEVO (ya sea mensual o único), generamos el renglón inicial en movimientoscuenta_motor
+      // Generación del renglón inicial en movimientoscuenta_motor para nuevos acuerdos
       if (!idAcuerdoEditar && idAcuerdoRegistrado && (esMensual || esUnico)) {
-        // 1. Buscar el último id_movimiento
-        const { data: ultMov, error: errUltMov } = await supabase
+        const { data: ultMov } = await supabase
           .from('movimientoscuenta_motor')
           .select('id_movimiento')
           .order('id_movimiento', { ascending: false })
           .limit(1)
 
-        if (errUltMov) console.error('Error al obtener último id_movimiento:', errUltMov);
         const siguienteIdMovimiento = (ultMov && ultMov.length > 0 && ultMov[0].id_movimiento) ? ultMov[0].id_movimiento + 1 : 1;
 
-        // 2. Buscar el último id_deuda
-        const { data: ultDeuda, error: errUltDeuda } = await supabase
+        const { data: ultDeuda } = await supabase
           .from('movimientoscuenta_motor')
           .select('id_deuda')
           .order('id_deuda', { ascending: false })
           .limit(1)
 
-        if (errUltDeuda) console.error('Error al obtener último id_deuda:', errUltDeuda);
         const siguienteIdDeuda = (ultDeuda && ultDeuda.length > 0 && ultDeuda[0].id_deuda) ? ultDeuda[0].id_deuda + 1 : 1;
 
-        // 3. Calcular fecha_vencimiento sumando 7 días a la fecha del acuerdo
-        const fechaAcuerdoObj = new Date(form.fecha_acuerdo + 'T00:00:00');
-        fechaAcuerdoObj.setDate(fechaAcuerdoObj.getDate() + 7);
-        const fechaVencimientoCalculada = fechaAcuerdoObj.toISOString().split('T')[0];
+        // REGLA CLAVE: 
+        // - Si es UNICO: fecha_vencimiento es null (sin fecha de vencimiento).
+        // - Si es MENSUAL (Cuota Inicial): se calcula por el sistema de tercios (10, 20 o fin de mes).
+        let fechaVencimientoCalculada = null;
+        if (esMensual) {
+          fechaVencimientoCalculada = calcularVencimientoCuotaInicial(form.fecha_acuerdo);
+        }
 
-        // 4. Calcular ciclo_mora (YYYYMM) basado en la fecha del acuerdo
         const [anio, mes] = form.fecha_acuerdo.split('-');
         const cicloMoraCalculado = parseInt(`${anio}${mes}`, 10);
 
-        // 5. Definir subtipo y concepto según si es mensual o único
         const subtipoMovimiento = esMensual ? 'cuota_mensual' : 'acuerdo_unico';
         const conceptoMovimiento = esMensual ? 'cuota_inicial' : 'acuerdo_unico';
 
-        // 6. Armar objeto para insertar en movimientoscuenta_motor
         const nuevoMovimiento = {
           id_movimiento: siguienteIdMovimiento,
           id_paciente: parseInt(form.id_paciente, 10),
           id_acuerdo: parseInt(idAcuerdoRegistrado, 10),
           id_deuda: siguienteIdDeuda,
           fecha_cuota_origen: form.fecha_acuerdo,
-          fecha_vencimiento: fechaVencimientoCalculada,
+          fecha_vencimiento: fechaVencimientoCalculada, // NULL si es único, calculado por tercio si es cuota inicial mensual
           fecha_movimiento: new Date().toISOString().split('T')[0],
           ciclo_mora: cicloMoraCalculado,
           escalon_mora: '0',
@@ -334,7 +340,6 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
         {/* SECCIÓN 2: DATOS DEL ACUERDO */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '15px' }}>
           
-          {/* Fecha del acuerdo */}
           <div>
             <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Fecha del Acuerdo *</label>
             <input 
@@ -347,7 +352,6 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
             />
           </div>
 
-          {/* Tipo de prestación */}
           <div>
             <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Tipo de Prestación *</label>
             <select 
@@ -366,7 +370,6 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
             </select>
           </div>
 
-          {/* Tipo de período */}
           <div>
             <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Tipo de Período (Automático)</label>
             <input 
@@ -379,7 +382,6 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
             />
           </div>
 
-          {/* Monto Base / Importe Actual */}
           <div>
             <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>
               {esUnico ? 'Monto de la Prestación Única *' : esMensual ? 'Monto Cuota Base *' : 'Monto / Importe Base *'}
@@ -403,7 +405,6 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
             />
           </div>
 
-          {/* Admite recargo */}
           <div>
             <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Admite Recargo</label>
             <select 
@@ -425,10 +426,9 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
             </select>
           </div>
 
-          {/* Día de vencimiento */}
           <div>
             <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>
-              Día de Vencimiento (Número) {esUnico ? '(No aplica)' : '*'}
+              Día de Vencimiento Fijo (Meses Subsiguientes) {esUnico ? '(No aplica)' : '*'}
             </label>
             <input 
               type="number" 
@@ -438,7 +438,7 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
               value={esUnico ? '' : (form.dia_vencimiento || '')} 
               onChange={handleChange} 
               disabled={esUnico}
-              placeholder={esUnico ? 'No aplica para pago único' : 'Ej: 10 o 15'} 
+              placeholder={esUnico ? 'No aplica para pago único' : 'Ej: 15 (para meses siguientes)'} 
               style={{ 
                 width: '100%', 
                 padding: '9px', 
@@ -453,7 +453,6 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
 
         </div>
 
-        {/* Observaciones */}
         <div>
           <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Observaciones</label>
           <textarea 
@@ -465,7 +464,6 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
           />
         </div>
 
-        {/* Botones de acción */}
         <div style={{ display: 'flex', gap: '15px', marginTop: '10px' }}>
           <button 
             type="submit" 
