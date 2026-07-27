@@ -5,6 +5,16 @@ import FormularioPaciente from './components/FormularioPaciente.jsx'
 import FormularioAcuerdo from './components/FormularioAcuerdo.jsx'
 import FichaPaciente from './components/FichaPaciente.jsx'
 import SimuladorMotorMora from './components/SimuladorMotorMora.jsx'
+import FichaPrestadores from './components/FichaPrestadores.jsx'
+
+const normalizarRol = (r) => {
+  if (!r) return '';
+  return String(r)
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+};
 
 function App() {
   const [session, setSession] = useState(null)
@@ -52,9 +62,28 @@ function App() {
   async function cargarPerfil(userId) {
     setCargando(true)
     setMensajeCarga('Cargando perfil de usuario...')
-    const { data: perfil } = await supabase.from('users').select('*').eq('id', userId).single()
-    setUserData(perfil)
-    setCargando(false)
+    try {
+      const { data: perfil, error } = await supabase.from('users').select('*').eq('id', userId).single()
+      if (error) {
+        console.error("Error de Supabase al cargar perfil:", error.message);
+        setUserData({});
+      } else {
+        console.log("Perfil del usuario cargado:", perfil);
+        const uData = perfil || {};
+        setUserData(uData);
+        
+        // Auto-seleccionar modo 'app' para usuarios no administradores
+        const rolNorm = normalizarRol(uData.rol);
+        if (rolNorm !== 'ADMINISTRACION' && rolNorm !== 'DIRECCION') {
+          setModoSeleccionado('app');
+        }
+      }
+    } catch (err) {
+      console.error("Error al cargar perfil:", err);
+      setUserData({});
+    } finally {
+      setCargando(false)
+    }
   }
 
   async function cargarPacientesParaListar() {
@@ -412,6 +441,11 @@ function App() {
 
   // 🚀 FUNCIÓN MAESTRA CON MENSAJES DE PROGRESO Y BLOQUEO VISUAL
   const handleAccesoSistemaCrin = async () => {
+    const rolNorm = normalizarRol(userData?.rol);
+    if (rolNorm !== 'ADMINISTRACION' && rolNorm !== 'DIRECCION') {
+      alert("Acceso denegado. No posee los permisos requeridos.");
+      return;
+    }
     setCargando(true);
     try {
       const fechaActualTrabajo = obtenerFechaTrabajo();
@@ -503,58 +537,62 @@ function App() {
               🚀 Continuar con la App
             </button>
             
-            <button 
-              onClick={handleAccesoSistemaCrin} 
-              style={{ padding: '15px', background: '#111', color: '#fff', border: '1px solid #00f2ff', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}
-            >
-              💻 Acceder a Sistema Crin
-            </button>
+            {(normalizarRol(userData?.rol) === 'ADMINISTRACION' || normalizarRol(userData?.rol) === 'DIRECCION') && (
+              <button 
+                onClick={handleAccesoSistemaCrin} 
+                style={{ padding: '15px', background: '#111', color: '#fff', border: '1px solid #00f2ff', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                💻 Acceder a Sistema Crin
+              </button>
+            )}
           </div>
 
           {/* PANEL EMULADOR DE FECHA & MOTOR */}
-          <div style={{ marginTop: '25px', padding: '15px', background: '#1a1a1a', border: '1px dashed #00f2ff', borderRadius: '10px', width: '100%', textAlign: 'left', boxSizing: 'border-box' }}>
-            <p style={{ color: '#00f2ff', fontSize: '13px', margin: '0 0 8px 0', fontWeight: 'bold' }}>🛠️ Simulador de Fecha y Facturación</p>
-            
-            <label style={{ fontSize: '11px', color: '#aaa', display: 'block', marginBottom: '3px' }}>Fecha de Trabajo del Sistema:</label>
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+          {(normalizarRol(userData?.rol) === 'ADMINISTRACION' || normalizarRol(userData?.rol) === 'DIRECCION') && (
+            <div style={{ marginTop: '25px', padding: '15px', background: '#1a1a1a', border: '1px dashed #00f2ff', borderRadius: '10px', width: '100%', textAlign: 'left', boxSizing: 'border-box' }}>
+              <p style={{ color: '#00f2ff', fontSize: '13px', margin: '0 0 8px 0', fontWeight: 'bold' }}>🛠️ Simulador de Fecha y Facturación</p>
+              
+              <label style={{ fontSize: '11px', color: '#aaa', display: 'block', marginBottom: '3px' }}>Fecha de Trabajo del Sistema:</label>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                <input 
+                  type="date" 
+                  value={fechaSimuladaInput}
+                  onChange={(e) => setFechaSimuladaInput(e.target.value)}
+                  style={{ flex: 1, padding: '6px', borderRadius: '5px', background: '#222', color: '#fff', border: '1px solid #444', fontSize: '13px' }}
+                />
+                <button 
+                  onClick={() => {
+                    localStorage.setItem('crin_fecha_trabajo_simulada', fechaSimuladaInput);
+                    alert(`¡Fecha de trabajo fijada a: ${fechaSimuladaInput}!`);
+                  }}
+                  style={{ padding: '6px 12px', background: '#00f2ff', color: '#000', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}
+                >
+                  Fijar
+                </button>
+              </div>
+
+              <label style={{ fontSize: '11px', color: '#aaa', display: 'block', marginBottom: '3px' }}>% de Aumento Opcional para el Ciclo:</label>
               <input 
-                type="date" 
-                value={fechaSimuladaInput}
-                onChange={(e) => setFechaSimuladaInput(e.target.value)}
-                style={{ flex: 1, padding: '6px', borderRadius: '5px', background: '#222', color: '#fff', border: '1px solid #444', fontSize: '13px' }}
+                type="number" 
+                value={porcentajeAumentoInput}
+                onChange={(e) => setPorcentajeAumentoInput(e.target.value)}
+                placeholder="Ej: 10"
+                style={{ width: '100%', padding: '6px', borderRadius: '5px', background: '#222', color: '#fff', border: '1px solid #444', fontSize: '13px', marginBottom: '12px', boxSizing: 'border-box' }}
               />
+
               <button 
                 onClick={() => {
-                  localStorage.setItem('crin_fecha_trabajo_simulada', fechaSimuladaInput);
-                  alert(`¡Fecha de trabajo fijada a: ${fechaSimuladaInput}!`);
+                  localStorage.removeItem('crin_fecha_trabajo_simulada');
+                  setFechaSimuladaInput(new Date().toISOString().split('T')[0]);
+                  setPorcentajeAumentoInput('0');
+                  alert('Simulación reseteada a fecha real.');
                 }}
-                style={{ padding: '6px 12px', background: '#00f2ff', color: '#000', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}
+                style={{ background: 'none', border: 'none', color: '#ff6b6b', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline', width: '100%', textAlign: 'center' }}
               >
-                Fijar
+                Restablecer fecha real
               </button>
             </div>
-
-            <label style={{ fontSize: '11px', color: '#aaa', display: 'block', marginBottom: '3px' }}>% de Aumento Opcional para el Ciclo:</label>
-            <input 
-              type="number" 
-              value={porcentajeAumentoInput}
-              onChange={(e) => setPorcentajeAumentoInput(e.target.value)}
-              placeholder="Ej: 10"
-              style={{ width: '100%', padding: '6px', borderRadius: '5px', background: '#222', color: '#fff', border: '1px solid #444', fontSize: '13px', marginBottom: '12px', boxSizing: 'border-box' }}
-            />
-
-            <button 
-              onClick={() => {
-                localStorage.removeItem('crin_fecha_trabajo_simulada');
-                setFechaSimuladaInput(new Date().toISOString().split('T')[0]);
-                setPorcentajeAumentoInput('0');
-                alert('Simulación reseteada a fecha real.');
-              }}
-              style={{ background: 'none', border: 'none', color: '#ff6b6b', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline', width: '100%', textAlign: 'center' }}
-            >
-              Restablecer fecha real
-            </button>
-          </div>
+          )}
 
           <button onClick={logout} style={{ marginTop: '25px', background: 'none', color: '#ff4444', border: '1px solid #ff4444', padding: '10px', width: '100%', cursor: 'pointer', borderRadius: '5px' }}>
             Cerrar Sesión
@@ -699,6 +737,15 @@ function App() {
           </div>
         )}
 
+        {crinAccion === 'FICHA_PRESTADORES' && (
+          <div style={{ width: '100%', maxWidth: '950px' }}>
+             <FichaPrestadores 
+               onVolver={() => setCrinAccion(null)} 
+               usuario={userData?.nombre || session?.user?.email || 'Usuario'} 
+             />
+          </div>
+        )}
+
         {crinAccion === 'SIMULADOR_MORA' && (
           <div style={{ width: '100%', maxWidth: '900px' }}>
             <SimuladorMotorMora />
@@ -739,6 +786,14 @@ function App() {
             >
               <span style={{ fontSize: '28px' }}>📂📋</span>
               FICHA PACIENTE
+            </button>
+
+            <button 
+              onClick={() => handleAccionClick('FICHA_PRESTADORES')}
+              style={{ width: '100%', padding: '26px 20px', background: 'linear-gradient(135deg, #e0f2fe 100%, #bae6fd 0%)', color: '#0369a1', border: '2px solid #7dd3fc', borderRadius: '20px', cursor: 'pointer', fontWeight: '800', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px' }}
+            >
+              <span style={{ fontSize: '28px' }}>🩺💼</span>
+              FICHA PRESTADORES
             </button>
 
             <button 

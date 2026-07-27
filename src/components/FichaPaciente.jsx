@@ -30,6 +30,16 @@ export default function FichaPaciente({ onVolver, usuario }) {
   const [sesionesPrestadores, setSesionesPrestadores] = useState({});
   const [procesandoPago, setProcesandoPago] = useState(false);
 
+  // Estados para Nota de Crédito / Débito (Ajustes)
+  const [modalAjusteAbierto, setModalAjusteAbierto] = useState(false);
+  const [tipoAjusteSeleccionado, setTipoAjusteSeleccionado] = useState('nota_credito');
+  const [deudaAjusteId, setDeudaAjusteId] = useState('');
+  const [importeAjuste, setImporteAjuste] = useState('');
+  const [fechaAjuste, setFechaAjuste] = useState('');
+  const [conceptoAjuste, setConceptoAjuste] = useState('');
+  const [observacionAjuste, setObservacionAjuste] = useState('');
+  const [procesandoAjuste, setProcesandoAjuste] = useState(false);
+
   useEffect(() => {
     async function cargarDatosIniciales() {
       try {
@@ -329,15 +339,39 @@ export default function FichaPaciente({ onVolver, usuario }) {
     
     setProcesandoPago(true);
     try {
-      // 1. Obtener el próximo id_pago consultando movimientoscuenta_motor
-      const { data: maxPagoData, error: errorMaxPago } = await supabase
+      // 1. Obtener el próximo id_pago consultando movimientoscuenta_motor (filtrando NULL)
+      const { data: maxPagoDataMov, error: errorMaxPagoMov } = await supabase
         .from('movimientoscuenta_motor')
         .select('id_pago')
+        .not('id_pago', 'is', null)
         .order('id_pago', { ascending: false })
         .limit(1);
         
-      if (errorMaxPago) throw errorMaxPago;
-      const nextIdPago = (maxPagoData && maxPagoData[0]?.id_pago ? maxPagoData[0].id_pago : 0) + 1;
+      if (errorMaxPagoMov) throw errorMaxPagoMov;
+
+      // También consultamos movprestadores_motor para asegurar unicidad
+      const { data: maxPagoDataPrest, error: errorMaxPagoPrest } = await supabase
+        .from('movprestadores_motor')
+        .select('id_pago')
+        .not('id_pago', 'is', null)
+        .order('id_pago', { ascending: false })
+        .limit(1);
+
+      if (errorMaxPagoPrest) throw errorMaxPagoPrest;
+
+      const maxPagoMov = (maxPagoDataMov && maxPagoDataMov[0]?.id_pago) ? parseInt(maxPagoDataMov[0].id_pago) : 0;
+      const maxPagoPrest = (maxPagoDataPrest && maxPagoDataPrest[0]?.id_pago) ? parseInt(maxPagoDataPrest[0].id_pago) : 0;
+      const nextIdPago = Math.max(maxPagoMov, maxPagoPrest) + 1;
+
+      // 1b. Obtener el próximo id_movimiento consultando movimientoscuenta_motor para evitar violar la pkey
+      const { data: maxMovData, error: errorMaxMov } = await supabase
+        .from('movimientoscuenta_motor')
+        .select('id_movimiento')
+        .order('id_movimiento', { ascending: false })
+        .limit(1);
+
+      if (errorMaxMov) throw errorMaxMov;
+      const nextIdMovimiento = (maxMovData && maxMovData[0]?.id_movimiento ? parseInt(maxMovData[0].id_movimiento) : 0) + 1;
       
       // 2. Obtener deudas agrupadas y buscar la seleccionada
       const deudaSeleccionada = deudasAgrupadas.find(d => String(d.id_deuda) === String(deudaSeleccionadaId));
@@ -389,7 +423,8 @@ export default function FichaPaciente({ onVolver, usuario }) {
       }
       
       // 4. Insertar registros en movimientoscuenta_motor
-      const nuevosMovimientos = asignaciones.map(asig => ({
+      const nuevosMovimientos = asignaciones.map((asig, idx) => ({
+        id_movimiento: nextIdMovimiento + idx,
         id_paciente: pacienteSeleccionado.id_paciente,
         id_acuerdo: asig.id_acuerdo,
         id_deuda: asig.id_deuda,
@@ -497,7 +532,7 @@ export default function FichaPaciente({ onVolver, usuario }) {
           id_paciente: pacienteSeleccionado.id_paciente,
           fecha: fechaPago,
           id_pago: nextIdPago,
-          concepto: `Cobro Sesiones proporcional: ${pacienteSeleccionado.nombre_apellido}`,
+          concepto: `Liquidación paciente: ${pacienteSeleccionado.nombre_apellido}`,
           debe: '0',
           haber: importesDistribuidos[p.id_prestador].toString(),
           saldo: '0.00',
@@ -526,6 +561,329 @@ export default function FichaPaciente({ onVolver, usuario }) {
     }
   };
 
+  useEffect(() => {
+    if (modalAjusteAbierto) {
+      setFechaAjuste(localStorage.getItem('crin_fecha_trabajo_simulada') || new Date().toISOString().split('T')[0]);
+      setDeudaAjusteId('');
+      setImporteAjuste('');
+      setConceptoAjuste(tipoAjusteSeleccionado === 'nota_credito' ? 'Bonificación por acuerdo' : 'Intereses por mora');
+      setObservacionAjuste('');
+    }
+  }, [modalAjusteAbierto, tipoAjusteSeleccionado]);
+
+  const confinrmarRegistroAjuste = async () => {
+    const importeNum = parseFloat(importeAjuste);
+    if (isNaN(importeNum) || importeNum <= 0) {
+      alert("Por favor ingrese un importe válido mayor a 0.");
+      return;
+    }
+    if (!deudaAjusteId) {
+      alert("Por favor seleccione la deuda a la cual aplicar el ajuste.");
+      return;
+    }
+    
+    setProcesandoAjuste(true);
+    try {
+      // 1. Encontrar la deuda seleccionada
+      const mapaSaldos = {};
+      movimientosDetallados.forEach(m => {
+        if (!m.id_deuda) return;
+        if (!mapaSaldos[m.id_deuda]) {
+          mapaSaldos[m.id_deuda] = {
+            id_deuda: m.id_deuda,
+            concepto: m.concepto || `Deuda #${m.id_deuda}`,
+            id_acuerdo: m.id_acuerdo
+          };
+        }
+      });
+      const deuda = mapaSaldos[deudaAjusteId];
+      if (!deuda) {
+        throw new Error("Deuda seleccionada no encontrada.");
+      }
+      
+      // 2. Insertar en la tabla ajustes_motor
+      const registroAjuste = {
+        id_paciente: pacienteSeleccionado.id_paciente,
+        fecha_ajuste: fechaAjuste,
+        tipo_ajuste: tipoAjusteSeleccionado,
+        importe: importeNum.toString(),
+        concepto: conceptoAjuste || (tipoAjusteSeleccionado === 'nota_credito' ? 'Nota de Crédito' : 'Nota de Débito'),
+        observacion: observacionAjuste || '',
+        usuario: usuario || 'Sistema'
+      };
+      
+      const { error: errAjuste } = await supabase
+        .from('ajustes_motor')
+        .insert([registroAjuste]);
+        
+      if (errAjuste) throw errAjuste;
+      
+      // 3. Obtener el próximo id_movimiento
+      const { data: maxMovData, error: errorMaxMov } = await supabase
+        .from('movimientoscuenta_motor')
+        .select('id_movimiento')
+        .order('id_movimiento', { ascending: false })
+        .limit(1);
+
+      if (errorMaxMov) throw errorMaxMov;
+      const nextIdMovimiento = (maxMovData && maxMovData[0]?.id_movimiento ? parseInt(maxMovData[0].id_movimiento) : 0) + 1;
+
+      // 3b. Insertar en movimientoscuenta_motor para impactar el saldo de la cuenta corriente
+      const nuevoMovimiento = {
+        id_movimiento: nextIdMovimiento,
+        id_paciente: pacienteSeleccionado.id_paciente,
+        id_acuerdo: deuda.id_acuerdo,
+        id_deuda: deuda.id_deuda,
+        fecha_movimiento: fechaAjuste,
+        fecha_cuota_origen: fechaAjuste,
+        fecha_vencimiento: fechaAjuste,
+        tipo_movimiento: 'ajuste',
+        subtipo: tipoAjusteSeleccionado,
+        concepto: `${tipoAjusteSeleccionado === 'nota_credito' ? 'N.Crédito' : 'N.Débito'}: ${conceptoAjuste}`,
+        debe: tipoAjusteSeleccionado === 'nota_debito' ? importeNum.toString() : '0',
+        haber: tipoAjusteSeleccionado === 'nota_credito' ? importeNum.toString() : '0',
+        saldo: '0.00',
+        usuario: usuario || 'Sistema'
+      };
+      
+      const { error: errMov } = await supabase
+        .from('movimientoscuenta_motor')
+        .insert([nuevoMovimiento]);
+        
+      if (errMov) throw errMov;
+      
+      setMensaje({ texto: `${tipoAjusteSeleccionado === 'nota_credito' ? 'Nota de Crédito' : 'Nota de Débito'} registrada correctamente.`, tipo: 'exito' });
+      setModalAjusteAbierto(false);
+      
+      // Recargar la ficha de paciente
+      seleccionarPacientePorId({ target: { value: pacienteSeleccionado.id_paciente } });
+      
+    } catch (error) {
+      console.error("Error al registrar ajuste:", error);
+      alert("Error al registrar ajuste: " + error.message);
+    } finally {
+      setProcesandoAjuste(false);
+    }
+  };
+
+  const manejarReversionPago = async (idPago) => {
+    if (!window.confirm(`¿Está seguro de que desea revertir el pago con ID Pago #${idPago}? Esto insertará contra-movimientos en la cuenta corriente, caja/medios de pago, y liquidaciones de prestadores.`)) {
+      return;
+    }
+    
+    setCargando(true);
+    setMensaje({ texto: 'Procesando reversión de pago...', tipo: 'info' });
+    
+    try {
+      const fechaHoy = localStorage.getItem('crin_fecha_trabajo_simulada') || new Date().toISOString().split('T')[0];
+
+      // 1. Obtener movimientos originales de movimientoscuenta_motor con ese id_pago
+      const { data: movsOriginales, error: errGetMovs } = await supabase
+        .from('movimientoscuenta_motor')
+        .select('*')
+        .eq('id_pago', idPago);
+        
+      if (errGetMovs) throw errGetMovs;
+      
+      if (!movsOriginales || movsOriginales.length === 0) {
+        throw new Error("No se encontraron registros del pago original en movimientoscuenta_motor.");
+      }
+
+      // Filtrar movimientos que ya hayan sido revertidos para no duplicar la reversión
+      const { data: reversosExistentes, error: errCheckRevs } = await supabase
+        .from('movimientoscuenta_motor')
+        .select('*')
+        .eq('id_pago', idPago)
+        .eq('subtipo', 'reverso_pago');
+        
+      if (errCheckRevs) throw errCheckRevs;
+      if (reversosExistentes && reversosExistentes.length > 0) {
+        throw new Error("Este pago ya ha sido revertido anteriormente.");
+      }
+
+      // 1c. Obtener el próximo id_movimiento para la reversión
+      const { data: maxMovData, error: errorMaxMov } = await supabase
+        .from('movimientoscuenta_motor')
+        .select('id_movimiento')
+        .order('id_movimiento', { ascending: false })
+        .limit(1);
+
+      if (errorMaxMov) throw errorMaxMov;
+      const nextIdMovimiento = (maxMovData && maxMovData[0]?.id_movimiento ? parseInt(maxMovData[0].id_movimiento) : 0) + 1;
+
+      // 2. Insertar contra-movimientos en movimientoscuenta_motor (Reverso del Pago)
+      const nuevosReversosMov = movsOriginales.map((orig, idx) => {
+        const valDebeOrig = parsearMoneda(orig.debe);
+        const valHaberOrig = parsearMoneda(orig.haber);
+        
+        return {
+          id_movimiento: nextIdMovimiento + idx,
+          id_paciente: orig.id_paciente,
+          id_acuerdo: orig.id_acuerdo,
+          id_deuda: orig.id_deuda,
+          fecha_movimiento: fechaHoy,
+          fecha_cuota_origen: fechaHoy,
+          fecha_vencimiento: fechaHoy,
+          tipo_movimiento: 'ajuste',
+          subtipo: 'reverso_pago',
+          concepto: `REVERSO Pago: ${orig.concepto}`,
+          debe: valHaberOrig.toString(), // Lo que estaba en Haber pasa a Debe (aumenta deuda)
+          haber: valDebeOrig.toString(), // Lo que estaba en Debe pasa a Haber
+          saldo: '0.00',
+          id_pago: idPago, // Mantener el mismo id_pago para relacionarlos
+          usuario: usuario || 'Sistema'
+        };
+      });
+
+      const { error: errInsertMovs } = await supabase
+        .from('movimientoscuenta_motor')
+        .insert(nuevosReversosMov);
+        
+      if (errInsertMovs) throw errInsertMovs;
+
+      // 3. Revertir en medios de pago (Caja, Billetera o Banco)
+      // Buscar en caja_motor
+      const { data: cajaOrig, error: errCaja } = await supabase
+        .from('caja_motor')
+        .select('*')
+        .eq('id_pago', idPago)
+        .eq('tipo', 'INGRESO');
+        
+      if (errCaja) throw errCaja;
+      
+      if (cajaOrig && cajaOrig.length > 0) {
+        const hhmm = new Date().toTimeString().split(' ')[0].substring(0, 5).replace(':', '');
+        const yyyymmdd = fechaHoy.replace(/-/g, '');
+        const autoIdTurno = `${yyyymmdd}_${hhmm}_${(usuario || 'USER').toUpperCase()}`;
+        
+        const nuevosReversosCaja = cajaOrig.map(orig => ({
+          fecha: fechaHoy,
+          usuario: usuario || 'Sistema',
+          recibido_por: orig.recibido_por,
+          entregado_por: orig.entregado_por,
+          turno: orig.turno,
+          id_turno: autoIdTurno,
+          tipo: 'EGRESO',
+          concepto: `REVERSO Cobranza: ${orig.concepto}`,
+          medio_pago: orig.medio_pago,
+          importe: orig.importe,
+          saldo: '0.00',
+          id_pago: idPago,
+          observaciones: `Reversión automática de pago ID: ${idPago}`,
+          cierre_turno: false
+        }));
+        
+        const { error: errInsertCaja } = await supabase
+          .from('caja_motor')
+          .insert(nuevosReversosCaja);
+          
+        if (errInsertCaja) throw errInsertCaja;
+      }
+
+      // Buscar en billeteras_motor
+      const { data: billOrig, error: errBill } = await supabase
+        .from('billeteras_motor')
+        .select('*')
+        .eq('id_pago', idPago)
+        .eq('tipo', 'INGRESO');
+        
+      if (errBill) throw errBill;
+      
+      if (billOrig && billOrig.length > 0) {
+        const nuevosReversosBill = billOrig.map(orig => ({
+          fecha: fechaHoy,
+          usuario: usuario || 'Sistema',
+          billetera: orig.billetera,
+          tipo: 'EGRESO',
+          concepto: `REVERSO Cobranza QR: ${orig.concepto}`,
+          importe: orig.importe,
+          saldo: -orig.importe,
+          id_pago: idPago
+        }));
+        
+        const { error: errInsertBill } = await supabase
+          .from('billeteras_motor')
+          .insert(nuevosReversosBill);
+          
+        if (errInsertBill) throw errInsertBill;
+      }
+
+      // Buscar en bancos_motor
+      const { data: bancoOrig, error: errBanco } = await supabase
+        .from('bancos_motor')
+        .select('*')
+        .eq('id_pago', idPago)
+        .eq('tipo', 'INGRESO');
+        
+      if (errBanco) throw errBanco;
+      
+      if (bancoOrig && bancoOrig.length > 0) {
+        const nuevosReversosBanco = bancoOrig.map(orig => ({
+          fecha: fechaHoy,
+          usuario: usuario || 'Sistema',
+          banco: orig.banco,
+          tipo: 'EGRESO',
+          concepto: `REVERSO Cobranza Transf: ${orig.concepto}`,
+          importe: orig.importe,
+          saldo: -orig.importe,
+          id_pago: idPago
+        }));
+        
+        const { error: errInsertBanco } = await supabase
+          .from('bancos_motor')
+          .insert(nuevosReversosBanco);
+          
+        if (errInsertBanco) throw errInsertBanco;
+      }
+
+      // 4. Revertir liquidación a prestadores en movprestadores_motor
+      const { data: prestadoresOrig, error: errPrestadores } = await supabase
+        .from('movprestadores_motor')
+        .select('*')
+        .eq('id_pago', idPago);
+        
+      if (errPrestadores) throw errPrestadores;
+      
+      if (prestadoresOrig && prestadoresOrig.length > 0) {
+        const nuevosReversosPrestadores = prestadoresOrig.map(orig => {
+          const valDebe = parseFloat(orig.debe) || 0;
+          const valHaber = parseFloat(orig.haber) || 0;
+          
+          return {
+            id_prestador: orig.id_prestador,
+            id_paciente: orig.id_paciente,
+            fecha: fechaHoy,
+            id_pago: idPago,
+            concepto: `REVERSO ${orig.concepto}`,
+            debe: valHaber.toString(), // Lo que estaba en Haber (pago) pasa a Debe
+            haber: valDebe.toString(), // Lo que estaba en Debe pasa a Haber
+            saldo: '0.00',
+            usuario: usuario || 'Sistema',
+            acuerdo: orig.acuerdo
+          };
+        });
+        
+        const { error: errInsertPrestadores } = await supabase
+          .from('movprestadores_motor')
+          .insert(nuevosReversosPrestadores);
+          
+        if (errInsertPrestadores) throw errInsertPrestadores;
+      }
+
+      setMensaje({ texto: "El pago y todas sus distribuciones fueron revertidos correctamente.", tipo: 'exito' });
+      setTimeout(() => setMensaje({ texto: '', tipo: '' }), 4000);
+      
+      // Recargar la ficha
+      seleccionarPacientePorId({ target: { value: pacienteSeleccionado.id_paciente } });
+      
+    } catch (error) {
+      console.error("Error al revertir pago:", error);
+      alert("Error al revertir pago: " + error.message);
+    } finally {
+      setCargando(false);
+    }
+  };
+
   const obtenerColorEstado = (estado) => {
     const est = (estado || '').toLowerCase();
     if (est.includes('activo')) return { bg: '#dcfce7', color: '#166534' };
@@ -539,6 +897,13 @@ export default function FichaPaciente({ onVolver, usuario }) {
   const totalDebeGeneral = movimientosDetallados.reduce((acc, m) => acc + parsearMoneda(m.debe), 0);
   const totalHaberGeneral = movimientosDetallados.reduce((acc, m) => acc + parsearMoneda(m.haber), 0);
   const saldoFinalGeneral = totalDebeGeneral - totalHaberGeneral;
+
+  const idsPagosRevertidos = new Set(
+    movimientosDetallados
+      .filter(m => m.subtipo === 'reverso_pago')
+      .map(m => m.id_pago)
+      .filter(id => id !== null && id !== undefined)
+  );
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', background: '#fff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
@@ -718,6 +1083,26 @@ export default function FichaPaciente({ onVolver, usuario }) {
                       💵 Registrar Pago
                     </button>
                   )}
+                  {movimientosDetallados.length > 0 && (
+                    <>
+                      <button
+                        onClick={() => { setTipoAjusteSeleccionado('nota_credito'); setModalAjusteAbierto(true); }}
+                        style={{ background: '#0ea5e9', color: '#fff', border: 'none', padding: '6px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', transition: 'background 0.2s' }}
+                        onMouseOver={(e) => e.target.style.background = '#0284c7'}
+                        onMouseOut={(e) => e.target.style.background = '#0ea5e9'}
+                      >
+                        ➕ Nota de Crédito
+                      </button>
+                      <button
+                        onClick={() => { setTipoAjusteSeleccionado('nota_debito'); setModalAjusteAbierto(true); }}
+                        style={{ background: '#f59e0b', color: '#fff', border: 'none', padding: '6px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', transition: 'background 0.2s' }}
+                        onMouseOver={(e) => e.target.style.background = '#d97706'}
+                        onMouseOut={(e) => e.target.style.background = '#f59e0b'}
+                      >
+                        ➖ Nota de Débito
+                      </button>
+                    </>
+                  )}
                   <button
                     onClick={() => setVistaActiva('menu')}
                     style={{ background: '#e2e8f0', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#334155' }}
@@ -820,6 +1205,7 @@ export default function FichaPaciente({ onVolver, usuario }) {
                           <th style={{ padding: '10px' }}>Concepto</th>
                           <th style={{ padding: '10px', textAlign: 'right' }}>Debe ($)</th>
                           <th style={{ padding: '10px', textAlign: 'right' }}>Haber ($)</th>
+                          <th style={{ padding: '10px', textAlign: 'center' }}>Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -848,6 +1234,18 @@ export default function FichaPaciente({ onVolver, usuario }) {
                               <td style={{ padding: '10px', textAlign: 'right', fontWeight: '600', color: valHaber > 0 ? '#16a34a' : '#64748b' }}>
                                 {valHaber > 0 ? `$${valHaber.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
                               </td>
+                              <td style={{ padding: '10px', textAlign: 'center' }}>
+                                {mov.id_pago && mov.subtipo !== 'reverso_pago' && !idsPagosRevertidos.has(mov.id_pago) && (
+                                  <button
+                                    onClick={() => manejarReversionPago(mov.id_pago)}
+                                    style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold', transition: 'background 0.2s' }}
+                                    onMouseOver={(e) => e.target.style.background = '#991b1b'}
+                                    onMouseOut={(e) => e.target.style.background = '#dc2626'}
+                                  >
+                                    Revertir
+                                  </button>
+                                )}
+                              </td>
                             </tr>
                           );
                         })}
@@ -863,12 +1261,13 @@ export default function FichaPaciente({ onVolver, usuario }) {
                           <td style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 'bold', color: '#16a34a', fontSize: '14px' }}>
                             ${totalHaberGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
+                          <td style={{ padding: '10px' }} />
                         </tr>
                         <tr style={{ background: '#f1f5f9' }}>
                           <td colSpan="4" style={{ padding: '10px', fontWeight: 'bold', color: '#0f172a', textAlign: 'right', fontSize: '14px' }}>
                             Saldo Neto (Debe - Haber):
                           </td>
-                          <td colSpan="2" style={{ padding: '10px', textAlign: 'center', fontWeight: 'bold', color: saldoFinalGeneral > 0 ? '#dc2626' : '#16a34a', fontSize: '15px' }}>
+                          <td colSpan="3" style={{ padding: '10px', textAlign: 'center', fontWeight: 'bold', color: saldoFinalGeneral > 0 ? '#dc2626' : '#16a34a', fontSize: '15px' }}>
                             ${saldoFinalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                         </tr>
@@ -905,7 +1304,7 @@ export default function FichaPaciente({ onVolver, usuario }) {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '15px', marginBottom: '20px' }}>
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: '#0f172a' }}>
-                💵 Registrar Cobro de Pago
+                💵 Registrar Pago ({pacienteSeleccionado?.nombre_apellido})
               </h3>
               <button
                 onClick={() => setModalPagoAbierto(false)}
@@ -1176,10 +1575,182 @@ export default function FichaPaciente({ onVolver, usuario }) {
                 {procesandoPago ? 'Procesando...' : 'Confirmar Pago'}
               </button>
             </div>
-
           </div>
         </div>
       )}
+
+      {/* Modal Ajuste (Nota de Crédito / Débito) */}
+      {modalAjusteAbierto && (() => {
+        // Calcular deudas con sus saldos acumulados de movimientosDetallados
+        const mapaSaldos = {};
+        movimientosDetallados.forEach(m => {
+          if (!m.id_deuda) return;
+          if (!mapaSaldos[m.id_deuda]) {
+            mapaSaldos[m.id_deuda] = {
+              id_deuda: m.id_deuda,
+              concepto: m.concepto || `Deuda #${m.id_deuda}`,
+              debe: 0,
+              haber: 0
+            };
+          }
+          mapaSaldos[m.id_deuda].debe += parsearMoneda(m.debe);
+          mapaSaldos[m.id_deuda].haber += parsearMoneda(m.haber);
+        });
+        
+        const deudasDisponibles = Object.values(mapaSaldos).map(d => ({
+          ...d,
+          saldoReal: d.debe - d.haber
+        }));
+
+        return (
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 1100,
+            padding: '20px'
+          }}>
+            <div style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '12px',
+              width: '100%',
+              maxWidth: '550px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+              padding: '30px',
+              color: '#1e293b',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              fontFamily: 'Segoe UI, system-ui, sans-serif'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '15px', marginBottom: '20px' }}>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: '#0f172a' }}>
+                  {tipoAjusteSeleccionado === 'nota_credito' ? '➕ Registrar Nota de Crédito' : '➖ Registrar Nota de Débito'}
+                </h3>
+                <button
+                  onClick={() => setModalAjusteAbierto(false)}
+                  style={{ background: 'transparent', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8' }}
+                >
+                  &times;
+                </button>
+              </div>
+
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
+                  Paciente
+                </label>
+                <input
+                  type="text"
+                  readOnly
+                  value={pacienteSeleccionado?.nombre_apellido || ''}
+                  style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', background: '#f1f5f9', color: '#64748b' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
+                  Seleccionar Deuda a Afectar *
+                </label>
+                <select
+                  value={deudaAjusteId}
+                  onChange={(e) => setDeudaAjusteId(e.target.value)}
+                  style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', background: '#f8fafc', color: '#0f172a' }}
+                >
+                  <option value="">-- Seleccionar Deuda --</option>
+                  {deudasDisponibles.map(d => (
+                    <option key={d.id_deuda} value={d.id_deuda}>
+                      #{d.id_deuda} - {d.concepto} (Saldo: ${d.saldoReal.toLocaleString('es-AR')})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
+                  Importe del Ajuste ($) *
+                </label>
+                <input
+                  type="number"
+                  value={importeAjuste}
+                  onChange={(e) => setImporteAjuste(e.target.value)}
+                  placeholder="Ej: 5000"
+                  style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
+                  Fecha del Ajuste *
+                </label>
+                <input
+                  type="date"
+                  value={fechaAjuste}
+                  onChange={(e) => setFechaAjuste(e.target.value)}
+                  style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
+                  Concepto *
+                </label>
+                <input
+                  type="text"
+                  value={conceptoAjuste}
+                  onChange={(e) => setConceptoAjuste(e.target.value)}
+                  placeholder="Ej: Bonificación por acuerdo"
+                  style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
+                  Observación / Nota interna
+                </label>
+                <textarea
+                  value={observacionAjuste}
+                  onChange={(e) => setObservacionAjuste(e.target.value)}
+                  placeholder="Escriba aquí los detalles o justificación de la nota..."
+                  rows="3"
+                  style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', fontFamily: 'inherit', resize: 'vertical' }}
+                />
+              </div>
+
+              {/* Acciones de Modal */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid #e2e8f0', paddingTop: '20px' }}>
+                <button
+                  type="button"
+                  onClick={() => setModalAjusteAbierto(false)}
+                  disabled={procesandoAjuste}
+                  style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#475569' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmarRegistroAjuste}
+                  disabled={procesandoAjuste}
+                  style={{
+                    background: tipoAjusteSeleccionado === 'nota_credito' ? '#0ea5e9' : '#f59e0b',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '8px 20px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: '600'
+                  }}
+                >
+                  {procesandoAjuste ? 'Procesando...' : 'Confirmar Nota'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
         </div>
       )}
