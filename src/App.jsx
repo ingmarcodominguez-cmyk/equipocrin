@@ -6,6 +6,8 @@ import FormularioAcuerdo from './components/FormularioAcuerdo.jsx'
 import FichaPaciente from './components/FichaPaciente.jsx'
 import SimuladorMotorMora from './components/SimuladorMotorMora.jsx'
 import FichaPrestadores from './components/FichaPrestadores.jsx'
+import AsistenciaAuxiliares from './components/AsistenciaAuxiliares.jsx'
+import LiquidacionAuxiliares from './components/LiquidacionAuxiliares.jsx'
 
 const normalizarRol = (r) => {
   if (!r) return '';
@@ -746,6 +748,24 @@ function App() {
           </div>
         )}
 
+        {crinAccion === 'ASISTENCIA_AUXILIARES' && (
+          <div style={{ width: '100%', maxWidth: '950px' }}>
+             <AsistenciaAuxiliares 
+               onVolver={() => setCrinAccion(null)} 
+               usuario={userData?.nombre || session?.user?.email || 'Usuario'} 
+             />
+          </div>
+        )}
+
+        {crinAccion === 'LIQUIDACION_AUXILIARES' && (
+          <div style={{ width: '100%', maxWidth: '950px' }}>
+             <LiquidacionAuxiliares 
+               onVolver={() => setCrinAccion(null)} 
+               usuario={userData?.nombre || session?.user?.email || 'Usuario'} 
+             />
+          </div>
+        )}
+
         {crinAccion === 'SIMULADOR_MORA' && (
           <div style={{ width: '100%', maxWidth: '900px' }}>
             <SimuladorMotorMora />
@@ -794,6 +814,22 @@ function App() {
             >
               <span style={{ fontSize: '28px' }}>🩺💼</span>
               FICHA PRESTADORES
+            </button>
+
+            <button 
+              onClick={() => handleAccionClick('ASISTENCIA_AUXILIARES')}
+              style={{ width: '100%', padding: '26px 20px', background: 'linear-gradient(135deg, #f0fdf4 100%, #dcfce7 0%)', color: '#166534', border: '2px solid #bbf7d0', borderRadius: '20px', cursor: 'pointer', fontWeight: '800', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px' }}
+            >
+              <span style={{ fontSize: '28px' }}>📋🤝</span>
+              ASISTENCIA AUXILIARES
+            </button>
+
+            <button 
+              onClick={() => handleAccionClick('LIQUIDACION_AUXILIARES')}
+              style={{ width: '100%', padding: '26px 20px', background: 'linear-gradient(135deg, #fef3c7 100%, #fde68a 0%)', color: '#b45309', border: '2px solid #fde68a', borderRadius: '20px', cursor: 'pointer', fontWeight: '800', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px' }}
+            >
+              <span style={{ fontSize: '28px' }}>💰📊</span>
+              LIQUIDACIÓN AUXILIARES
             </button>
 
             <button 
