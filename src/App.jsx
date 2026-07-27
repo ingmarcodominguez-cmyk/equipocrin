@@ -12,6 +12,7 @@ function App() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [cargando, setCargando] = useState(true)
+  const [mensajeCarga, setMensajeCarga] = useState('Iniciando sistema...')
   
   const [modoSeleccionado, setModoSeleccionado] = useState(null)
   const [crinAccion, setCrinAccion] = useState(null)
@@ -50,6 +51,7 @@ function App() {
 
   async function cargarPerfil(userId) {
     setCargando(true)
+    setMensajeCarga('Cargando perfil de usuario...')
     const { data: perfil } = await supabase.from('users').select('*').eq('id', userId).single()
     setUserData(perfil)
     setCargando(false)
@@ -79,7 +81,19 @@ function App() {
     return new Date();
   }
 
-  // ⚙️ MOTOR DE GENERACIÓN DE CUOTAS (CON VIGÍA Y ACUERDOS_MOTOR COMO FUENTE DE LA VERDAD)
+  function obtenerSiguientePeriodo(periodo) {
+    const anio = Math.floor(periodo / 100);
+    const mes = periodo % 100;
+    let nuevoMes = mes + 1;
+    let nuevoAnio = anio;
+    if (nuevoMes > 12) {
+      nuevoMes = 1;
+      nuevoAnio++;
+    }
+    return (nuevoAnio * 100) + nuevoMes;
+  }
+
+  // ⚙️ MOTOR DE GENERACIÓN DE CUOTAS (CON VIGÍA A PRUEBA DE BRECHAS)
   async function generarCuotasMensualesDB(forzarPrueba = false) {
     try {
       const fechaTrabajo = obtenerFechaTrabajo();
@@ -88,11 +102,10 @@ function App() {
       const periodoActualInt = (anioActual * 100) + mesActual; 
 
       const nombresMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-      const nombreMesStr = nombresMeses[fechaTrabajo.getMonth()];
 
       const porcentajeAumento = parseFloat(porcentajeAumentoInput) || 0;
 
-      // 1. Consultar al VIGÍA (tabla control_periodos_motor) para saber el último mes procesado
+      // 1. Consultar al VIGÍA (tabla control_periodos_motor)
       const { data: periodosProcesados, error: errorVigia } = await supabase
         .from('control_periodos_motor')
         .select('periodo_int')
@@ -100,26 +113,28 @@ function App() {
         .limit(1);
 
       if (errorVigia) {
-        throw new Error("Error al consultar el vigía (control_periodos_motor): " + errorVigia.message);
+        throw new Error("Error al consultar el vigía: " + errorVigia.message);
       }
 
       const ultimoPeriodoProcesado = periodosProcesados && periodosProcesados.length > 0 ? periodosProcesados[0].periodo_int : 0;
 
-      // Si ya fue procesado y no estamos forzando la prueba de forma manual
       if (ultimoPeriodoProcesado >= periodoActualInt && !forzarPrueba) {
-        alert(`ℹ️ El periodo actual (${nombreMesStr} ${anioActual}) ya fue procesado previamente por el sistema.`);
         return;
       }
 
-      const confirmar = window.confirm(
-        `⚙️ [MOTOR CRIN - VIGÍA]\nÚltimo periodo procesado: ${ultimoPeriodoProcesado || 'Ninguno'}\nPeriodo a procesar: ${nombreMesStr} ${anioActual} (${periodoActualInt})\nAumento configurado: ${porcentajeAumento}%\n\n¿Confirmás generar las cuotas?`
-      );
+      // Determinamos los períodos a generar para cubrir cualquier brecha
+      const periodosAProcesar = [];
+      if (ultimoPeriodoProcesado === 0 || forzarPrueba) {
+        periodosAProcesar.push(periodoActualInt);
+      } else {
+        let aux = obtenerSiguientePeriodo(ultimoPeriodoProcesado);
+        while (aux <= periodoActualInt) {
+          periodosAProcesar.push(aux);
+          aux = obtenerSiguientePeriodo(aux);
+        }
+      }
 
-      if (!confirmar) return;
-
-      setCargando(true);
-
-      // 2. Traer todos los acuerdos de la tabla para analizarlos con flexibilidad
+      // 2. Traer acuerdos activos
       const { data: acuerdosActivos, error: errorAcuerdos } = await supabase
         .from('acuerdos_motor')
         .select('*');
@@ -128,7 +143,6 @@ function App() {
         throw new Error("Error al consultar acuerdos_motor: " + errorAcuerdos.message);
       }
 
-      // Filtrado flexible (ignora mayúsculas, minúsculas y espacios extra)
       const acuerdosFiltrados = (acuerdosActivos || []).filter(acuerdo => {
         const tipo = (acuerdo.tipo_acuerdo || '').trim().toLowerCase();
         const estado = (acuerdo.estado || '').trim().toLowerCase();
@@ -136,19 +150,17 @@ function App() {
       });
 
       if (acuerdosFiltrados.length === 0) {
-        setCargando(false);
-        alert('ℹ️ No se encontraron acuerdos mensuales activos en la tabla (verificá si en tipo_acuerdo dice "mensual" y en estado "activo").');
         return;
       }
 
-      // 3. Obtener el mayor id_deuda existente en movimientoscuenta_motor para continuar el incremento
+      // 3. Obtener mayor id_deuda existente
       const { data: todosMovimientos, error: errorMovs } = await supabase
         .from('movimientoscuenta_motor')
         .select('id_deuda')
         .order('id_movimiento', { ascending: false });
 
       if (errorMovs) {
-        throw new Error("Error al consultar movimientoscuenta_motor para el ID de deuda: " + errorMovs.message);
+        throw new Error("Error al consultar movimientoscuenta_motor: " + errorMovs.message);
       }
 
       let maxIdDeuda = 0;
@@ -161,105 +173,278 @@ function App() {
         }
       }
 
-      let cuotasGeneradasCount = 0;
       const nuevosMovimientosBulk = [];
       const actualizacionesAcuerdos = [];
+      const controlPeriodosBulk = [];
 
-      // 4. Procesar cada acuerdo filtrado individualmente
-      for (const acuerdosActivo of acuerdosFiltrados) {
-        // Limpieza robusta del importe_actual (maneja textos con puntos de miles o comas)
-        const importeStr = String(acuerdosActivo.importe_actual || '0')
-          .replace(/\./g, '')       // Saca puntos de miles (ej. "275.000" -> "275000")
-          .replace(',', '.');       // Reemplaza coma decimal por punto si la hubiera
+      // Mapeamos los acuerdos filtrados a memoria para llevar registro de sus importes
+      const listaAcuerdosEnMemoria = acuerdosFiltrados.map(a => {
+        const importeStr = String(a.importe_actual || '0')
+          .replace(/\./g, '')       
+          .replace(',', '.');       
 
         let importeBase = parseFloat(importeStr);
         if (isNaN(importeBase)) importeBase = 0;
+        
+        return {
+          ...a,
+          importeBase
+        };
+      });
 
-        let nuevoImporte = importeBase;
+      // Procesamos cada período faltante cronológicamente
+      for (const periodo of periodosAProcesar) {
+        const anio = Math.floor(periodo / 100);
+        const mes = periodo % 100;
+        const nombreMesStr = nombresMeses[mes - 1];
 
-        if (porcentajeAumento > 0) {
-          nuevoImporte = importeBase * (1 + porcentajeAumento / 100);
-          nuevoImporte = Math.round(nuevoImporte * 100) / 100; // Redondea a 2 decimales exactos
-        }
-
-        // Incrementar el id_deuda para esta nueva cuota
-        maxIdDeuda++;
-        const nuevoIdDeuda = maxIdDeuda.toString();
-
-        const diaVencimientoPactado = acuerdosActivo.dia_vencimiento || 10;
-        const mesStrPadded = String(mesActual).padStart(2, '0');
-        const diaStrPadded = String(diaVencimientoPactado).padStart(2, '0');
-        const fechaVencimientoStr = `${anioActual}-${mesStrPadded}-${diaStrPadded}`;
-
-        nuevosMovimientosBulk.push({
-          id_acuerdo: acuerdosActivo.id_acuerdo,
-          id_paciente: acuerdosActivo.id_paciente,
-          id_deuda: nuevoIdDeuda,
-          tipo_movimiento: 'cuota',
-          subtipo: 'cuota_mensual',
-          concepto: `Cuota ${nombreMesStr} ${anioActual}`,
-          debe: nuevoImporte.toString(),
-          haber: '0',
-          ciclo_mora: periodoActualInt,
-          fecha_movimiento: fechaTrabajo.toISOString().split('T')[0],
-          fecha_vencimiento: fechaVencimientoStr,
-          fecha_cuota_origen: fechaVencimientoStr
+        controlPeriodosBulk.push({
+          periodo_int: periodo,
+          nombre_periodo: `${nombreMesStr} ${anio}`
         });
 
-        // Opcional: si el aumento modificó el importe, actualizamos también el importe_actual del acuerdo
-        if (porcentajeAumento > 0) {
+        for (const acuerdo of listaAcuerdosEnMemoria) {
+          let nuevoImporte = acuerdo.importeBase;
+
+          // El porcentaje de aumento solo se aplica al período final de trabajo actual
+          if (periodo === periodoActualInt && porcentajeAumento > 0) {
+            nuevoImporte = nuevoImporte * (1 + porcentajeAumento / 100);
+            nuevoImporte = Math.round(nuevoImporte * 100) / 100; 
+            acuerdo.importeBase = nuevoImporte; // Actualizamos para que sirva de base si hubiera más meses
+          }
+
+          maxIdDeuda++;
+          const nuevoIdDeuda = maxIdDeuda.toString();
+
+          const diaVencimientoPactado = acuerdo.dia_vencimiento || 10;
+          const mesStrPadded = String(mes).padStart(2, '0');
+          const diaStrPadded = String(diaVencimientoPactado).padStart(2, '0');
+          const fechaVencimientoStr = `${anio}-${mesStrPadded}-${diaStrPadded}`;
+          const fechaMovimientoStr = `${anio}-${mesStrPadded}-01`;
+
+          nuevosMovimientosBulk.push({
+            id_acuerdo: acuerdo.id_acuerdo,
+            id_paciente: acuerdo.id_paciente,
+            id_deuda: nuevoIdDeuda,
+            tipo_movimiento: 'cuota',
+            subtipo: 'cuota_mensual',
+            concepto: `Cuota ${nombreMesStr} ${anio}`,
+            debe: nuevoImporte.toString(),
+            haber: '0',
+            ciclo_mora: periodo,
+            fecha_movimiento: fechaMovimientoStr,
+            fecha_vencimiento: fechaVencimientoStr,
+            fecha_cuota_origen: fechaVencimientoStr
+          });
+        }
+      }
+
+      // Si hubo aumento, actualizamos el precio final de los acuerdos en la base de datos
+      if (porcentajeAumento > 0) {
+        for (const acuerdo of listaAcuerdosEnMemoria) {
           actualizacionesAcuerdos.push(
             supabase
               .from('acuerdos_motor')
-              .update({ importe_actual: nuevoImporte.toString() })
-              .eq('id_acuerdo', acuerdosActivo.id_acuerdo)
+              .update({ importe_actual: acuerdo.importeBase.toString() })
+              .eq('id_acuerdo', acuerdo.id_acuerdo)
           );
         }
-
-        cuotasGeneradasCount++;
       }
 
-      // 5. Insertar los nuevos movimientos en lote
+      // Insertamos los movimientos generados
       if (nuevosMovimientosBulk.length > 0) {
         const { error: errorBulkInsert } = await supabase
           .from('movimientoscuenta_motor')
           .insert(nuevosMovimientosBulk);
 
         if (errorBulkInsert) {
-          throw new Error("Error al insertar las cuotas masivas: " + errorBulkInsert.message);
+          throw new Error("Error al insertar cuotas masivas: " + errorBulkInsert.message);
         }
       }
 
-      // 6. Ejecutar actualizaciones de importes si hubo aumentos
+      // Guardamos la actualización de importes
       if (actualizacionesAcuerdos.length > 0) {
         await Promise.all(actualizacionesAcuerdos);
       }
 
-      // 7. Actualizar el VIGÍA registrando que este periodo ya fue procesado exitosamente
-      const { error: errorRegVigia } = await supabase
-        .from('control_periodos_motor')
-        .insert({
-          periodo_int: periodoActualInt,
-          nombre_periodo: `${nombreMesStr} ${anioActual}`
-        });
+      // Guardamos el control de períodos procesados usando upsert para evitar errores de duplicado
+      if (controlPeriodosBulk.length > 0) {
+        const { error: errorControl } = await supabase
+          .from('control_periodos_motor')
+          .upsert(controlPeriodosBulk);
 
-      if (errorRegVigia) {
-        console.error("Advertencia al registrar en el vigía:", errorRegVigia.message);
+        if (errorControl) {
+          throw new Error("Error al insertar control de períodos: " + errorControl.message);
+        }
       }
 
-      setCargando(false);
-      alert(`✅ ¡Proceso de cuotas finalizado con éxito!\n\n- Periodo registrado en Vigía: ${nombreMesStr} ${anioActual} (${periodoActualInt})\n- Cuotas mensuales generadas: ${cuotasGeneradasCount}\n- ID Deuda incrementales aplicados\n- Aumento aplicado: ${porcentajeAumento}%.`);
-
     } catch (err) {
-      setCargando(false);
-      console.error("Excepción atrapada en generarCuotasMensualesDB:", err);
-      alert('❌ Error crítico en el motor: ' + (err.message || JSON.stringify(err)));
+      console.error("Excepción en generarCuotasMensualesDB:", err);
+      alert('❌ Error crítico en el motor de cuotas: ' + (err.message || JSON.stringify(err)));
     }
   }
 
+// ⚡ MOTOR DE RECARGOS CORREGIDO (FACTOR MATEMÁTICO EXACTO)
+  async function ejecutarMotorRecargosDB(fechaTrabajo) {
+    try {
+      const { data: movimientos, error: errorMovs } = await supabase
+        .from('movimientoscuenta_motor')
+        .select('*')
+        .order('fecha_movimiento', { ascending: true });
+
+      if (errorMovs) {
+        throw new Error("Error al obtener movimientos para recargos: " + errorMovs.message);
+      }
+
+      if (!movimientos || movimientos.length === 0) return;
+
+      const deudasMap = {};
+      movimientos.forEach(m => {
+        if (!m.id_deuda) return;
+        if (!deudasMap[m.id_deuda]) {
+          deudasMap[m.id_deuda] = {
+            id_deuda: m.id_deuda,
+            id_paciente: m.id_paciente,
+            id_acuerdo: m.id_acuerdo,
+            subtipo: m.subtipo,
+            fecha_vencimiento: m.fecha_vencimiento,
+            movimientos: []
+          };
+        }
+        deudasMap[m.id_deuda].movimientos.push(m);
+      });
+
+      let maxIdMovimiento = movimientos.reduce((max, m) => {
+        const idNum = parseInt(m.id_movimiento, 10);
+        return !isNaN(idNum) && idNum > max ? idNum : max;
+      }, 0);
+
+      const nuevosRecargosBulk = [];
+
+      for (const idDeuda in deudasMap) {
+        const deuda = deudasMap[idDeuda];
+
+        const cuotaBase = deuda.movimientos.find(m => m.subtipo === 'cuota_mensual');
+        if (!cuotaBase) continue;
+
+        if (!deuda.fecha_vencimiento) continue;
+        const [anioVenc, mesVenc, diaVenc] = deuda.fecha_vencimiento.split('-').map(Number);
+        const fechaVencObj = new Date(anioVenc, mesVenc - 1, diaVenc);
+
+        const diffTiempo = fechaTrabajo.getTime() - fechaVencObj.getTime();
+        const diasAtrasoTotal = Math.floor(diffTiempo / (1000 * 60 * 60 * 24));
+
+        if (diasAtrasoTotal <= 0) continue;
+
+        const recargosExistentes = deuda.movimientos.filter(m => 
+          m.subtipo === 'recargo_mora' || (m.concepto && m.concepto.toLowerCase().includes('recargo'))
+        );
+
+        const hitosEsperados = [];
+        if (diasAtrasoTotal >= 1) hitosEsperados.push({ nro: 1, diasReq: 1, porcentaje: 0.10, label: 'Recargo por mora (10%)' });
+        if (diasAtrasoTotal >= 11) hitosEsperados.push({ nro: 2, diasReq: 11, porcentaje: 0.05, label: 'Recargo por mora escalón (2)' });
+        if (diasAtrasoTotal >= 21) hitosEsperados.push({ nro: 3, diasReq: 21, porcentaje: 0.05, label: 'Recargo por mora escalón (3)' });
+        if (diasAtrasoTotal >= 31) hitosEsperados.push({ nro: 4, diasReq: 31, porcentaje: 0.05, label: 'Recargo por mora escalón (4)' });
+        if (diasAtrasoTotal >= 41) hitosEsperados.push({ nro: 5, diasReq: 41, porcentaje: 0.05, label: 'Recargo por mora escalón (5)' });
+
+        if (recargosExistentes.length >= hitosEsperados.length) continue;
+
+        let listaSimulada = [...deuda.movimientos];
+        const importeCuotaBase = parseFloat(cuotaBase.debe || 0);
+
+        for (let i = 0; i < hitosEsperados.length; i++) {
+          const hito = hitosEsperados[i];
+          
+          if (i < recargosExistentes.length) continue;
+
+          let debeSim = listaSimulada.reduce((acc, m) => acc + parseFloat(m.debe || 0), 0);
+          let haberSim = listaSimulada.reduce((acc, m) => acc + parseFloat(m.haber || 0), 0);
+          let saldoAcumuladoActual = debeSim - haberSim;
+
+          if (saldoAcumuladoActual <= 0) break;
+
+          let baseCalculo = (hito.nro === 1) ? importeCuotaBase : saldoAcumuladoActual;
+
+          // Cálculo limpio sin alterar puntos decimales raros
+          const montoRecargo = Math.round((baseCalculo * hito.porcentaje) * 100) / 100;
+          maxIdMovimiento++;
+
+          const fechaHitoObj = new Date(fechaVencObj.getTime());
+          fechaHitoObj.setDate(fechaHitoObj.getDate() + (hito.diasReq - 1));
+          
+          const fechaEfectivaRecargo = fechaHitoObj > fechaTrabajo ? fechaTrabajo : fechaHitoObj;
+          const fechaStr = fechaEfectivaRecargo.toISOString().split('T')[0];
+
+          const nuevoRecargoItem = {
+            id_acuerdo: deuda.id_acuerdo,
+            id_paciente: deuda.id_paciente,
+            id_deuda: deuda.id_deuda,
+            tipo_movimiento: 'deuda',
+            subtipo: 'recargo_mora',
+            concepto: hito.label,
+            debe: montoRecargo.toString(), // Se guarda como string plano limpio (ej: "29040" o "16770.6")
+            haber: '0',
+            fecha_movimiento: fechaStr,
+            fecha_vencimiento: deuda.fecha_vencimiento
+          };
+
+          nuevosRecargosBulk.push(nuevoRecargoItem);
+          listaSimulada.push(nuevoRecargoItem);
+        }
+      }
+
+      if (nuevosRecargosBulk.length > 0) {
+        const { error: errorInsertRecargos } = await supabase
+          .from('movimientoscuenta_motor')
+          .insert(nuevosRecargosBulk);
+
+        if (errorInsertRecargos) {
+          console.error("Error al insertar recargos:", errorInsertRecargos.message);
+        } else {
+          console.log(`[Motor de Mora] Se insertaron ${nuevosRecargosBulk.length} recargos correctamente.`);
+        }
+      }
+
+    } catch (err) {
+      console.error("Error crítico en ejecutarMotorRecargosDB:", err);
+    }
+  }
+
+  // 🚀 FUNCIÓN MAESTRA CON MENSAJES DE PROGRESO Y BLOQUEO VISUAL
+  const handleAccesoSistemaCrin = async () => {
+    setCargando(true);
+    try {
+      const fechaActualTrabajo = obtenerFechaTrabajo();
+
+      setMensajeCarga('Verificando y generando cuotas mensuales...');
+      await generarCuotasMensualesDB(false);
+
+      setMensajeCarga('Calculando y aplicando recargos por mora...');
+      if (typeof ejecutarMotorRecargosDB === 'function') {
+        await ejecutarMotorRecargosDB(fechaActualTrabajo);
+      }
+
+      setMensajeCarga('¡Todo listo! Abriendo Sistema Crin...');
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      setModoSeleccionado('crin');
+    } catch (error) {
+      console.error("Error al iniciar Sistema Crin:", error);
+      alert("Hubo un error al procesar los motores automáticos.");
+    } finally {
+      setCargando(false);
+      setMensajeCarga('Cargando...');
+    }
+  };
+
   async function login() {
+    setCargando(true);
+    setMensajeCarga('Iniciando sesión...');
     const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) alert('Login incorrecto: ' + error.message)
+    if (error) {
+      setCargando(false);
+      alert('Login incorrecto: ' + error.message);
+    }
   }
 
   async function logout() {
@@ -270,7 +455,23 @@ function App() {
     window.location.reload()
   }
 
-  if (cargando && !session) return <div style={{ padding: 20 }}>Cargando sistema...</div>
+  if (cargando) {
+    return (
+      <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', fontFamily: 'sans-serif', gap: '20px' }}>
+        <div style={{ width: '50px', height: '50px', border: '5px solid #333', borderTop: '5px solid #00f2ff', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+        <div style={{ textAlign: 'center' }}>
+          <h3 style={{ color: '#00f2ff', margin: '0 0 10px 0' }}>Trabajando en el Sistema...</h3>
+          <p style={{ color: '#aaa', fontSize: '14px', margin: 0 }}>{mensajeCarga}</p>
+        </div>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   if (session && !userData) {
     return <div style={{ padding: 20 }}>Cargando perfil...</div>
@@ -303,10 +504,7 @@ function App() {
             </button>
             
             <button 
-              onClick={async () => {
-                setModoSeleccionado('crin');
-                await generarCuotasMensualesDB(false);
-              }} 
+              onClick={handleAccesoSistemaCrin} 
               style={{ padding: '15px', background: '#111', color: '#fff', border: '1px solid #00f2ff', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}
             >
               💻 Acceder a Sistema Crin
@@ -344,13 +542,6 @@ function App() {
               placeholder="Ej: 10"
               style={{ width: '100%', padding: '6px', borderRadius: '5px', background: '#222', color: '#fff', border: '1px solid #444', fontSize: '13px', marginBottom: '12px', boxSizing: 'border-box' }}
             />
-
-            <button 
-              onClick={() => generarCuotasMensualesDB(true)}
-              style={{ width: '100%', padding: '10px', background: '#d97706', color: '#fff', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px', marginBottom: '8px' }}
-            >
-              ⚡ Forzar Generación de Cuotas
-            </button>
 
             <button 
               onClick={() => {
@@ -403,12 +594,6 @@ function App() {
             ← Volver
           </button>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <button 
-              onClick={() => generarCuotasMensualesDB(false)}
-              style={{ background: '#d97706', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '11px' }}
-            >
-              ⚡ Procesar Cuotas ({obtenerFechaTrabajo().toLocaleDateString()})
-            </button>
             <h2 style={{ margin: 0, fontSize: '24px', color: '#1a365d', fontWeight: '800', letterSpacing: '0.5px' }}>✨ Sistema Crin</h2>
           </div>
         </div>
@@ -507,7 +692,10 @@ function App() {
 
         {crinAccion === 'FICHA_PACIENTE' && (
           <div style={{ width: '100%', maxWidth: '950px' }}>
-            <FichaPaciente onVolver={() => setCrinAccion(null)} />
+             <FichaPaciente 
+               onVolver={() => setCrinAccion(null)} 
+               usuario={userData?.nombre || session?.user?.email || 'Usuario'} 
+             />
           </div>
         )}
 
