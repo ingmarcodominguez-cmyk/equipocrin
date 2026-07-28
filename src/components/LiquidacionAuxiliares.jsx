@@ -174,7 +174,8 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
     try {
       const [anio, mes] = periodoLiquidar.split('-');
       const primerDia = `${anio}-${mes}-01`;
-      const ultimoDia = `${anio}-${mes}-31`; // Supabase resolverá correctamente las fechas intermedias
+      const ultimoDiaVal = new Date(parseInt(anio), parseInt(mes), 0).getDate();
+      const ultimoDia = `${anio}-${mes}-${String(ultimoDiaVal).padStart(2, '0')}`;
 
       const { data, error } = await supabase
         .from('asistencia_auxiliares_motor')
