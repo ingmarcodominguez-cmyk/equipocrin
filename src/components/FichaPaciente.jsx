@@ -559,6 +559,8 @@ export default function FichaPaciente({ onVolver, usuario }) {
         
         const diffRedondeo = Math.round((importeNum - sumaImportes) * 100) / 100;
         if (diffRedondeo !== 0 && prestadoresConSesiones.length > 0) {
+    
+    
           const firstId = prestadoresConSesiones[0].id_prestador;
           importesDistribuidos[firstId] = Math.round((importesDistribuidos[firstId] + diffRedondeo) * 100) / 100;
         }
@@ -1270,50 +1272,58 @@ export default function FichaPaciente({ onVolver, usuario }) {
                           <th style={{ padding: '10px' }}>Concepto</th>
                           <th style={{ padding: '10px', textAlign: 'right' }}>Debe ($)</th>
                           <th style={{ padding: '10px', textAlign: 'right' }}>Haber ($)</th>
+                          <th style={{ padding: '10px', textAlign: 'right' }}>Saldo ($)</th>
                           <th style={{ padding: '10px', textAlign: 'center' }}>Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {movimientosDetallados.map((mov, index) => {
-                          const valDebe = parsearMoneda(mov.debe);
-                          const valHaber = parsearMoneda(mov.haber);
-                          return (
-                            <tr key={mov.id_movimiento || index} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                              <td style={{ padding: '10px', color: '#475569', whiteSpace: 'nowrap' }}>
-                                {mov.fecha_movimiento || mov.fecha_vencimiento || 'S/D'}
-                              </td>
-                              <td style={{ padding: '10px', fontWeight: '500', color: '#2563eb' }}>
-                                {mov.nombre_prestacion}
-                              </td>
-                              <td style={{ padding: '10px' }}>
-                                <span style={{ padding: '2px 8px', borderRadius: '4px', background: '#f1f5f9', color: '#334155', fontWeight: 'bold', fontSize: '11px' }}>
-                                  {mov.subtipo || 'S/D'}
-                                </span>
-                              </td>
-                              <td style={{ padding: '10px', fontWeight: 'bold', color: '#334155' }}>
-                                {mov.concepto || 'S/D'}
-                              </td>
-                              <td style={{ padding: '10px', textAlign: 'right', fontWeight: '600', color: valDebe > 0 ? '#dc2626' : '#64748b' }}>
-                                {valDebe > 0 ? `$${valDebe.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
-                              </td>
-                              <td style={{ padding: '10px', textAlign: 'right', fontWeight: '600', color: valHaber > 0 ? '#16a34a' : '#64748b' }}>
-                                {valHaber > 0 ? `$${valHaber.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
-                              </td>
-                              <td style={{ padding: '10px', textAlign: 'center' }}>
-                                {mov.id_pago && mov.subtipo !== 'reverso_pago' && !idsPagosRevertidos.has(mov.id_pago) && (
-                                  <button
-                                    onClick={() => manejarReversionPago(mov.id_pago)}
-                                    style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold', transition: 'background 0.2s' }}
-                                    onMouseOver={(e) => e.target.style.background = '#991b1b'}
-                                    onMouseOut={(e) => e.target.style.background = '#dc2626'}
-                                  >
-                                    Revertir
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
+                        {(() => {
+                          let runningBalance = 0;
+                          return movimientosDetallados.map((mov, index) => {
+                            const valDebe = parsearMoneda(mov.debe);
+                            const valHaber = parsearMoneda(mov.haber);
+                            runningBalance = runningBalance + valDebe - valHaber;
+                            return (
+                              <tr key={mov.id_movimiento || index} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                <td style={{ padding: '10px', color: '#475569', whiteSpace: 'nowrap' }}>
+                                  {mov.fecha_movimiento || mov.fecha_vencimiento || 'S/D'}
+                                </td>
+                                <td style={{ padding: '10px', fontWeight: '500', color: '#2563eb' }}>
+                                  {mov.nombre_prestacion}
+                                </td>
+                                <td style={{ padding: '10px' }}>
+                                  <span style={{ padding: '2px 8px', borderRadius: '4px', background: '#f1f5f9', color: '#334155', fontWeight: 'bold', fontSize: '11px' }}>
+                                    {mov.subtipo || 'S/D'}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '10px', fontWeight: 'bold', color: '#334155' }}>
+                                  {mov.concepto || 'S/D'}
+                                </td>
+                                <td style={{ padding: '10px', textAlign: 'right', fontWeight: '600', color: valDebe > 0 ? '#dc2626' : '#64748b' }}>
+                                  {valDebe > 0 ? `$${valDebe.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                                </td>
+                                <td style={{ padding: '10px', textAlign: 'right', fontWeight: '600', color: valHaber > 0 ? '#16a34a' : '#64748b' }}>
+                                  {valHaber > 0 ? `$${valHaber.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                                </td>
+                                <td style={{ padding: '10px', textAlign: 'right', fontWeight: '600', color: runningBalance > 0 ? '#dc2626' : runningBalance < 0 ? '#16a34a' : '#64748b' }}>
+                                  {`$${runningBalance.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                </td>
+                                <td style={{ padding: '10px', textAlign: 'center' }}>
+                                  {mov.id_pago && mov.subtipo !== 'reverso_pago' && !idsPagosRevertidos.has(mov.id_pago) && (
+                                    <button
+                                      onClick={() => manejarReversionPago(mov.id_pago)}
+                                      style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold', transition: 'background 0.2s' }}
+                                      onMouseOver={(e) => e.target.style.background = '#991b1b'}
+                                      onMouseOut={(e) => e.target.style.background = '#dc2626'}
+                                    >
+                                      Revertir
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          });
+                        })()}
                       </tbody>
                       <tfoot>
                         <tr style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1' }}>
@@ -1326,13 +1336,16 @@ export default function FichaPaciente({ onVolver, usuario }) {
                           <td style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 'bold', color: '#16a34a', fontSize: '14px' }}>
                             ${totalHaberGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
+                          <td style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 'bold', color: saldoFinalGeneral > 0 ? '#dc2626' : saldoFinalGeneral < 0 ? '#16a34a' : '#64748b', fontSize: '14px' }}>
+                            ${saldoFinalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
                           <td style={{ padding: '10px' }} />
                         </tr>
                         <tr style={{ background: '#f1f5f9' }}>
                           <td colSpan="4" style={{ padding: '10px', fontWeight: 'bold', color: '#0f172a', textAlign: 'right', fontSize: '14px' }}>
                             Saldo Neto (Debe - Haber):
                           </td>
-                          <td colSpan="3" style={{ padding: '10px', textAlign: 'center', fontWeight: 'bold', color: saldoFinalGeneral > 0 ? '#dc2626' : '#16a34a', fontSize: '15px' }}>
+                          <td colSpan="4" style={{ padding: '10px', textAlign: 'center', fontWeight: 'bold', color: saldoFinalGeneral > 0 ? '#dc2626' : '#16a34a', fontSize: '15px' }}>
                             ${saldoFinalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                         </tr>

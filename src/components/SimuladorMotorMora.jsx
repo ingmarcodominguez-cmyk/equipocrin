@@ -13,9 +13,15 @@ export default function SimuladorMotorMora() {
     setLogResultados(logs)
 
     const parsePlano = (val) => {
-      if (!val) return 0;
-      const clean = String(val).replace(/\./g, '').replace(',', '.');
-      const res = parseFloat(clean);
+      if (val === null || val === undefined || val === '') return 0;
+      if (typeof val === 'number') return val;
+      const valStr = String(val).trim();
+      if (valStr.includes(',')) {
+        const clean = valStr.replace(/\./g, '').replace(',', '.');
+        const res = parseFloat(clean);
+        return isNaN(res) ? 0 : res;
+      }
+      const res = parseFloat(valStr);
       return isNaN(res) ? 0 : res;
     };
 
@@ -66,9 +72,32 @@ export default function SimuladorMotorMora() {
 
       let siguienteIdMovimiento = (ultMov && ultMov.length > 0) ? (ultMov[0].id_movimiento || 0) + 1 : 1
 
+      // Traer todos los acuerdos para mapear admite_recargo
+      const { data: acuerdosData, error: errorAcuerdos } = await supabase
+        .from('acuerdos_motor')
+        .select('id_acuerdo, admite_recargo');
+
+      if (errorAcuerdos) throw errorAcuerdos;
+
+      const mapaAdmiteRecargo = {};
+      (acuerdosData || []).forEach(ac => {
+        mapaAdmiteRecargo[ac.id_acuerdo] = ac.admite_recargo;
+      });
+
       for (const deudaOriginal of deudasBase) {
         const idDeudaActual = deudaOriginal.id_deuda || deudaOriginal.id_movimiento
         const fechaVencStr = deudaOriginal.fecha_vencimiento
+
+        // Verificar si la cuenta/acuerdo admite recargo
+        const idAcuerdo = deudaOriginal.id_acuerdo;
+        if (idAcuerdo) {
+          const admite = mapaAdmiteRecargo[idAcuerdo];
+          if (admite && String(admite).toUpperCase() === 'NO') {
+            logs.push(`   -> Cuota ID ${idDeudaActual} (Acuerdo #${idAcuerdo}) no admite recargo por configuración. Omitiendo.`)
+            setLogResultados([...logs])
+            continue;
+          }
+        }
 
         if (!fechaVencStr) {
           logs.push(`   -> Cuota ID ${idDeudaActual} sin fecha de vencimiento. Omitiendo.`)
@@ -101,22 +130,23 @@ export default function SimuladorMotorMora() {
         if (diasAtraso <= 0) {
           logs.push(`   -> Aún no está vencida.`)
           setLogResultados([...logs])
-          continue
+          continue;
         }
 
         const escalonesAplicados = movimientosDeEstaDeuda
           .filter(m => {
             const sub = (m.subtipo || '').toUpperCase();
-            return sub.startsWith('RECARGO_');
+            return sub.startsWith('RECARGO_') || sub === 'RECARGO_MORA' || (m.concepto || '').toUpperCase().includes('RECARGO');
           })
           .map(m => {
             const sub = (m.subtipo || '').toUpperCase();
-            if (sub === 'RECARGO_MORA') {
-              const conc = (m.concepto || '').toUpperCase();
-              if (conc.includes('(2)')) return 2;
-              if (conc.includes('(3)')) return 3;
-              if (conc.includes('(4)')) return 4;
-              if (conc.includes('(5)')) return 5;
+            const conc = (m.concepto || '').toUpperCase();
+            if (sub === 'RECARGO_MORA' || conc.includes('RECARGO')) {
+              if (conc.includes('(2)') || conc.includes('ESCALÓN (2)')) return 2;
+              if (conc.includes('(3)') || conc.includes('ESCALÓN (3)')) return 3;
+              if (conc.includes('(4)') || conc.includes('ESCALÓN (4)')) return 4;
+              if (conc.includes('(5)') || conc.includes('ESCALÓN (5)')) return 5;
+              if (conc.includes('10%') || conc.includes('MORA')) return 1;
               return parseInt(m.escalon_mora || '1', 10);
             }
             const match = sub.match(/RECARGO_(\d+)/);
@@ -141,6 +171,13 @@ export default function SimuladorMotorMora() {
             return dateB - dateA;
           });
           fechaUltimoRecargo = movimientosRecargos[0].fecha_movimiento;
+        }
+
+        // Si ya se aplicó un recargo hoy para esta deuda, evitamos duplicados en el mismo día
+        if (fechaUltimoRecargo === fechaSimulada) {
+          logs.push(`   -> Ya se aplicó un recargo hoy para esta deuda.`)
+          setLogResultados([...logs])
+          continue;
         }
 
         let startNro = 0;

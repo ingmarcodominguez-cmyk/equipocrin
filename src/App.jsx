@@ -326,9 +326,15 @@ function App() {
     };
 
     const parsePlano = (val) => {
-      if (!val) return 0;
-      const clean = String(val).replace(/\./g, '').replace(',', '.');
-      const res = parseFloat(clean);
+      if (val === null || val === undefined || val === '') return 0;
+      if (typeof val === 'number') return val;
+      const valStr = String(val).trim();
+      if (valStr.includes(',')) {
+        const clean = valStr.replace(/\./g, '').replace(',', '.');
+        const res = parseFloat(clean);
+        return isNaN(res) ? 0 : res;
+      }
+      const res = parseFloat(valStr);
       return isNaN(res) ? 0 : res;
     };
 
@@ -360,6 +366,20 @@ function App() {
 
       if (movimientos.length === 0) return;
 
+      // 1. Traer todos los acuerdos para mapear admite_recargo
+      const { data: acuerdosData, error: errorAcuerdos } = await supabase
+        .from('acuerdos_motor')
+        .select('id_acuerdo, admite_recargo');
+
+      if (errorAcuerdos) {
+        throw new Error("Error al obtener acuerdos para recargos: " + errorAcuerdos.message);
+      }
+
+      const mapaAdmiteRecargo = {};
+      (acuerdosData || []).forEach(ac => {
+        mapaAdmiteRecargo[ac.id_acuerdo] = ac.admite_recargo;
+      });
+
       const deudasMap = {};
       movimientos.forEach(m => {
         if (!m.id_deuda) return;
@@ -389,6 +409,15 @@ function App() {
         const cuotaBase = deuda.movimientos.find(m => (m.subtipo || '').toUpperCase() === 'CUOTA_MENSUAL');
         if (!cuotaBase) continue;
 
+        // Verificar si la cuenta/acuerdo admite recargo
+        const idAcuerdo = deuda.id_acuerdo || cuotaBase.id_acuerdo;
+        if (idAcuerdo) {
+          const admite = mapaAdmiteRecargo[idAcuerdo];
+          if (admite && String(admite).toUpperCase() === 'NO') {
+            continue;
+          }
+        }
+
         if (!deuda.fecha_vencimiento) continue;
         const [anioVenc, mesVenc, diaVenc] = deuda.fecha_vencimiento.split('-').map(Number);
         const fechaVencObj = new Date(anioVenc, mesVenc - 1, diaVenc);
@@ -402,16 +431,17 @@ function App() {
         const escalonesAplicados = deuda.movimientos
           .filter(m => {
             const sub = (m.subtipo || '').toUpperCase();
-            return sub.startsWith('RECARGO_');
+            return sub.startsWith('RECARGO_') || sub === 'RECARGO_MORA' || (m.concepto || '').toUpperCase().includes('RECARGO');
           })
           .map(m => {
             const sub = (m.subtipo || '').toUpperCase();
-            if (sub === 'RECARGO_MORA') {
-              const conc = (m.concepto || '').toUpperCase();
-              if (conc.includes('(2)')) return 2;
-              if (conc.includes('(3)')) return 3;
-              if (conc.includes('(4)')) return 4;
-              if (conc.includes('(5)')) return 5;
+            const conc = (m.concepto || '').toUpperCase();
+            if (sub === 'RECARGO_MORA' || conc.includes('RECARGO')) {
+              if (conc.includes('(2)') || conc.includes('ESCALÓN (2)')) return 2;
+              if (conc.includes('(3)') || conc.includes('ESCALÓN (3)')) return 3;
+              if (conc.includes('(4)') || conc.includes('ESCALÓN (4)')) return 4;
+              if (conc.includes('(5)') || conc.includes('ESCALÓN (5)')) return 5;
+              if (conc.includes('10%') || conc.includes('MORA')) return 1;
               return parseInt(m.escalon_mora || '1', 10);
             }
             const match = sub.match(/RECARGO_(\d+)/);
@@ -434,6 +464,11 @@ function App() {
             return dateB - dateA;
           });
           fechaUltimoRecargo = movimientosRecargos[0].fecha_movimiento;
+        }
+
+        // Si ya se aplicó un recargo hoy para esta deuda, evitamos duplicados en el mismo día
+        if (fechaUltimoRecargo === formatearFechaLocal(fechaTrabajo)) {
+          continue;
         }
 
         const recargosAAplicar = [];

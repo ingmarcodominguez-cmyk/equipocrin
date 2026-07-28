@@ -68,18 +68,24 @@ export default function FichaPrestadores({ onVolver, usuario }) {
       const saldosMapa = {};
       (listaMovs || []).forEach(m => {
         const id = m.id_prestador;
-        const debeVal = parseFloat(m.debe) || 0;
-        const haberVal = parseFloat(m.haber) || 0;
+        const debeVal = parseFloat(String(m.debe || '0').replace(/\./g, '').replace(',', '.')) || 0;
+        const haberVal = parseFloat(String(m.haber || '0').replace(/\./g, '').replace(',', '.')) || 0;
         if (!saldosMapa[id]) {
           saldosMapa[id] = 0;
         }
         saldosMapa[id] += (haberVal - debeVal);
       });
 
-      const prestadoresConSaldos = (listaP || []).map(p => ({
-        ...p,
-        saldoConsolidado: saldosMapa[p.id_prestador] || 0
-      }));
+      const prestadoresConSaldos = (listaP || []).map(p => {
+        let saldoVal = saldosMapa[p.id_prestador] || 0;
+        if (Math.abs(saldoVal) < 100) {
+          saldoVal = 0;
+        }
+        return {
+          ...p,
+          saldoConsolidado: saldoVal
+        };
+      });
 
       setPrestadores(prestadoresConSaldos);
 
@@ -128,6 +134,79 @@ export default function FichaPrestadores({ onVolver, usuario }) {
     } finally {
       setCargandoMovimientos(false);
     }
+  };
+
+  const manejarDescargaExcel = (movs, nombrePrestador) => {
+    // Revertir para procesar en orden cronológico ascendente
+    const sortedMovs = [...movs].reverse();
+
+    // 2. Calcular saldo acumulado
+    let running = 0;
+    const conSaldo = sortedMovs.map(m => {
+      const debe = parseFloat(String(m.debe || '0').replace(/\./g, '').replace(',', '.')) || 0;
+      const haber = parseFloat(String(m.haber || '0').replace(/\./g, '').replace(',', '.')) || 0;
+      running += (haber - debe);
+      return {
+        ...m,
+        debeNum: debe,
+        haberNum: haber,
+        saldoCalculado: running
+      };
+    });
+
+    // 3. Buscar último saldo en cero
+    let startIndex = -1;
+    for (let i = conSaldo.length - 1; i >= 0; i--) {
+      if (Math.abs(conSaldo[i].saldoCalculado) < 1.0) {
+        startIndex = i;
+        break;
+      }
+    }
+
+    // 4. Si no hay saldo cero, buscar el último pago
+    if (startIndex === -1) {
+      for (let i = conSaldo.length - 1; i >= 0; i--) {
+        const concepto = (conSaldo[i].concepto || '').toUpperCase();
+        const subtipo = (conSaldo[i].subtipo || '').toUpperCase();
+        if (subtipo.includes('PAGO') || concepto.includes('PAGO')) {
+          startIndex = i;
+          break;
+        }
+      }
+    }
+
+    // 5. Si tampoco hay pagos, exportamos todos
+    if (startIndex === -1) {
+      startIndex = 0;
+    }
+
+    // 6. Recortar la lista de movimientos para el reporte
+    const filtradosReporte = conSaldo.slice(startIndex);
+
+    // 7. Generar el CSV compatible con Excel en español
+    const BOM = "\uFEFF";
+    let csv = "Fecha;Concepto;Acuerdo;Debe ($);Haber ($);Saldo ($)\r\n";
+
+    filtradosReporte.forEach(m => {
+      const fecha = m.fecha ? new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/D';
+      const concepto = (m.concepto || '').replace(/;/g, ',');
+      const acuerdo = (m.acuerdo || '-').replace(/;/g, ',');
+      const debeStr = m.debeNum > 0 ? m.debeNum.toFixed(2).replace('.', ',') : '';
+      const haberStr = m.haberNum > 0 ? m.haberNum.toFixed(2).replace('.', ',') : '';
+      const saldoStr = m.saldoCalculado.toFixed(2).replace('.', ',');
+      
+      csv += `${fecha};${concepto};${acuerdo};${debeStr};${haberStr};${saldoStr}\r\n`;
+    });
+
+    // 8. Descargar el archivo
+    const blob = new Blob([BOM + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Liquidacion_${nombrePrestador.replace(/\s+/g, '_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const mostrarAlerta = (texto, tipo) => {
@@ -463,9 +542,19 @@ export default function FichaPrestadores({ onVolver, usuario }) {
 
           {/* Tabla de Cuenta Corriente */}
           <div>
-            <h3 style={{ fontSize: '16px', color: '#0f172a', fontWeight: 'bold', margin: '0 0 15px 0' }}>
-              📋 Extracto de Cuenta Corriente (Completo)
-            </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+              <h3 style={{ fontSize: '16px', color: '#0f172a', fontWeight: 'bold', margin: 0 }}>
+                📋 Extracto de Cuenta Corriente (Completo)
+              </h3>
+              {movimientos.length > 0 && (
+                <button
+                  onClick={() => manejarDescargaExcel(movimientos, prestadorSeleccionado.nombre_prestador)}
+                  style={{ padding: '8px 16px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  📥 Descargar Liquidación (Excel)
+                </button>
+              )}
+            </div>
             {cargandoMovimientos ? (
               <p style={{ fontSize: '14px', color: '#64748b' }}>Cargando extracto...</p>
             ) : movimientos.length === 0 ? (
