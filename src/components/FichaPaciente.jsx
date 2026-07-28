@@ -12,6 +12,8 @@ export default function FichaPaciente({ onVolver, usuario }) {
   const [nuevaObservacionFecha, setNuevaObservacionFecha] = useState('');
   const [nuevaObservacionPendiente, setNuevaObservacionPendiente] = useState('SI');
   const [procesandoObservacion, setProcesandoObservacion] = useState(false);
+  const [editandoObsId, setEditandoObsId] = useState(null);
+  const [editandoObsTexto, setEditandoObsTexto] = useState('');
 
   const [pacienteSeleccionado, setPacienteSeleccionado] = useState(null);
   const [acuerdos, setAcuerdos] = useState([]);
@@ -197,6 +199,26 @@ export default function FichaPaciente({ onVolver, usuario }) {
     } catch (err) {
       console.error("Error al cambiar estado de la tarea:", err);
       alert("Error al actualizar estado: " + err.message);
+    }
+  };
+
+  const guardarEdicionObs = async (id) => {
+    if (!editandoObsTexto.trim()) {
+      alert("La observación o tarea no puede estar vacía.");
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from('observaciones_paciente_motor')
+        .update({ tarea: editandoObsTexto })
+        .eq('id', id);
+
+      if (error) throw error;
+      await cargarObservaciones(pacienteSeleccionado.id_paciente);
+      setEditandoObsId(null);
+    } catch (err) {
+      console.error("Error al editar observación:", err);
+      alert("Error al guardar cambios: " + err.message);
     }
   };
 
@@ -1503,21 +1525,59 @@ export default function FichaPaciente({ onVolver, usuario }) {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {observaciones.filter(o => o.pendiente === 'SI').map(o => (
                           <div key={o.id} style={{ background: '#ffffff', border: '1px solid #fde68a', borderRadius: '8px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '15px' }}>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
-                                <span style={{ fontSize: '11px', fontWeight: 'bold', background: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '4px' }}>PENDIENTE</span>
-                                <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>
-                                  {o.fecha ? new Date(o.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/D'}
-                                </span>
+                            {editandoObsId === o.id ? (
+                              <div style={{ flex: 1 }}>
+                                <textarea
+                                  value={editandoObsTexto}
+                                  onChange={(e) => setEditandoObsTexto(e.target.value)}
+                                  rows="3"
+                                  style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', fontFamily: 'inherit', resize: 'vertical', outline: 'none', marginBottom: '8px' }}
+                                />
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                  <button
+                                    onClick={() => guardarEdicionObs(o.id)}
+                                    style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                                  >
+                                    💾 Guardar
+                                  </button>
+                                  <button
+                                    onClick={() => setEditandoObsId(null)}
+                                    style={{ background: '#e2e8f0', color: '#475569', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </div>
                               </div>
-                              <p style={{ margin: 0, fontSize: '14px', color: '#1e293b', whiteSpace: 'pre-line' }}>{o.tarea}</p>
-                            </div>
-                            <button
-                              onClick={() => cambiarEstadoPendiente(o.id, 'NO')}
-                              style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}
-                            >
-                              ✓ Completar
-                            </button>
+                            ) : (
+                              <>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
+                                    <span style={{ fontSize: '11px', fontWeight: 'bold', background: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '4px' }}>PENDIENTE</span>
+                                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>
+                                      {o.fecha ? new Date(o.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/D'}
+                                    </span>
+                                  </div>
+                                  <p style={{ margin: 0, fontSize: '14px', color: '#1e293b', whiteSpace: 'pre-line' }}>{o.tarea}</p>
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                                  <button
+                                    onClick={() => {
+                                      setEditandoObsId(o.id);
+                                      setEditandoObsTexto(o.tarea);
+                                    }}
+                                    style={{ background: 'transparent', border: '1px solid #cbd5e1', color: '#475569', padding: '5px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}
+                                  >
+                                    ✏️ Editar
+                                  </button>
+                                  <button
+                                    onClick={() => cambiarEstadoPendiente(o.id, 'NO')}
+                                    style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                                  >
+                                    ✓ Completar
+                                  </button>
+                                </div>
+                              </>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -1530,42 +1590,84 @@ export default function FichaPaciente({ onVolver, usuario }) {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                       {observaciones.map(o => (
                         <div key={o.id} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '15px' }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
-                              <span style={{ 
-                                fontSize: '11px', 
-                                fontWeight: 'bold', 
-                                background: o.pendiente === 'SI' ? '#fef3c7' : '#e2e8f0', 
-                                color: o.pendiente === 'SI' ? '#b45309' : '#475569', 
-                                padding: '2px 6px', 
-                                borderRadius: '4px' 
-                              }}>
-                                {o.pendiente === 'SI' ? 'PENDIENTE' : 'COMPLETADA'}
-                              </span>
-                              <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>
-                                {o.fecha ? new Date(o.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/D'}
-                              </span>
+                          {editandoObsId === o.id ? (
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
+                                <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>
+                                  {o.fecha ? new Date(o.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/D'}
+                                </span>
+                              </div>
+                              <textarea
+                                value={editandoObsTexto}
+                                onChange={(e) => setEditandoObsTexto(e.target.value)}
+                                rows="3"
+                                style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', fontFamily: 'inherit', resize: 'vertical', outline: 'none', marginBottom: '8px' }}
+                              />
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                  onClick={() => guardarEdicionObs(o.id)}
+                                  style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                                >
+                                  💾 Guardar
+                                </button>
+                                <button
+                                  onClick={() => setEditandoObsId(null)}
+                                  style={{ background: '#e2e8f0', color: '#475569', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                                >
+                                  Cancelar
+                                </button>
+                              </div>
                             </div>
-                            <p style={{ margin: 0, fontSize: '14px', color: o.pendiente === 'SI' ? '#1e293b' : '#64748b', textDecoration: o.pendiente === 'NO' ? 'line-through' : 'none', whiteSpace: 'pre-line' }}>
-                              {o.tarea}
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => cambiarEstadoPendiente(o.id, o.pendiente === 'SI' ? 'NO' : 'SI')}
-                            style={{ 
-                              background: 'transparent', 
-                              border: '1px solid #cbd5e1', 
-                              color: '#475569', 
-                              padding: '5px 10px', 
-                              borderRadius: '6px', 
-                              cursor: 'pointer', 
-                              fontSize: '11px', 
-                              fontWeight: '600',
-                              flexShrink: 0
-                            }}
-                          >
-                            {o.pendiente === 'SI' ? 'Marcar Completada' : 'Reabrir / Marcar Pendiente'}
-                          </button>
+                          ) : (
+                            <>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
+                                  <span style={{ 
+                                    fontSize: '11px', 
+                                    fontWeight: 'bold', 
+                                    background: o.pendiente === 'SI' ? '#fef3c7' : '#e2e8f0', 
+                                    color: o.pendiente === 'SI' ? '#b45309' : '#475569', 
+                                    padding: '2px 6px', 
+                                    borderRadius: '4px' 
+                                  }}>
+                                    {o.pendiente === 'SI' ? 'PENDIENTE' : 'COMPLETADA'}
+                                  </span>
+                                  <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>
+                                    {o.fecha ? new Date(o.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/D'}
+                                  </span>
+                                </div>
+                                <p style={{ margin: 0, fontSize: '14px', color: o.pendiente === 'SI' ? '#1e293b' : '#64748b', textDecoration: o.pendiente === 'NO' ? 'line-through' : 'none', whiteSpace: 'pre-line' }}>
+                                  {o.tarea}
+                                </p>
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                                <button
+                                  onClick={() => {
+                                    setEditandoObsId(o.id);
+                                    setEditandoObsTexto(o.tarea);
+                                  }}
+                                  style={{ background: 'transparent', border: '1px solid #cbd5e1', color: '#475569', padding: '5px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}
+                                >
+                                  ✏️ Editar
+                                </button>
+                                <button
+                                  onClick={() => cambiarEstadoPendiente(o.id, o.pendiente === 'SI' ? 'NO' : 'SI')}
+                                  style={{ 
+                                    background: 'transparent', 
+                                    border: '1px solid #cbd5e1', 
+                                    color: '#475569', 
+                                    padding: '5px 10px', 
+                                    borderRadius: '6px', 
+                                    cursor: 'pointer', 
+                                    fontSize: '11px', 
+                                    fontWeight: '600'
+                                  }}
+                                >
+                                  {o.pendiente === 'SI' ? 'Marcar Completada' : 'Reabrir / Marcar Pendiente'}
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </div>
                       ))}
                     </div>
