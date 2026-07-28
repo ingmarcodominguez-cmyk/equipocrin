@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
+const parsearDecimal = (val) => {
+  if (val === null || val === undefined || val === '') return 0;
+  const str = String(val).trim().replace(',', '.');
+  const num = Number.parseFloat(str);
+  return isNaN(num) ? 0 : num;
+};
+
 export default function LiquidacionAuxiliares({ onVolver, usuario }) {
   const [auxiliares, setAuxiliares] = useState([]);
   const [auxiliarSeleccionado, setAuxiliarSeleccionado] = useState(null);
@@ -71,8 +78,8 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
       const saldosMapa = {};
       (listaMovs || []).forEach(m => {
         const id = m.id_auxiliar;
-        const debeVal = parseFloat(m.debe) || 0;
-        const haberVal = parseFloat(m.haber) || 0;
+        const debeVal = parsearDecimal(m.debe) || 0;
+        const haberVal = parsearDecimal(m.haber) || 0;
         if (!saldosMapa[id]) {
           saldosMapa[id] = 0;
         }
@@ -112,8 +119,8 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
 
       let saldoAcumulado = 0;
       const conSaldo = (data || []).map(m => {
-        const debe = parseFloat(m.debe) || 0;
-        const haber = parseFloat(m.haber) || 0;
+        const debe = parsearDecimal(m.debe) || 0;
+        const haber = parsearDecimal(m.haber) || 0;
         saldoAcumulado += (debe - haber);
         return {
           ...m,
@@ -180,8 +187,8 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
 
       let acumuladorTotal = 0;
       const enriquecidas = (data || []).map(asist => {
-        const tarifa = asist.tipo_liq === 'HORA' ? parseFloat(asist.valor_hora) || 0 : parseFloat(asist.valor_sesion) || 0;
-        const cantidad = asist.tipo_liq === 'HORA' ? parseFloat(asist.horas_trabajadas) || 0 : parseFloat(asist.sesiones) || 0;
+        const tarifa = asist.tipo_liq === 'HORA' ? parsearDecimal(asist.valor_hora) || 0 : parsearDecimal(asist.valor_sesion) || 0;
+        const cantidad = asist.tipo_liq === 'HORA' ? parsearDecimal(asist.horas_trabajadas) || 0 : parsearDecimal(asist.sesiones) || 0;
         const totalFila = tarifa * cantidad;
         acumuladorTotal += totalFila;
 
@@ -205,7 +212,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
 
   // Confirmar y guardar la transacción en movauxiliares_motor
   const confirmarTransaccion = async () => {
-    let montoNum = parseFloat(montoTx);
+    let montoNum = parsearDecimal(montoTx);
     
     if (modalAbierto === 'liquidar') {
       montoNum = preliqTotal;
@@ -282,8 +289,8 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
   };
 
   // Calcular totales
-  const totalDebe = movimientos.reduce((acc, m) => acc + (parseFloat(m.debe) || 0), 0);
-  const totalHaber = movimientos.reduce((acc, m) => acc + (parseFloat(m.haber) || 0), 0);
+  const totalDebe = movimientos.reduce((acc, m) => acc + (parsearDecimal(m.debe) || 0), 0);
+  const totalHaber = movimientos.reduce((acc, m) => acc + (parsearDecimal(m.haber) || 0), 0);
   const saldoFinal = totalDebe - totalHaber;
 
   return (
@@ -651,8 +658,8 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
                   </thead>
                   <tbody>
                     {movimientos.map((m, idx) => {
-                      const valDebe = parseFloat(m.debe) || 0;
-                      const valHaber = parseFloat(m.haber) || 0;
+                      const valDebe = parsearDecimal(m.debe) || 0;
+                      const valHaber = parsearDecimal(m.haber) || 0;
                       return (
                         <tr key={m.id_mov || idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
                           <td style={{ padding: '10px', whiteSpace: 'nowrap', color: '#475569' }}>

@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
+const parsearDecimal = (val) => {
+  if (val === null || val === undefined || val === '') return 0;
+  const str = String(val).trim().replace(',', '.');
+  const num = Number.parseFloat(str);
+  return isNaN(num) ? 0 : num;
+};
+
 export default function AsistenciaAuxiliares({ onVolver, usuario }) {
   const [pestañaActiva, setPestañaActiva] = useState('asistencia_diaria'); // 'asistencia_diaria', 'auxiliares', 'historial'
   const [fechaTrabajo, setFechaTrabajo] = useState('');
@@ -203,7 +210,7 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
       alert("Por favor configure las horas trabajadas o ingrese los horarios.");
       return;
     }
-    if (tipoLiq === 'SESION' && (isNaN(parseFloat(sesiones)) || parseFloat(sesiones) <= 0)) {
+    if (tipoLiq === 'SESION' && (isNaN(parsearDecimal(sesiones)) || parsearDecimal(sesiones) <= 0)) {
       alert("Por favor ingrese una cantidad válida de sesiones.");
       return;
     }
@@ -237,9 +244,9 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
         hora_entrada_t: horaEntradaT || null,
         hora_salida_t: horaSalidaT || null,
         horas_trabajadas: tipoLiq === 'HORA' ? horasTrabajadas : null,
-        sesiones: tipoLiq === 'SESION' ? parseFloat(sesiones) : null,
-        valor_hora: valorHora ? parseFloat(valorHora) : 0,
-        valor_sesion: valorSesion ? parseFloat(valorSesion) : 0,
+        sesiones: tipoLiq === 'SESION' ? parsearDecimal(sesiones) : null,
+        valor_hora: valorHora ? parsearDecimal(valorHora) : 0,
+        valor_sesion: valorSesion ? parsearDecimal(valorSesion) : 0,
         obs: obs || null,
         fecha_registro: new Date().toISOString()
       };
@@ -326,8 +333,8 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
         id_auxiliar: idAuxInsert,
         nombre: nombreAux.toUpperCase(),
         tipo_liq: tipoLiqAux,
-        valor_hora: tipoLiqAux === 'HORA' ? parseFloat(valorHoraAux) || 0 : null,
-        valor_sesion: tipoLiqAux === 'SESION' ? parseFloat(valorSesionAux) || 0 : null,
+        valor_hora: tipoLiqAux === 'HORA' ? parsearDecimal(valorHoraAux) || 0 : null,
+        valor_sesion: tipoLiqAux === 'SESION' ? parsearDecimal(valorSesionAux) || 0 : null,
         fecha_registro: new Date().toISOString()
       };
 
@@ -626,10 +633,10 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                         </span>
                       </td>
                       <td style={{ padding: '12px 10px', textAlign: 'right', fontWeight: '600' }}>
-                        {aux.valor_hora ? `$${parseFloat(aux.valor_hora).toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
+                        {aux.valor_hora ? `$${parsearDecimal(aux.valor_hora).toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
                       </td>
                       <td style={{ padding: '12px 10px', textAlign: 'right', fontWeight: '600' }}>
-                        {aux.valor_sesion ? `$${parseFloat(aux.valor_sesion).toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
+                        {aux.valor_sesion ? `$${parsearDecimal(aux.valor_sesion).toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
                       </td>
                       <td style={{ padding: '12px 10px', textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
@@ -685,8 +692,8 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                   {historialCompleto
                     .filter(reg => (reg.nombre || '').toLowerCase().includes(filtroNombre.toLowerCase()))
                     .map(reg => {
-                      const tarifa = reg.tipo_liq === 'HORA' ? parseFloat(reg.valor_hora) || 0 : parseFloat(reg.valor_sesion) || 0;
-                      const cantidad = reg.tipo_liq === 'HORA' ? parseFloat(reg.horas_trabajadas) || 0 : parseFloat(reg.sesiones) || 0;
+                      const tarifa = reg.tipo_liq === 'HORA' ? parsearDecimal(reg.valor_hora) || 0 : parsearDecimal(reg.valor_sesion) || 0;
+                      const cantidad = reg.tipo_liq === 'HORA' ? parsearDecimal(reg.horas_trabajadas) || 0 : parsearDecimal(reg.sesiones) || 0;
                       const totalDevengado = tarifa * cantidad;
 
                     return (
