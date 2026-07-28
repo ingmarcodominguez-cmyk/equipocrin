@@ -489,17 +489,13 @@ export default function FichaPaciente({ onVolver, usuario }) {
       
       // 5. Insertar en caja_motor, billeteras_motor o bancos_motor según el medio de pago
       if (formaPago === 'Efectivo') {
-        const hhmm = new Date().toTimeString().split(' ')[0].substring(0, 5).replace(':', '');
-        const yyyymmdd = fechaPago.replace(/-/g, '');
-        const autoIdTurno = `${yyyymmdd}_${hhmm}_${(usuario || 'USER').toUpperCase()}`;
-        
         const registroCaja = {
           fecha: fechaPago,
           usuario: usuario || 'Sistema',
-          recibido_por: recibidoPor || null,
-          entregado_por: entregadoPor || null,
-          turno: turnoSeleccionado,
-          id_turno: autoIdTurno,
+          recibido_por: null,
+          entregado_por: null,
+          turno: null,
+          id_turno: null,
           tipo: 'INGRESO',
           concepto: `Cobranza paciente: ${pacienteSeleccionado.nombre_apellido}`,
           medio_pago: 'EFECTIVO',
@@ -1383,7 +1379,7 @@ export default function FichaPaciente({ onVolver, usuario }) {
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: formaPago === 'Efectivo' ? '1fr' : '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
               
               {/* Columna Izquierda: Detalles del Pago */}
               <div>
@@ -1469,94 +1465,55 @@ export default function FichaPaciente({ onVolver, usuario }) {
                 </div>
               </div>
 
-              {/* Columna Derecha: Campos Condicionales según Medio de Pago */}
-              <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 'bold', color: '#334155' }}>
-                  ⚙️ Detalles del Destino de Caja
-                </h4>
+              {/* Columna Derecha: Campos Condicionales según Medio de Pago (solo si no es Efectivo) */}
+              {formaPago !== 'Efectivo' && (
+                <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 'bold', color: '#334155' }}>
+                    ⚙️ Detalles del Destino Financiero
+                  </h4>
 
-                {formaPago === 'Efectivo' && (
-                  <div>
-                    <div style={{ marginBottom: '12px' }}>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' }}>
-                        Turno *
-                      </label>
-                      <select
-                        value={turnoSeleccionado}
-                        onChange={(e) => setTurnoSeleccionado(e.target.value)}
-                        style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
-                      >
-                        <option value="MAÑANA">MAÑANA</option>
-                        <option value="TARDE">TARDE</option>
-                        <option value="NOCHE">NOCHE</option>
-                      </select>
+                  {formaPago === 'QR (Mercado Pago)' && (
+                    <div>
+                      <div style={{ marginBottom: '12px' }}>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' }}>
+                          Billetera Virtual *
+                        </label>
+                        <select
+                          value={billeteraNombre}
+                          onChange={(e) => setBilleteraNombre(e.target.value)}
+                          style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+                        >
+                          <option value="MERCADOPAGO">MERCADOPAGO</option>
+                          <option value="MODO">MODO</option>
+                          <option value="UALA">UALA</option>
+                          <option value="OTRA">OTRA</option>
+                        </select>
+                      </div>
                     </div>
-                    <div style={{ marginBottom: '12px' }}>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' }}>
-                        Recibido Por (Usuario)
-                      </label>
-                      <input
-                        type="text"
-                        value={recibidoPor}
-                        onChange={(e) => setRecibidoPor(e.target.value)}
-                        style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
-                      />
-                    </div>
-                    <div style={{ marginBottom: '12px' }}>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' }}>
-                        Entregado Por (Paciente/Familiar)
-                      </label>
-                      <input
-                        type="text"
-                        value={entregadoPor}
-                        onChange={(e) => setEntregadoPor(e.target.value)}
-                        style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
-                      />
-                    </div>
-                  </div>
-                )}
+                  )}
 
-                {formaPago === 'QR (Mercado Pago)' && (
-                  <div>
-                    <div style={{ marginBottom: '12px' }}>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' }}>
-                        Billetera Virtual *
-                      </label>
-                      <select
-                        value={billeteraNombre}
-                        onChange={(e) => setBilleteraNombre(e.target.value)}
-                        style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
-                      >
-                        <option value="MERCADOPAGO">MERCADOPAGO</option>
-                        <option value="MODO">MODO</option>
-                        <option value="UALA">UALA</option>
-                        <option value="OTRA">OTRA</option>
-                      </select>
+                  {formaPago === 'Transferencia / Depósito' && (
+                    <div>
+                      <div style={{ marginBottom: '12px' }}>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' }}>
+                          Banco Receptor *
+                        </label>
+                        <select
+                          value={bancoNombre}
+                          onChange={(e) => setBancoNombre(e.target.value)}
+                          style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+                        >
+                          <option value="GALICIA">BANCO GALICIA</option>
+                          <option value="SANTANDER">BANCO SANTANDER</option>
+                          <option value="MACRO">BANCO MACRO</option>
+                          <option value="BELO">BELO / DIGITAL</option>
+                          <option value="OTRO">OTRO BANCO</option>
+                        </select>
+                      </div>
                     </div>
-                  </div>
-                )}
-
-                {formaPago === 'Transferencia / Depósito' && (
-                  <div>
-                    <div style={{ marginBottom: '12px' }}>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' }}>
-                        Banco Receptor *
-                      </label>
-                      <select
-                        value={bancoNombre}
-                        onChange={(e) => setBancoNombre(e.target.value)}
-                        style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
-                      >
-                        <option value="GALICIA">BANCO GALICIA</option>
-                        <option value="SANTANDER">BANCO SANTANDER</option>
-                        <option value="MACRO">BANCO MACRO</option>
-                        <option value="BELO">BELO / DIGITAL</option>
-                        <option value="OTRO">OTRO BANCO</option>
-                      </select>
-                    </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Distribución a Prestadores */}
