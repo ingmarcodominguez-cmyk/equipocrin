@@ -3,6 +3,16 @@ import { supabase } from '../lib/supabase.js';
 
 export default function FichaPaciente({ onVolver, usuario }) {
   const [listaPacientes, setListaPacientes] = useState([]);
+
+  // Estados para Observaciones y Tareas
+  const [observaciones, setObservaciones] = useState([]);
+  const [cargandoObservaciones, setCargandoObservaciones] = useState(false);
+  const [modalObservacionAbierto, setModalObservacionAbierto] = useState(false);
+  const [nuevaObservacionTarea, setNuevaObservacionTarea] = useState('');
+  const [nuevaObservacionFecha, setNuevaObservacionFecha] = useState('');
+  const [nuevaObservacionPendiente, setNuevaObservacionPendiente] = useState('SI');
+  const [procesandoObservacion, setProcesandoObservacion] = useState(false);
+
   const [pacienteSeleccionado, setPacienteSeleccionado] = useState(null);
   const [acuerdos, setAcuerdos] = useState([]);
   const [deudasAgrupadas, setDeudasAgrupadas] = useState([]);
@@ -114,6 +124,82 @@ export default function FichaPaciente({ onVolver, usuario }) {
     return isNaN(num) ? 0 : num;
   };
 
+  const cargarObservaciones = async (idPaciente) => {
+    setCargandoObservaciones(true);
+    try {
+      const { data, error } = await supabase
+        .from('observaciones_pacientes_motor')
+        .select('*')
+        .eq('id_paciente', idPaciente)
+        .order('fecha', { ascending: false });
+
+      if (error) {
+        if (error.code === 'P0001' || error.message.includes('relation') || error.message.includes('does not exist')) {
+          console.warn("La tabla observaciones_pacientes_motor no existe todavía.");
+          setObservaciones([]);
+        } else {
+          throw error;
+        }
+      } else {
+        setObservaciones(data || []);
+      }
+    } catch (error) {
+      console.error("Error al cargar observaciones:", error);
+    } finally {
+      setCargandoObservaciones(false);
+    }
+  };
+
+  const registrarNuevaObservacion = async () => {
+    if (!nuevaObservacionTarea.trim()) {
+      alert("Por favor escriba el detalle de la observación o tarea.");
+      return;
+    }
+    
+    setProcesandoObservacion(true);
+    try {
+      const fechaInsert = nuevaObservacionFecha || localStorage.getItem('crin_fecha_trabajo_simulada') || new Date().toISOString().split('T')[0];
+      const datosAInsertar = {
+        id_paciente: pacienteSeleccionado.id_paciente,
+        nombre: pacienteSeleccionado.nombre_apellido,
+        fecha: fechaInsert,
+        tarea: nuevaObservacionTarea,
+        pendiente: nuevaObservacionPendiente
+      };
+
+      const { error } = await supabase
+        .from('observaciones_pacientes_motor')
+        .insert([datosAInsertar]);
+
+      if (error) throw error;
+
+      alert("Observación registrada con éxito.");
+      setNuevaObservacionTarea('');
+      setModalObservacionAbierto(false);
+      await cargarObservaciones(pacienteSeleccionado.id_paciente);
+    } catch (err) {
+      console.error("Error al registrar observación:", err);
+      alert("Error al guardar: " + err.message);
+    } finally {
+      setProcesandoObservacion(false);
+    }
+  };
+
+  const cambiarEstadoPendiente = async (obsId, nuevoEstado) => {
+    try {
+      const { error } = await supabase
+        .from('observaciones_pacientes_motor')
+        .update({ pendiente: nuevoEstado })
+        .eq('id', obsId);
+
+      if (error) throw error;
+      await cargarObservaciones(pacienteSeleccionado.id_paciente);
+    } catch (err) {
+      console.error("Error al cambiar estado de la tarea:", err);
+      alert("Error al actualizar estado: " + err.message);
+    }
+  };
+
   const seleccionarPacientePorId = async (e) => {
     const pacienteIdStr = e.target.value;
     if (!pacienteIdStr) {
@@ -142,6 +228,9 @@ export default function FichaPaciente({ onVolver, usuario }) {
 
       if (errorAcuerdos) throw errorAcuerdos;
       if (errorMovimientos) throw errorMovimientos;
+
+      // Cargar observaciones
+      await cargarObservaciones(pacienteEncontrado.id_paciente);
 
       const acuerdosConPrestacion = (acuerdosData || []).map(acuerdo => {
         const prestacionEncontrada = prestaciones.find(
@@ -1028,10 +1117,12 @@ export default function FichaPaciente({ onVolver, usuario }) {
           </div>
 
           {vistaActiva === 'menu' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginTop: '20px', marginBottom: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '20px', marginBottom: '20px' }}>
               <div 
                 onClick={() => setVistaActiva('acuerdos')}
                 style={{ border: '2px solid #cbd5e1', borderRadius: '10px', padding: '20px', textAlign: 'center', cursor: 'pointer', background: '#fff', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
               >
                 <div style={{ fontSize: '24px', marginBottom: '8px' }}>📋</div>
                 <h4 style={{ margin: '0 0 6px 0', color: '#1e293b', fontSize: '15px' }}>Ver y Editar Acuerdos</h4>
@@ -1041,6 +1132,8 @@ export default function FichaPaciente({ onVolver, usuario }) {
               <div 
                 onClick={() => setVistaActiva('cuenta_corriente')}
                 style={{ border: '2px solid #cbd5e1', borderRadius: '10px', padding: '20px', textAlign: 'center', cursor: 'pointer', background: '#fff', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
               >
                 <div style={{ fontSize: '24px', marginBottom: '8px' }}>💰</div>
                 <h4 style={{ margin: '0 0 6px 0', color: '#1e293b', fontSize: '15px' }}>Deudas Pendientes</h4>
@@ -1050,10 +1143,23 @@ export default function FichaPaciente({ onVolver, usuario }) {
               <div 
                 onClick={() => setVistaActiva('resumen_detallado')}
                 style={{ border: '2px solid #2563eb', borderRadius: '10px', padding: '20px', textAlign: 'center', cursor: 'pointer', background: '#eff6ff', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
               >
                 <div style={{ fontSize: '24px', marginBottom: '8px' }}>📊</div>
                 <h4 style={{ margin: '0 0 6px 0', color: '#1e293b', fontSize: '15px' }}>Resumen Detallado</h4>
                 <p style={{ margin: 0, fontSize: '12px', color: '#475569' }}>Todos los movimientos de cuenta (debe, haber y saldos).</p>
+              </div>
+
+              <div 
+                onClick={() => setVistaActiva('observaciones')}
+                style={{ border: '2px solid #cbd5e1', borderRadius: '10px', padding: '20px', textAlign: 'center', cursor: 'pointer', background: '#fff', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '8px' }}>📝</div>
+                <h4 style={{ margin: '0 0 6px 0', color: '#1e293b', fontSize: '15px' }}>Observaciones y Tareas</h4>
+                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Seguimiento del tratamiento, observaciones y tareas pendientes.</p>
               </div>
             </div>
           )}
@@ -1351,6 +1457,118 @@ export default function FichaPaciente({ onVolver, usuario }) {
                         </tr>
                       </tfoot>
                     </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {vistaActiva === 'observaciones' && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '2px solid #e2e8f0', paddingBottom: '8px' }}>
+                <h4 style={{ color: '#1e293b', margin: 0 }}>📝 Observaciones y Tareas del Paciente</h4>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    onClick={() => {
+                      setNuevaObservacionFecha(localStorage.getItem('crin_fecha_trabajo_simulada') || new Date().toISOString().split('T')[0]);
+                      setNuevaObservacionTarea('');
+                      setNuevaObservacionPendiente('SI');
+                      setModalObservacionAbierto(true);
+                    }}
+                    style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
+                  >
+                    ➕ Nueva Observación / Tarea
+                  </button>
+                  <button
+                    onClick={() => setVistaActiva('menu')}
+                    style={{ background: '#e2e8f0', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#334155' }}
+                  >
+                    ← Volver al Menú de la Ficha
+                  </button>
+                </div>
+              </div>
+
+              {cargandoObservaciones ? (
+                <p style={{ color: '#64748b' }}>Cargando observaciones...</p>
+              ) : observaciones.length === 0 ? (
+                <p style={{ color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '20px', borderRadius: '8px', textAlign: 'center' }}>
+                  No se registran observaciones ni tareas para este paciente. Presiona "Nueva Observación" para agregar una.
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                  {/* Tareas Pendientes */}
+                  {observaciones.some(o => o.pendiente === 'SI') && (
+                    <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '12px', padding: '15px' }}>
+                      <h5 style={{ margin: '0 0 10px 0', color: '#b45309', fontSize: '14px', fontWeight: 'bold' }}>⚠️ Tareas Pendientes de Tratamiento</h5>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {observaciones.filter(o => o.pendiente === 'SI').map(o => (
+                          <div key={o.id} style={{ background: '#ffffff', border: '1px solid #fde68a', borderRadius: '8px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '15px' }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 'bold', background: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '4px' }}>PENDIENTE</span>
+                                <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>
+                                  {o.fecha ? new Date(o.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/D'}
+                                </span>
+                              </div>
+                              <p style={{ margin: 0, fontSize: '14px', color: '#1e293b', whiteSpace: 'pre-line' }}>{o.tarea}</p>
+                            </div>
+                            <button
+                              onClick={() => cambiarEstadoPendiente(o.id, 'NO')}
+                              style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}
+                            >
+                              ✓ Completar
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Historial Completo / Notas */}
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '15px' }}>
+                    <h5 style={{ margin: '0 0 10px 0', color: '#334155', fontSize: '14px', fontWeight: 'bold' }}>📋 Historial Completo de Observaciones</h5>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {observaciones.map(o => (
+                        <div key={o.id} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '15px' }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
+                              <span style={{ 
+                                fontSize: '11px', 
+                                fontWeight: 'bold', 
+                                background: o.pendiente === 'SI' ? '#fef3c7' : '#e2e8f0', 
+                                color: o.pendiente === 'SI' ? '#b45309' : '#475569', 
+                                padding: '2px 6px', 
+                                borderRadius: '4px' 
+                              }}>
+                                {o.pendiente === 'SI' ? 'PENDIENTE' : 'COMPLETADA'}
+                              </span>
+                              <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>
+                                {o.fecha ? new Date(o.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/D'}
+                              </span>
+                            </div>
+                            <p style={{ margin: 0, fontSize: '14px', color: o.pendiente === 'SI' ? '#1e293b' : '#64748b', textDecoration: o.pendiente === 'NO' ? 'line-through' : 'none', whiteSpace: 'pre-line' }}>
+                              {o.tarea}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => cambiarEstadoPendiente(o.id, o.pendiente === 'SI' ? 'NO' : 'SI')}
+                            style={{ 
+                              background: 'transparent', 
+                              border: '1px solid #cbd5e1', 
+                              color: '#475569', 
+                              padding: '5px 10px', 
+                              borderRadius: '6px', 
+                              cursor: 'pointer', 
+                              fontSize: '11px', 
+                              fontWeight: '600',
+                              flexShrink: 0
+                            }}
+                          >
+                            {o.pendiente === 'SI' ? 'Marcar Completada' : 'Reabrir / Marcar Pendiente'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1790,6 +2008,123 @@ export default function FichaPaciente({ onVolver, usuario }) {
           </div>
         );
       })()}
+
+      {/* Modal Nueva Observacion / Tarea */}
+      {modalObservacionAbierto && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1100,
+          padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '12px',
+            width: '100%',
+            maxWidth: '500px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+            padding: '25px',
+            color: '#1e293b',
+            fontFamily: 'Segoe UI, system-ui, sans-serif'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '15px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: '#0f172a' }}>
+                ➕ Nueva Observación / Tarea
+              </h3>
+              <button
+                onClick={() => setModalObservacionAbierto(false)}
+                style={{ background: 'transparent', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8' }}
+              >
+                &times;
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
+                Paciente
+              </label>
+              <input
+                type="text"
+                readOnly
+                value={pacienteSeleccionado?.nombre_apellido || ''}
+                style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', background: '#f1f5f9', color: '#64748b' }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
+                Fecha *
+              </label>
+              <input
+                type="date"
+                value={nuevaObservacionFecha}
+                onChange={(e) => setNuevaObservacionFecha(e.target.value)}
+                style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px' }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
+                Detalle de la Observación / Tarea *
+              </label>
+              <textarea
+                value={nuevaObservacionTarea}
+                onChange={(e) => setNuevaObservacionTarea(e.target.value)}
+                placeholder="Escribe la observación clínica, tarea o recordatorio..."
+                rows="4"
+                style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', fontFamily: 'inherit', resize: 'vertical' }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
+                ¿Requiere seguimiento (Pendiente)?
+              </label>
+              <select
+                value={nuevaObservacionPendiente}
+                onChange={(e) => setNuevaObservacionPendiente(e.target.value)}
+                style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', background: '#f8fafc' }}
+              >
+                <option value="SI">SI (Aparecerá en el panel de pendientes)</option>
+                <option value="NO">NO (Queda registrado solo como nota histórica)</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid #e2e8f0', paddingTop: '15px' }}>
+              <button
+                type="button"
+                onClick={() => setModalObservacionAbierto(false)}
+                disabled={procesandoObservacion}
+                style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#475569' }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={registrarNuevaObservacion}
+                disabled={procesandoObservacion}
+                style={{
+                  background: '#10b981',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '8px 20px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '600'
+                }}
+              >
+                {procesandoObservacion ? 'Guardando...' : 'Guardar Observación'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
         </div>
       )}

@@ -9,6 +9,7 @@ import FichaPrestadores from './components/FichaPrestadores.jsx'
 import AsistenciaAuxiliares from './components/AsistenciaAuxiliares.jsx'
 import LiquidacionAuxiliares from './components/LiquidacionAuxiliares.jsx'
 import CajaDiaria from './components/CajaDiaria.jsx'
+import TareasPendientes from './components/TareasPendientes.jsx'
 
 const normalizarRol = (r) => {
   if (!r) return '';
@@ -909,6 +910,12 @@ function App() {
           </div>
         )}
 
+        {crinAccion === 'TAREAS_PENDIENTES' && (
+          <div style={{ width: '100%', maxWidth: '950px' }}>
+            <TareasPendientes onVolver={() => setCrinAccion(null)} />
+          </div>
+        )}
+
         {crinAccion === 'SIMULADOR_MORA' && (
           <div style={{ width: '100%', maxWidth: '900px' }}>
             <SimuladorMotorMora />
@@ -1187,6 +1194,39 @@ function App() {
             >
               <div style={{ fontSize: '36px', marginBottom: '12px' }}>💵💰</div>
               CAJA DIARIA (EFECTIVO)
+            </button>
+
+            {/* Button 9: TAREAS PENDIENTES */}
+            <button 
+              onClick={() => handleAccionClick('TAREAS_PENDIENTES')}
+              style={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '30px 15px', 
+                background: 'linear-gradient(135deg, #f5f3ff 100%, #ddd6fe 0%)', 
+                color: '#5b21b6', 
+                border: '2px solid #c084fc', 
+                borderRadius: '16px', 
+                cursor: 'pointer', 
+                fontWeight: '800', 
+                fontSize: '15px', 
+                textAlign: 'center',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                transition: 'transform 0.2s, box-shadow 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'scale(1.03)';
+                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+              }}
+            >
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>📋✔</div>
+              TAREAS PENDIENTES
             </button>
           </div>
         )}
