@@ -630,7 +630,7 @@ export default function FichaPaciente({ onVolver, usuario }) {
     }
   }, [modalAjusteAbierto, tipoAjusteSeleccionado]);
 
-  const confinrmarRegistroAjuste = async () => {
+  const confirmarRegistroAjuste = async () => {
     const importeNum = parseFloat(importeAjuste);
     if (isNaN(importeNum) || importeNum <= 0) {
       alert("Por favor ingrese un importe válido mayor a 0.");
