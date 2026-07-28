@@ -27,7 +27,7 @@ export default function SimuladorMotorMora() {
       }
 
       // REGLA: Filtrar ÚNICAMENTE cuotas mensuales. Los 'acuerdo_unico' (incluyendo evaluaciones) se ignoran por completo.
-      const deudasBase = todosLosMovimientos.filter(m => m.subtipo === 'cuota_mensual')
+      const deudasBase = todosLosMovimientos.filter(m => (m.subtipo || '').toUpperCase() === 'CUOTA_MENSUAL')
 
       logs.push(`🔍 Se encontraron ${deudasBase.length} registros de cuotas mensuales base para evaluar (los acuerdos únicos quedan excluidos del motor).`)
       setLogResultados([...logs])
@@ -81,7 +81,7 @@ export default function SimuladorMotorMora() {
         }
 
         const escalonesAplicados = movimientosDeEstaDeuda
-          .filter(m => m.subtipo?.startsWith('recargo_'))
+          .filter(m => m.subtipo?.toUpperCase().startsWith('RECARGO_'))
           .map(m => parseInt(m.escalon_mora || '0', 10))
           .filter(e => !isNaN(e))
 
@@ -89,8 +89,8 @@ export default function SimuladorMotorMora() {
         logs.push(`   -> Escalón de mora actual máximo: ${maxEscalon}`)
         setLogResultados([...logs])
 
-        // REGLA 1: Aplicar Recargo 1 (10%) si pasó 1 día o más y maxEscalon == 0
-        if (diasAtraso >= 1 && maxEscalon === 0) {
+        // REGLA 1: Aplicar Recargo 1 (10%) si pasó 10 días o más y maxEscalon == 0
+        if (diasAtraso >= 10 && maxEscalon === 0) {
           const recargo10 = parseFloat((saldoDeuda * 0.10).toFixed(2))
 
           logs.push(`   ⚡ Aplicando RECARGO 1 (10% sobre saldo $${saldoDeuda}): $${recargo10}`)
@@ -110,7 +110,7 @@ export default function SimuladorMotorMora() {
             ciclo_mora: cicloMoraCalculado,
             escalon_mora: '1',
             tipo_movimiento: 'deuda',
-            subtipo: 'recargo_1',
+            subtipo: 'RECARGO_1',
             id_origen: deudaOriginal.id_movimiento,
             concepto: 'recargo automático cuota 1',
             debe: String(recargo10),
@@ -130,7 +130,7 @@ export default function SimuladorMotorMora() {
         }
 
         // REGLA 2: Escalones sucesivos (5% cada 10 días desde el último recargo)
-        const movimientosRecargos = movimientosDeEstaDeuda.filter(m => m.subtipo?.startsWith('recargo_'))
+        const movimientosRecargos = movimientosDeEstaDeuda.filter(m => m.subtipo?.toUpperCase().startsWith('RECARGO_'))
         
         if (movimientosRecargos.length > 0) {
           movimientosRecargos.sort((a, b) => new Date(b.fecha_movimiento) - new Date(a.fecha_movimiento))
@@ -163,7 +163,7 @@ export default function SimuladorMotorMora() {
               ciclo_mora: cicloMoraCalculado,
               escalon_mora: String(siguienteEscalon),
               tipo_movimiento: 'deuda',
-              subtipo: `recargo_${siguienteEscalon}`,
+              subtipo: `RECARGO_${siguienteEscalon}`,
               id_origen: ultimoRecargo.id_movimiento,
               concepto: `recargo automático cuota ${siguienteEscalon}`,
               debe: String(recargo5),

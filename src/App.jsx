@@ -318,6 +318,13 @@ function App() {
 
 // ⚡ MOTOR DE RECARGOS CORREGIDO (FACTOR MATEMÁTICO EXACTO)
   async function ejecutarMotorRecargosDB(fechaTrabajo) {
+    const formatearFechaLocal = (d) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
     try {
       const { data: movimientos, error: errorMovs } = await supabase
         .from('movimientoscuenta_motor')
@@ -356,7 +363,7 @@ function App() {
       for (const idDeuda in deudasMap) {
         const deuda = deudasMap[idDeuda];
 
-        const cuotaBase = deuda.movimientos.find(m => m.subtipo === 'cuota_mensual');
+        const cuotaBase = deuda.movimientos.find(m => (m.subtipo || '').toUpperCase() === 'CUOTA_MENSUAL');
         if (!cuotaBase) continue;
 
         if (!deuda.fecha_vencimiento) continue;
@@ -368,16 +375,18 @@ function App() {
 
         if (diasAtrasoTotal <= 0) continue;
 
-        const recargosExistentes = deuda.movimientos.filter(m => 
-          m.subtipo === 'recargo_mora' || (m.concepto && m.concepto.toLowerCase().includes('recargo'))
-        );
+        const recargosExistentes = deuda.movimientos.filter(m => {
+          const sub = (m.subtipo || '').toUpperCase();
+          const conc = (m.concepto || '').toUpperCase();
+          return sub === 'RECARGO_MORA' || sub.startsWith('RECARGO_') || conc.includes('RECARGO');
+        });
 
         const hitosEsperados = [];
-        if (diasAtrasoTotal >= 1) hitosEsperados.push({ nro: 1, diasReq: 1, porcentaje: 0.10, label: 'Recargo por mora (10%)' });
-        if (diasAtrasoTotal >= 11) hitosEsperados.push({ nro: 2, diasReq: 11, porcentaje: 0.05, label: 'Recargo por mora escalón (2)' });
-        if (diasAtrasoTotal >= 21) hitosEsperados.push({ nro: 3, diasReq: 21, porcentaje: 0.05, label: 'Recargo por mora escalón (3)' });
-        if (diasAtrasoTotal >= 31) hitosEsperados.push({ nro: 4, diasReq: 31, porcentaje: 0.05, label: 'Recargo por mora escalón (4)' });
-        if (diasAtrasoTotal >= 41) hitosEsperados.push({ nro: 5, diasReq: 41, porcentaje: 0.05, label: 'Recargo por mora escalón (5)' });
+        if (diasAtrasoTotal >= 10) hitosEsperados.push({ nro: 1, diasReq: 10, porcentaje: 0.10, label: 'Recargo por mora (10%)' });
+        if (diasAtrasoTotal >= 20) hitosEsperados.push({ nro: 2, diasReq: 20, porcentaje: 0.05, label: 'Recargo por mora escalón (2)' });
+        if (diasAtrasoTotal >= 30) hitosEsperados.push({ nro: 3, diasReq: 30, porcentaje: 0.05, label: 'Recargo por mora escalón (3)' });
+        if (diasAtrasoTotal >= 40) hitosEsperados.push({ nro: 4, diasReq: 40, porcentaje: 0.05, label: 'Recargo por mora escalón (4)' });
+        if (diasAtrasoTotal >= 50) hitosEsperados.push({ nro: 5, diasReq: 50, porcentaje: 0.05, label: 'Recargo por mora escalón (5)' });
 
         if (recargosExistentes.length >= hitosEsperados.length) continue;
 
@@ -405,16 +414,16 @@ function App() {
           fechaHitoObj.setDate(fechaHitoObj.getDate() + (hito.diasReq - 1));
           
           const fechaEfectivaRecargo = fechaHitoObj > fechaTrabajo ? fechaTrabajo : fechaHitoObj;
-          const fechaStr = fechaEfectivaRecargo.toISOString().split('T')[0];
+          const fechaStr = formatearFechaLocal(fechaEfectivaRecargo);
 
           const nuevoRecargoItem = {
             id_acuerdo: deuda.id_acuerdo,
             id_paciente: deuda.id_paciente,
             id_deuda: deuda.id_deuda,
             tipo_movimiento: 'deuda',
-            subtipo: 'recargo_mora',
+            subtipo: 'RECARGO_MORA',
             concepto: hito.label,
-            debe: montoRecargo.toString(), // Se guarda como string plano limpio (ej: "29040" o "16770.6")
+            debe: montoRecargo.toString(),
             haber: '0',
             fecha_movimiento: fechaStr,
             fecha_vencimiento: deuda.fecha_vencimiento
