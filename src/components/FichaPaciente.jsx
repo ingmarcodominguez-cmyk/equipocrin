@@ -359,9 +359,20 @@ export default function FichaPaciente({ onVolver, usuario }) {
 
       if (errorMaxPagoPrest) throw errorMaxPagoPrest;
 
+      // También consultamos pagos_motor
+      const { data: maxPagoDataMotorTab, error: errorMaxPagoDataMotor } = await supabase
+        .from('pagos_motor')
+        .select('id_pago')
+        .not('id_pago', 'is', null)
+        .order('id_pago', { ascending: false })
+        .limit(1);
+
+      if (errorMaxPagoDataMotor) throw errorMaxPagoDataMotor;
+
       const maxPagoMov = (maxPagoDataMov && maxPagoDataMov[0]?.id_pago) ? parseInt(maxPagoDataMov[0].id_pago) : 0;
       const maxPagoPrest = (maxPagoDataPrest && maxPagoDataPrest[0]?.id_pago) ? parseInt(maxPagoDataPrest[0].id_pago) : 0;
-      const nextIdPago = Math.max(maxPagoMov, maxPagoPrest) + 1;
+      const maxPagoMotorTab = (maxPagoDataMotorTab && maxPagoDataMotorTab[0]?.id_pago) ? parseInt(maxPagoDataMotorTab[0].id_pago) : 0;
+      const nextIdPago = Math.max(maxPagoMov, maxPagoPrest, maxPagoMotorTab) + 1;
 
       // 1b. Obtener el próximo id_movimiento consultando movimientoscuenta_motor para evitar violar la pkey
       const { data: maxMovData, error: errorMaxMov } = await supabase
@@ -546,6 +557,27 @@ export default function FichaPaciente({ onVolver, usuario }) {
           
         if (errInsertPrestadores) throw errInsertPrestadores;
       }
+      
+      // 7. Insertar registro en pagos_motor
+      const nuevoRegistroPago = {
+        id_pago: nextIdPago,
+        id_cuota: null,
+        id_paciente: pacienteSeleccionado.id_paciente.toString(),
+        fecha_pago: fechaPago,
+        importe: importeNum.toString().replace('.', ','),
+        observacion: `Imputado a deuda ID: ${deudaSeleccionadaId}`,
+        forma_pago: formaPago.toUpperCase(),
+        usuario: usuario || 'Sistema',
+        fecha_registro: new Date().toISOString(),
+        id_acuerdo: deudaSeleccionada.id_acuerdo,
+        estado: 'ACTIVO'
+      };
+
+      const { error: errInsertPagoMotor } = await supabase
+        .from('pagos_motor')
+        .insert([nuevoRegistroPago]);
+
+      if (errInsertPagoMotor) throw errInsertPagoMotor;
       
       setMensaje({ texto: "Pago registrado exitosamente.", tipo: 'exito' });
       setModalPagoAbierto(false);
@@ -869,6 +901,14 @@ export default function FichaPaciente({ onVolver, usuario }) {
           
         if (errInsertPrestadores) throw errInsertPrestadores;
       }
+
+      // 5. Marcar como ANULADO en pagos_motor
+      const { error: errUpdatePagoMotor } = await supabase
+        .from('pagos_motor')
+        .update({ estado: 'ANULADO' })
+        .eq('id_pago', idPago);
+
+      if (errUpdatePagoMotor) throw errUpdatePagoMotor;
 
       setMensaje({ texto: "El pago y todas sus distribuciones fueron revertidos correctamente.", tipo: 'exito' });
       setTimeout(() => setMensaje({ texto: '', tipo: '' }), 4000);
