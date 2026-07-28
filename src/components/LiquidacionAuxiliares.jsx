@@ -151,6 +151,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
     
     if (tipo === 'pago') {
       setConceptoTx('PAGO');
+      setMontoTx(saldoFinal > 0 ? String(saldoFinal) : '');
     } else if (tipo === 'ajuste') {
       setConceptoTx('AJUSTE');
       setTipoAjuste('credito');
@@ -492,9 +493,23 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
                         </table>
                       </div>
                       
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#eff6ff', padding: '12px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
-                        <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#1e40af' }}>MONTO TOTAL A LIQUIDAR (Devengado):</span>
-                        <span style={{ fontSize: '18px', fontWeight: '800', color: '#1e3a8a' }}>${preliqTotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#eff6ff', padding: '15px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#475569' }}>
+                          <span>Saldo Anterior en Cuenta Corriente:</span>
+                          <span style={{ fontWeight: '600', color: saldoFinal >= 0 ? '#15803d' : '#b91c1c' }}>
+                            ${saldoFinal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#475569' }}>
+                          <span>Trabajado en el Período:</span>
+                          <span style={{ fontWeight: '600', color: '#1e293b' }}>
+                            ${preliqTotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div style={{ borderTop: '1px solid #bfdbfe', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 'bold', color: '#1e3a8a' }}>
+                          <span>NUEVO SALDO TOTAL A PAGAR (NETO):</span>
+                          <span>${(saldoFinal + preliqTotal).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                        </div>
                       </div>
                     </div>
                   )}
