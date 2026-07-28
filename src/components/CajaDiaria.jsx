@@ -2,20 +2,37 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
 export default function CajaDiaria({ onVolver, usuario }) {
+  const getLocalDateString = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getTomorrowLocalDateString = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const year = tomorrow.getFullYear();
+    const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
+    const day = String(tomorrow.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const [movimientos, setMovimientos] = useState([]);
   const [cargando, setCargando] = useState(true);
-  const [filtroFecha, setFiltroFecha] = useState(new Date().toISOString().split('T')[0]);
+  const [filtroFecha, setFiltroFecha] = useState(getLocalDateString());
   const [modalAbierto, setModalAbierto] = useState(null); // 'ingreso', 'egreso', o 'cierre'
   
   // Estados para el formulario de la transacción (Ingreso/Egreso)
-  const [fechaTx, setFechaTx] = useState(new Date().toISOString().split('T')[0]);
+  const [fechaTx, setFechaTx] = useState(getLocalDateString());
   const [conceptoTx, setConceptoTx] = useState('');
   const [montoTx, setMontoTx] = useState('');
   const [observacionTx, setObservacionTx] = useState('');
   
   // Estados para el formulario de Cierre/Rendición
   const [saldoRealCierre, setSaldoRealCierre] = useState('');
-  const [turnoCierre, setTurnoCierre] = useState('MAÑANA');
+  const [turnoCierre, setTurnoCierre] = useState('TARDE');
   const [entregadoPorCierre, setEntregadoPorCierre] = useState(usuario || 'Sistema');
   const [recibidoPorCierre, setRecibidoPorCierre] = useState('DIRECCIÓN');
   const [motivoDifCierre, setMotivoDifCierre] = useState('');
@@ -70,18 +87,16 @@ export default function CajaDiaria({ onVolver, usuario }) {
 
   // Obtener fecha de mañana por defecto
   const getTomorrowDate = () => {
-    const today = new Date();
-    today.setDate(today.getDate() + 1);
-    return today.toISOString().split('T')[0];
+    return getTomorrowLocalDateString();
   };
 
   // Abrir modal de transacción
   const abrirModal = (tipo) => {
     setModalAbierto(tipo);
-    setFechaTx(new Date().toISOString().split('T')[0]);
+    setFechaTx(getLocalDateString());
     if (tipo === 'cierre') {
       setSaldoRealCierre(saldoCajaTotal.toString());
-      setTurnoCierre('MAÑANA');
+      setTurnoCierre('TARDE');
       setEntregadoPorCierre(usuario || 'Sistema');
       setRecibidoPorCierre('DIRECCIÓN');
       setMotivoDifCierre('');
@@ -157,7 +172,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
     try {
       const saldoTeorico = saldoCajaTotal;
       const diferencia = saldoRealNum - saldoTeorico;
-      const fechaHoy = new Date().toISOString().split('T')[0];
+      const fechaHoy = getLocalDateString();
       const hhmm = new Date().toTimeString().split(' ')[0].substring(0, 5).replace(':', '');
       const autoIdTurno = `${fechaHoy.replace(/-/g, '')}_${hhmm}_${turnoCierre}`;
 
