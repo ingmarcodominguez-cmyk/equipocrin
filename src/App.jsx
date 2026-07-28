@@ -10,6 +10,7 @@ import AsistenciaAuxiliares from './components/AsistenciaAuxiliares.jsx'
 import LiquidacionAuxiliares from './components/LiquidacionAuxiliares.jsx'
 import CajaDiaria from './components/CajaDiaria.jsx'
 import TareasPendientes from './components/TareasPendientes.jsx'
+import EstadosCuenta from './components/EstadosCuenta.jsx'
 
 const normalizarRol = (r) => {
   if (!r) return '';
@@ -922,6 +923,12 @@ function App() {
           </div>
         )}
 
+        {crinAccion === 'ESTADO_FINANCIERO' && (
+          <div style={{ width: '100%', maxWidth: '1100px' }}>
+            <EstadosCuenta onVolver={() => setCrinAccion(null)} />
+          </div>
+        )}
+
         {!crinAccion && (
           <div style={{ 
             width: '100%', 
@@ -1227,6 +1234,39 @@ function App() {
             >
               <div style={{ fontSize: '36px', marginBottom: '12px' }}>📋✔</div>
               TAREAS PENDIENTES
+            </button>
+
+            {/* Button 10: ESTADO FINANCIERO */}
+            <button 
+              onClick={() => handleAccionClick('ESTADO_FINANCIERO')}
+              style={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '30px 15px', 
+                background: 'linear-gradient(135deg, #f0f9ff 100%, #e0f2fe 0%)', 
+                color: '#0369a1', 
+                border: '2px solid #bae6fd', 
+                borderRadius: '16px', 
+                cursor: 'pointer', 
+                fontWeight: '800', 
+                fontSize: '15px', 
+                textAlign: 'center',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                transition: 'transform 0.2s, box-shadow 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'scale(1.03)';
+                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+              }}
+            >
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>📊📈</div>
+              ESTADO FINANCIERO
             </button>
           </div>
         )}
