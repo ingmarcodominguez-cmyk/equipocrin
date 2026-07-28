@@ -45,6 +45,7 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
   const [guardandoAux, setGuardandoAux] = useState(false);
 
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' });
+  const [filtroNombre, setFiltroNombre] = useState('');
 
   // Inicializar fecha
   useEffect(() => {
@@ -413,19 +414,19 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', gap: '20px', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: '8px', background: '#f1f5f9', padding: '4px', borderRadius: '10px' }}>
           <button
-            onClick={() => setPestañaActiva('asistencia_diaria')}
+            onClick={() => { setPestañaActiva('asistencia_diaria'); setFiltroNombre(''); }}
             style={{ padding: '8px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', background: pestañaActiva === 'asistencia_diaria' ? '#fff' : 'transparent', color: pestañaActiva === 'asistencia_diaria' ? '#0f172a' : '#64748b', boxShadow: pestañaActiva === 'asistencia_diaria' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}
           >
             📅 Planilla Diaria
           </button>
           <button
-            onClick={() => setPestañaActiva('auxiliares')}
+            onClick={() => { setPestañaActiva('auxiliares'); setFiltroNombre(''); }}
             style={{ padding: '8px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', background: pestañaActiva === 'auxiliares' ? '#fff' : 'transparent', color: pestañaActiva === 'auxiliares' ? '#0f172a' : '#64748b', boxShadow: pestañaActiva === 'auxiliares' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}
           >
             👥 Gestión de Auxiliares
           </button>
           <button
-            onClick={() => setPestañaActiva('historial')}
+            onClick={() => { setPestañaActiva('historial'); setFiltroNombre(''); }}
             style={{ padding: '8px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', background: pestañaActiva === 'historial' ? '#fff' : 'transparent', color: pestañaActiva === 'historial' ? '#0f172a' : '#64748b', boxShadow: pestañaActiva === 'historial' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}
           >
             📜 Historial General
@@ -433,14 +434,26 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
         </div>
 
         {pestañaActiva === 'asistencia_diaria' && (
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>Fecha Planilla:</span>
-            <input
-              type="date"
-              value={fechaTrabajo}
-              onChange={(e) => setFechaTrabajo(e.target.value)}
-              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', fontWeight: '600' }}
-            />
+          <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>Fecha:</span>
+              <input
+                type="date"
+                value={fechaTrabajo}
+                onChange={(e) => setFechaTrabajo(e.target.value)}
+                style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', fontWeight: '600' }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>🔍 Filtrar Auxiliar:</span>
+              <input
+                type="text"
+                placeholder="Escribe el nombre..."
+                value={filtroNombre}
+                onChange={(e) => setFiltroNombre(e.target.value)}
+                style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', width: '180px', background: '#fff', color: '#1e293b' }}
+              />
+            </div>
           </div>
         )}
 
@@ -451,6 +464,19 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
           >
             ➕ Registrar Auxiliar Nuevo
           </button>
+        )}
+
+        {pestañaActiva === 'historial' && (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>🔍 Filtrar por Auxiliar:</span>
+            <input
+              type="text"
+              placeholder="Escribe el nombre..."
+              value={filtroNombre}
+              onChange={(e) => setFiltroNombre(e.target.value)}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', width: '180px', background: '#fff', color: '#1e293b' }}
+            />
+          </div>
         )}
       </div>
 
@@ -479,8 +505,10 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {auxiliares.map(aux => {
-                    const asist = mapaAsistencias[aux.id_auxiliar];
+                  {auxiliares
+                    .filter(aux => (aux.nombre || '').toLowerCase().includes(filtroNombre.toLowerCase()))
+                    .map(aux => {
+                      const asist = mapaAsistencias[aux.id_auxiliar];
                     return (
                       <tr key={aux.id_auxiliar} style={{ borderBottom: '1px solid #e2e8f0', background: asist ? '#f0fdf4' : '#fff' }}>
                         <td style={{ padding: '12px 10px', fontWeight: 'bold', color: '#1e293b' }}>
@@ -646,10 +674,12 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {historialCompleto.map(reg => {
-                    const tarifa = reg.tipo_liq === 'HORA' ? parseFloat(reg.valor_hora) || 0 : parseFloat(reg.valor_sesion) || 0;
-                    const cantidad = reg.tipo_liq === 'HORA' ? parseFloat(reg.horas_trabajadas) || 0 : parseFloat(reg.sesiones) || 0;
-                    const totalDevengado = tarifa * cantidad;
+                  {historialCompleto
+                    .filter(reg => (reg.nombre || '').toLowerCase().includes(filtroNombre.toLowerCase()))
+                    .map(reg => {
+                      const tarifa = reg.tipo_liq === 'HORA' ? parseFloat(reg.valor_hora) || 0 : parseFloat(reg.valor_sesion) || 0;
+                      const cantidad = reg.tipo_liq === 'HORA' ? parseFloat(reg.horas_trabajadas) || 0 : parseFloat(reg.sesiones) || 0;
+                      const totalDevengado = tarifa * cantidad;
 
                     return (
                       <tr key={reg.id_registro} style={{ borderBottom: '1px solid #e2e8f0' }}>
