@@ -178,16 +178,16 @@ export default function FichaPrestadores({ onVolver, usuario }) {
       let haberInsert = '0';
 
       if (modalAbierto === 'pago') {
-        // Los pagos van al HABER según especificación del usuario
-        haberInsert = montoNum.toString();
+        // Los pagos van al DEBE (disminuyen lo que la clínica le debe al prestador)
+        debeInsert = montoNum.toString();
       } else if (modalAbierto === 'gasto') {
-        // Los gastos van al DEBE
+        // Los gastos del prestador van al DEBE (disminuyen lo que la clínica le debe al prestador)
         debeInsert = montoNum.toString();
       } else if (modalAbierto === 'ajuste') {
         if (tipoAjuste === 'credito') {
-          haberInsert = montoNum.toString(); // Crédito -> Haber
+          haberInsert = montoNum.toString(); // Crédito -> Haber (A favor del prestador)
         } else {
-          debeInsert = montoNum.toString();  // Débito -> Debe
+          debeInsert = montoNum.toString();  // Débito -> Debe (En contra del prestador)
         }
       }
 
