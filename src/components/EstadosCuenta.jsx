@@ -151,6 +151,7 @@ export default function EstadosCuenta({ onVolver }) {
 
         // Mostrar todos los pacientes ordenados alfabéticamente
         const arrayFinal = Object.values(balancesPorPaciente)
+          .filter(p => p.total > 0.01)
           .sort((a, b) => a.nombre_paciente.localeCompare(b.nombre_paciente));
         setDatos(arrayFinal);
 
