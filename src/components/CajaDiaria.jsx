@@ -32,6 +32,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
   
   // Estados para el formulario de Cierre/Rendición
   const [saldoRealCierre, setSaldoRealCierre] = useState('');
+  const [montoRendidoCierre, setMontoRendidoCierre] = useState('');
   const [turnoCierre, setTurnoCierre] = useState('TARDE');
   const [entregadoPorCierre, setEntregadoPorCierre] = useState(usuario || 'Sistema');
   const [recibidoPorCierre, setRecibidoPorCierre] = useState('DIRECCIÓN');
@@ -95,7 +96,9 @@ export default function CajaDiaria({ onVolver, usuario }) {
     setModalAbierto(tipo);
     setFechaTx(getLocalDateString());
     if (tipo === 'cierre') {
-      setSaldoRealCierre(saldoCajaTotal.toString());
+      const actual = saldoCajaTotal.toString();
+      setSaldoRealCierre(actual);
+      setMontoRendidoCierre(actual); // Por defecto rinde toda la plata
       setTurnoCierre('TARDE');
       setEntregadoPorCierre(usuario || 'Sistema');
       setRecibidoPorCierre('DIRECCIÓN');
@@ -159,8 +162,14 @@ export default function CajaDiaria({ onVolver, usuario }) {
   // Procesar cierre de caja completo con rendición y apertura
   const confirmarCierreCaja = async () => {
     const saldoRealNum = parseFloat(saldoRealCierre);
+    const montoRendidoNum = parseFloat(montoRendidoCierre);
+
     if (isNaN(saldoRealNum) || saldoRealNum < 0) {
       alert("Por favor ingrese un saldo real físico válido (mayor o igual a 0).");
+      return;
+    }
+    if (isNaN(montoRendidoNum) || montoRendidoNum < 0 || montoRendidoNum > saldoRealNum) {
+      alert("Por favor ingrese un monto a rendir válido (entre 0 y el saldo real contado).");
       return;
     }
     if (!fechaSiguienteApertura) {
@@ -172,6 +181,8 @@ export default function CajaDiaria({ onVolver, usuario }) {
     try {
       const saldoTeorico = saldoCajaTotal;
       const diferencia = saldoRealNum - saldoTeorico;
+      const saldoRestante = saldoRealNum - montoRendidoNum; // Dinero sobrante que queda en la caja física
+      
       const fechaHoy = getLocalDateString();
       const hhmm = new Date().toTimeString().split(' ')[0].substring(0, 5).replace(':', '');
       const autoIdTurno = `${fechaHoy.replace(/-/g, '')}_${hhmm}_${turnoCierre}`;
@@ -223,28 +234,30 @@ export default function CajaDiaria({ onVolver, usuario }) {
       const { error: errCierre } = await supabase.from('caja_motor').insert([registroCierre]);
       if (errCierre) throw errCierre;
 
-      // 3. Registrar el egreso de RENDICION A DIRECCION para dejar la caja física en 0
-      const registroRendicion = {
-        fecha: fechaHoy,
-        usuario: usuario || 'Sistema',
-        recibido_por: recibidoPorCierre || null,
-        entregado_por: entregadoPorCierre || null,
-        turno: turnoCierre,
-        id_turno: autoIdTurno,
-        tipo: 'EGRESO',
-        concepto: 'RENDICION A DIRECCION',
-        medio_pago: 'EFECTIVO',
-        importe: saldoRealNum.toString(),
-        saldo: '0.00',
-        id_pago: null,
-        observaciones: `Rendición de caja por cierre de turno ${turnoCierre}. Caja en cero.`,
-        cierre_turno: false
-      };
+      // 3. Registrar el egreso de RENDICION A DIRECCION por la porción de dinero que se entrega físicamente
+      if (montoRendidoNum > 0) {
+        const registroRendicion = {
+          fecha: fechaHoy,
+          usuario: usuario || 'Sistema',
+          recibido_por: recibidoPorCierre || null,
+          entregado_por: entregadoPorCierre || null,
+          turno: turnoCierre,
+          id_turno: autoIdTurno,
+          tipo: 'EGRESO',
+          concepto: 'RENDICION A DIRECCION',
+          medio_pago: 'EFECTIVO',
+          importe: montoRendidoNum.toString(),
+          saldo: '0.00',
+          id_pago: null,
+          observaciones: `Rendición a Dirección por cierre de turno ${turnoCierre}. Quedan $${saldoRestante.toLocaleString('es-AR')} en caja.`,
+          cierre_turno: false
+        };
 
-      const { error: errRendicion } = await supabase.from('caja_motor').insert([registroRendicion]);
-      if (errRendicion) throw errRendicion;
+        const { error: errRendicion } = await supabase.from('caja_motor').insert([registroRendicion]);
+        if (errRendicion) throw errRendicion;
+      }
 
-      // 4. Registrar la APERTURA de caja para el día/turno siguiente con el saldo real físico
+      // 4. Registrar la APERTURA de caja para el día/turno siguiente con el saldo sobrante que se queda físicamente
       const registroAperturaSiguiente = {
         fecha: fechaSiguienteApertura,
         usuario: usuario || 'Sistema',
@@ -255,12 +268,12 @@ export default function CajaDiaria({ onVolver, usuario }) {
         tipo: 'APERTURA',
         concepto: 'APERTURA DE CAJA',
         medio_pago: 'EFECTIVO',
-        importe: saldoRealNum.toString(), // El saldo físico arrastrado ingresa como saldo de apertura
-        saldo: saldoRealNum.toString(),
+        importe: '0', // El saldo sobrante arrastrado no inyecta dinero nuevo, solo se asienta como carryover
+        saldo: saldoRestante.toString(),
         id_pago: null,
-        observaciones: `Saldo de apertura inicial arrastrado del cierre anterior`,
+        observaciones: `Saldo de apertura arrastrado de la caja del día anterior ($${saldoRestante.toLocaleString('es-AR')} en cambio)`,
         cierre_turno: false,
-        saldo_turno: saldoRealNum.toString()
+        saldo_turno: saldoRestante.toString()
       };
 
       const { error: errApertura } = await supabase.from('caja_motor').insert([registroAperturaSiguiente]);
@@ -291,6 +304,9 @@ export default function CajaDiaria({ onVolver, usuario }) {
 
   // Diferencia calculada para el modal de cierre
   const diferenciaCalculada = (parseFloat(saldoRealCierre) || 0) - saldoCajaTotal;
+
+  // Dinero que se queda en la caja física al cerrar
+  const saldoRestanteEnCaja = Math.max(0, (parseFloat(saldoRealCierre) || 0) - (parseFloat(montoRendidoCierre) || 0));
 
   return (
     <div style={{ background: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b' }}>
@@ -463,7 +479,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
       {/* Modal de Cierre de Caja / Rendición */}
       {modalAbierto === 'cierre' && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#ffffff', padding: '25px', borderRadius: '16px', width: '100%', maxWidth: '480px', border: '1px solid #e2e8f0', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
+          <div style={{ background: '#ffffff', padding: '25px', borderRadius: '16px', width: '100%', maxWidth: '500px', border: '1px solid #e2e8f0', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
             <h3 style={{ margin: '0 0 15px 0', fontSize: '18px', fontWeight: 'bold', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '8px' }}>
               🔒 Cierre y Rendición de Caja
             </h3>
@@ -475,11 +491,19 @@ export default function CajaDiaria({ onVolver, usuario }) {
                 <span style={{ fontWeight: 'bold', color: '#0f172a' }}>${saldoCajaTotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                <span style={{ color: '#475569' }}>Saldo Real Físico ingresado:</span>
+                <span style={{ color: '#475569' }}>Saldo Real Físico (Contado):</span>
                 <span style={{ fontWeight: 'bold', color: '#0f172a' }}>${(parseFloat(saldoRealCierre) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
               </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ color: '#0284c7', fontWeight: '500' }}>Monto a Rendir a Dirección:</span>
+                <span style={{ fontWeight: 'bold', color: '#0284c7' }}>${(parseFloat(montoRendidoCierre) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ color: '#0f766e', fontWeight: '500' }}>Saldo que queda en Caja (Cambio):</span>
+                <span style={{ fontWeight: 'bold', color: '#0f766e' }}>${saldoRestanteEnCaja.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+              </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #cbd5e1', paddingTop: '4px', marginTop: '4px' }}>
-                <span style={{ color: '#475569', fontWeight: '600' }}>Diferencia (Sobrante/Faltante):</span>
+                <span style={{ color: '#475569', fontWeight: '600' }}>Diferencia de Arqueo:</span>
                 <span style={{ 
                   fontWeight: 'bold', 
                   color: diferenciaCalculada === 0 ? '#166534' : diferenciaCalculada > 0 ? '#b45309' : '#b91c1c' 
@@ -495,22 +519,24 @@ export default function CajaDiaria({ onVolver, usuario }) {
                 <input 
                   type="number"
                   value={saldoRealCierre}
-                  onChange={(e) => setSaldoRealCierre(e.target.value)}
+                  onChange={(e) => {
+                    setSaldoRealCierre(e.target.value);
+                    setMontoRendidoCierre(e.target.value); // Por defecto autocompletar que rinde todo
+                  }}
                   placeholder="Ej: 87200"
                   style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
                 />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>Turno que Cierra *</label>
-                <select 
-                  value={turnoCierre}
-                  onChange={(e) => setTurnoCierre(e.target.value)}
-                  style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', background: '#fff' }}
-                >
-                  <option value="MAÑANA">MAÑANA</option>
-                  <option value="TARDE">TARDE</option>
-                  <option value="NOCHE">NOCHE</option>
-                </select>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>¿Cuánto se rinde a Dir.? *</label>
+                <input 
+                  type="number"
+                  value={montoRendidoCierre}
+                  onChange={(e) => setMontoRendidoCierre(e.target.value)}
+                  placeholder="Ej: 80000"
+                  max={parseFloat(saldoRealCierre) || 0}
+                  style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+                />
               </div>
             </div>
 
@@ -525,6 +551,21 @@ export default function CajaDiaria({ onVolver, usuario }) {
                 />
               </div>
               <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>Turno que Cierra *</label>
+                <select 
+                  value={turnoCierre}
+                  onChange={(e) => setTurnoCierre(e.target.value)}
+                  style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', background: '#fff' }}
+                >
+                  <option value="TARDE">TARDE</option>
+                  <option value="MAÑANA">MAÑANA</option>
+                  <option value="NOCHE">NOCHE</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+              <div>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>Recibido Por (Rendición) *</label>
                 <input 
                   type="text"
@@ -533,32 +574,31 @@ export default function CajaDiaria({ onVolver, usuario }) {
                   style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
                 />
               </div>
-            </div>
-
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>Fecha de Apertura Siguiente Turno *</label>
-              <input 
-                type="date"
-                value={fechaSiguienteApertura}
-                onChange={(e) => setFechaSiguienteApertura(e.target.value)}
-                style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
-              />
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>Fecha de Apertura Siguiente *</label>
+                <input 
+                  type="date"
+                  value={fechaSiguienteApertura}
+                  onChange={(e) => setFechaSiguienteApertura(e.target.value)}
+                  style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+                />
+              </div>
             </div>
 
             {diferenciaCalculada !== 0 && (
-              <div style={{ marginBottom: '15px' }}>
+              <div style={{ marginBottom: '12px' }}>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#991b1b', marginBottom: '4px' }}>Explicación/Motivo de la Diferencia *</label>
                 <textarea 
                   value={motivoDifCierre}
                   onChange={(e) => setMotivoDifCierre(e.target.value)}
-                  placeholder="Ej: Error en vuelto de $100 al paciente X..."
-                  style={{ width: '100%', padding: '8px', border: '1px solid #fca5a5', borderRadius: '6px', fontSize: '13px', height: '50px', resize: 'none', background: '#fff5f5' }}
+                  placeholder="Ej: Faltante de $85 por vuelto mal dado..."
+                  style={{ width: '100%', padding: '8px', border: '1px solid #fca5a5', borderRadius: '6px', fontSize: '13px', height: '40px', resize: 'none', background: '#fff5f5' }}
                 />
               </div>
             )}
 
             <div style={{ background: '#f0fdf4', padding: '10px 12px', borderRadius: '6px', border: '1px solid #bbf7d0', fontSize: '11px', color: '#166534', marginBottom: '20px' }}>
-              ℹ️ Al confirmar: se registrará el Cierre y el ajuste correspondiente; se rendirá el efectivo a Dirección dejando la caja en cero; y se abrirá el siguiente turno con un saldo inicial igual a <strong>${(parseFloat(saldoRealCierre) || 0).toLocaleString('es-AR')}</strong>.
+              ℹ️ Al confirmar: se ajustará la caja al saldo físico contado; se retirará a Dirección el monto a rendir (<strong>${(parseFloat(montoRendidoCierre) || 0).toLocaleString('es-AR')}</strong>); y la caja del siguiente turno abrirá con el saldo restante (<strong>${saldoRestanteEnCaja.toLocaleString('es-AR')}</strong>).
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
@@ -571,7 +611,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
               </button>
               <button 
                 onClick={confirmarCierreCaja}
-                disabled={guardando || (diferenciaCalculada !== 0 && !motivoDifCierre.trim())}
+                disabled={guardando || (diferenciaCalculada !== 0 && !motivoDifCierre.trim()) || (parseFloat(montoRendidoCierre) > parseFloat(saldoRealCierre))}
                 style={{ padding: '8px 20px', background: '#4f46e5', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
               >
                 {guardando ? 'Guardando...' : 'Confirmar Cierre y Apertura'}
