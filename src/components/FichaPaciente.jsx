@@ -327,13 +327,42 @@ export default function FichaPaciente({ onVolver, usuario }) {
   }, [modalPagoAbierto, pacienteSeleccionado, usuario]);
 
   const confirmarRegistroPago = async () => {
+    // 1. Validar Importe
     const importeNum = parseFloat(importePago);
     if (isNaN(importeNum) || importeNum <= 0) {
-      alert("Por favor ingrese un importe válido mayor a 0.");
+      alert("Por favor ingrese un importe de pago válido mayor a 0.");
       return;
     }
+    
+    // 2. Validar Fecha
+    if (!fechaPago || fechaPago.trim() === '') {
+      alert("Por favor seleccione la fecha del pago.");
+      return;
+    }
+    
+    // 3. Validar Deuda Seleccionada
     if (!deudaSeleccionadaId) {
       alert("Por favor seleccione la deuda a pagar.");
+      return;
+    }
+    
+    // 4. Validar Detalles según la Forma de Pago
+    if (formaPago === 'QR (Mercado Pago)') {
+      if (!billeteraNombre || billeteraNombre.trim() === '') {
+        alert("Por favor seleccione la billetera virtual.");
+        return;
+      }
+    } else if (formaPago === 'Transferencia / Depósito') {
+      if (!bancoNombre || bancoNombre.trim() === '') {
+        alert("Por favor seleccione el banco receptor.");
+        return;
+      }
+    }
+    
+    // 5. Validar Distribución de Sesiones a Prestadores
+    const totalSesiones = Object.values(sesionesPrestadores).reduce((acc, curr) => acc + (parseInt(curr) || 0), 0);
+    if (totalSesiones <= 0) {
+      alert("Por favor distribuya al menos 1 sesión entre los prestadores de la lista para poder proceder con el pago.");
       return;
     }
     
