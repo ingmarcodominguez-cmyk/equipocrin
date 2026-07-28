@@ -41,12 +41,28 @@ export default function FichaPrestadores({ onVolver, usuario }) {
 
       if (errorP) throw errorP;
 
-      // Obtener todos los movimientos consolidados para calcular saldos
-      const { data: listaMovs, error: errorM } = await supabase
-        .from('movprestadores_motor')
-        .select('id_prestador, debe, haber');
-
-      if (errorM) throw errorM;
+      // Obtener todos los movimientos consolidados para calcular saldos (paginado para superar límite de 1000)
+      let listaMovs = [];
+      let from = 0;
+      let to = 999;
+      let keepFetching = true;
+      
+      while (keepFetching) {
+        const { data, error } = await supabase
+          .from('movprestadores_motor')
+          .select('id_prestador, debe, haber')
+          .range(from, to);
+          
+        if (error) throw error;
+        listaMovs = listaMovs.concat(data || []);
+        
+        if (!data || data.length < 1000) {
+          keepFetching = false;
+        } else {
+          from += 1000;
+          to += 1000;
+        }
+      }
 
       // Mapear saldos
       const saldosMapa = {};

@@ -46,11 +46,27 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
 
       if (errA) throw errA;
 
-      const { data: listaMovs, error: errM } = await supabase
-        .from('movauxiliares_motor')
-        .select('id_auxiliar, debe, haber');
-
-      if (errM) throw errM;
+      let listaMovs = [];
+      let from = 0;
+      let to = 999;
+      let keepFetching = true;
+      
+      while (keepFetching) {
+        const { data, error } = await supabase
+          .from('movauxiliares_motor')
+          .select('id_auxiliar, debe, haber')
+          .range(from, to);
+          
+        if (error) throw error;
+        listaMovs = listaMovs.concat(data || []);
+        
+        if (!data || data.length < 1000) {
+          keepFetching = false;
+        } else {
+          from += 1000;
+          to += 1000;
+        }
+      }
 
       const saldosMapa = {};
       (listaMovs || []).forEach(m => {
