@@ -10,14 +10,14 @@ export default function TareasPendientes({ onVolver }) {
     setCargando(true);
     try {
       const { data, error } = await supabase
-        .from('observaciones_pacientes_motor')
+        .from('observaciones_paciente_motor')
         .select('*')
         .eq('pendiente', 'SI')
         .order('fecha', { ascending: false });
 
       if (error) {
         if (error.code === 'P0001' || error.message.includes('relation') || error.message.includes('does not exist')) {
-          console.warn("La tabla observaciones_pacientes_motor no existe todavía.");
+          console.warn("La tabla observaciones_paciente_motor no existe todavía.");
           setTareas([]);
         } else {
           throw error;
@@ -40,7 +40,7 @@ export default function TareasPendientes({ onVolver }) {
   const marcarRealizada = async (id) => {
     try {
       const { error } = await supabase
-        .from('observaciones_pacientes_motor')
+        .from('observaciones_paciente_motor')
         .update({ pendiente: 'NO' })
         .eq('id', id);
 

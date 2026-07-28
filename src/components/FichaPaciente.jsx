@@ -128,14 +128,14 @@ export default function FichaPaciente({ onVolver, usuario }) {
     setCargandoObservaciones(true);
     try {
       const { data, error } = await supabase
-        .from('observaciones_pacientes_motor')
+        .from('observaciones_paciente_motor')
         .select('*')
         .eq('id_paciente', idPaciente)
         .order('fecha', { ascending: false });
 
       if (error) {
         if (error.code === 'P0001' || error.message.includes('relation') || error.message.includes('does not exist')) {
-          console.warn("La tabla observaciones_pacientes_motor no existe todavía.");
+          console.warn("La tabla observaciones_paciente_motor no existe todavía.");
           setObservaciones([]);
         } else {
           throw error;
@@ -168,7 +168,7 @@ export default function FichaPaciente({ onVolver, usuario }) {
       };
 
       const { error } = await supabase
-        .from('observaciones_pacientes_motor')
+        .from('observaciones_paciente_motor')
         .insert([datosAInsertar]);
 
       if (error) throw error;
@@ -188,7 +188,7 @@ export default function FichaPaciente({ onVolver, usuario }) {
   const cambiarEstadoPendiente = async (obsId, nuevoEstado) => {
     try {
       const { error } = await supabase
-        .from('observaciones_pacientes_motor')
+        .from('observaciones_paciente_motor')
         .update({ pendiente: nuevoEstado })
         .eq('id', obsId);
 
