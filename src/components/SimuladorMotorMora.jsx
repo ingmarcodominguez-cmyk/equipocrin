@@ -12,6 +12,13 @@ export default function SimuladorMotorMora() {
     logs.push(`🚀 Iniciando proceso de mora con fecha de trabajo: ${fechaSimulada}`)
     setLogResultados(logs)
 
+    const parsePlano = (val) => {
+      if (!val) return 0;
+      const clean = String(val).replace(/\./g, '').replace(',', '.');
+      const res = parseFloat(clean);
+      return isNaN(res) ? 0 : res;
+    };
+
     try {
       let todosLosMovimientos = [];
       let epoch = 0;
@@ -71,8 +78,8 @@ export default function SimuladorMotorMora() {
 
         const movimientosDeEstaDeuda = todosLosMovimientos.filter(m => (m.id_deuda || m.id_movimiento) === idDeudaActual)
 
-        const totalDebe = movimientosDeEstaDeuda.reduce((acc, m) => acc + parseFloat(m.debe || 0), 0)
-        const totalHaber = movimientosDeEstaDeuda.reduce((acc, m) => acc + parseFloat(m.haber || 0), 0)
+        const totalDebe = movimientosDeEstaDeuda.reduce((acc, m) => acc + parsePlano(m.debe), 0)
+        const totalHaber = movimientosDeEstaDeuda.reduce((acc, m) => acc + parsePlano(m.haber), 0)
         const saldoDeuda = totalDebe - totalHaber
 
         logs.push(`--- ID Deuda: ${idDeudaActual} | Vencimiento: ${fechaVencStr} | Saldo Actual: $${saldoDeuda} ---`)

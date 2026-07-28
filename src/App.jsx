@@ -325,6 +325,13 @@ function App() {
       return `${year}-${month}-${day}`;
     };
 
+    const parsePlano = (val) => {
+      if (!val) return 0;
+      const clean = String(val).replace(/\./g, '').replace(',', '.');
+      const res = parseFloat(clean);
+      return isNaN(res) ? 0 : res;
+    };
+
     try {
       let movimientos = [];
       let epoch = 0;
@@ -425,15 +432,15 @@ function App() {
         if (maxEscalon >= hitosEsperados.length) continue;
 
         let listaSimulada = [...deuda.movimientos];
-        const importeCuotaBase = parseFloat(cuotaBase.debe || 0);
+        const importeCuotaBase = parsePlano(cuotaBase.debe);
 
         for (let i = 0; i < hitosEsperados.length; i++) {
           const hito = hitosEsperados[i];
           
           if (i < maxEscalon) continue;
 
-          let debeSim = listaSimulada.reduce((acc, m) => acc + parseFloat(m.debe || 0), 0);
-          let haberSim = listaSimulada.reduce((acc, m) => acc + parseFloat(m.haber || 0), 0);
+          let debeSim = listaSimulada.reduce((acc, m) => acc + parsePlano(m.debe), 0);
+          let haberSim = listaSimulada.reduce((acc, m) => acc + parsePlano(m.haber), 0);
           let saldoAcumuladoActual = debeSim - haberSim;
 
           if (saldoAcumuladoActual <= 0) break;
