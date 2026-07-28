@@ -454,6 +454,14 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                 style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', width: '180px', background: '#fff', color: '#1e293b' }}
               />
             </div>
+            <button
+              onClick={() => abrirFormularioAuxiliar()}
+              style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', transition: 'background 0.2s' }}
+              onMouseOver={(e) => e.target.style.background = '#2563eb'}
+              onMouseOut={(e) => e.target.style.background = '#3b82f6'}
+            >
+              ➕ Nuevo Auxiliar
+            </button>
           </div>
         )}
 
