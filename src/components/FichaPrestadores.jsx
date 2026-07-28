@@ -41,15 +41,6 @@ export default function FichaPrestadores({ onVolver, usuario }) {
 
       if (errorP) throw errorP;
 
-      // Obtener todos los pagos anulados para filtrarlos de los saldos
-      const { data: pagosAnulados, error: errorAnulados } = await supabase
-        .from('pagos_motor')
-        .select('id_pago')
-        .eq('estado', 'ANULADO');
-
-      if (errorAnulados) throw errorAnulados;
-      const setAnulados = new Set((pagosAnulados || []).map(p => p.id_pago));
-
       // Obtener todos los movimientos consolidados para calcular saldos (paginado para superar límite de 1000)
       let listaMovs = [];
       let from = 0;
@@ -59,7 +50,7 @@ export default function FichaPrestadores({ onVolver, usuario }) {
       while (keepFetching) {
         const { data, error } = await supabase
           .from('movprestadores_motor')
-          .select('id_prestador, debe, haber, id_pago')
+          .select('id_prestador, debe, haber')
           .range(from, to);
           
         if (error) throw error;
@@ -73,12 +64,9 @@ export default function FichaPrestadores({ onVolver, usuario }) {
         }
       }
 
-      // Mapear saldos (filtrando movimientos asociados a pagos ANULADOS)
+      // Mapear saldos
       const saldosMapa = {};
-      listaMovs.forEach(m => {
-        if (m.id_pago && setAnulados.has(m.id_pago)) {
-          return; // Ignorar si está asociado a un pago anulado
-        }
+      (listaMovs || []).forEach(m => {
         const id = m.id_prestador;
         const debeVal = parseFloat(m.debe) || 0;
         const haberVal = parseFloat(m.haber) || 0;
@@ -112,15 +100,6 @@ export default function FichaPrestadores({ onVolver, usuario }) {
   const cargarMovimientos = async (idPrestador) => {
     setCargandoMovimientos(true);
     try {
-      // Obtener todos los pagos anulados
-      const { data: pagosAnulados, error: errorAnulados } = await supabase
-        .from('pagos_motor')
-        .select('id_pago')
-        .eq('estado', 'ANULADO');
-
-      if (errorAnulados) throw errorAnulados;
-      const setAnulados = new Set((pagosAnulados || []).map(p => p.id_pago));
-
       const { data, error } = await supabase
         .from('movprestadores_motor')
         .select('*')
@@ -129,12 +108,9 @@ export default function FichaPrestadores({ onVolver, usuario }) {
 
       if (error) throw error;
 
-      // Filtrar movimientos asociados a pagos anulados (oculta original y reverso)
-      const movimientosFiltrados = (data || []).filter(m => !m.id_pago || !setAnulados.has(m.id_pago));
-
       // Calcular saldo acumulado cronológicamente
       let saldoAcumulado = 0;
-      const movimientosConSaldo = movimientosFiltrados.map(m => {
+      const movimientosConSaldo = (data || []).map(m => {
         const debe = parseFloat(m.debe) || 0;
         const haber = parseFloat(m.haber) || 0;
         saldoAcumulado += (haber - debe);
