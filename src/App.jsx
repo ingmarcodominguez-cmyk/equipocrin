@@ -916,79 +916,277 @@ function App() {
         )}
 
         {!crinAccion && (
-          <div style={{ width: '100%', maxWidth: '520px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ display: 'flex', gap: '20px', width: '100%' }}>
-              <button 
-                onClick={() => handleAccionClick('NUEVO_PACIENTE')}
-                style={{ flex: 1, padding: '28px 15px', background: 'linear-gradient(135deg, #ebf8ff 100%, #bee3f8 0%)', color: '#2b6cb0', border: '2px solid #90cdf4', borderRadius: '20px', cursor: 'pointer', fontWeight: '800', fontSize: '15px', textAlign: 'center' }}
-              >
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>➕👤</div>
-                NUEVO PACIENTE
-              </button>
-              
-              <button 
-                onClick={() => handleAccionClick('EDITAR_PACIENTE')}
-                style={{ flex: 1, padding: '28px 15px', background: 'linear-gradient(135deg, #e6fffa 100%, #b2f5ea 0%)', color: '#234e52', border: '2px solid #81e6d9', borderRadius: '20px', cursor: 'pointer', fontWeight: '800', fontSize: '15px', textAlign: 'center' }}
-              >
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>✏️👤</div>
-                EDITAR PACIENTE
-              </button>
-            </div>
+          <div style={{ 
+            width: '100%', 
+            maxWidth: '1100px', 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', 
+            gap: '20px',
+            padding: '20px',
+            boxSizing: 'border-box'
+          }}>
+            {/* Button 1: NUEVO PACIENTE */}
+            <button 
+              onClick={() => handleAccionClick('NUEVO_PACIENTE')}
+              style={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '30px 15px', 
+                background: 'linear-gradient(135deg, #ebf8ff 100%, #bee3f8 0%)', 
+                color: '#2b6cb0', 
+                border: '2px solid #90cdf4', 
+                borderRadius: '16px', 
+                cursor: 'pointer', 
+                fontWeight: '800', 
+                fontSize: '15px', 
+                textAlign: 'center',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                transition: 'transform 0.2s, box-shadow 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'scale(1.03)';
+                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+              }}
+            >
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>➕👤</div>
+              NUEVO PACIENTE
+            </button>
 
+            {/* Button 2: EDITAR PACIENTE */}
+            <button 
+              onClick={() => handleAccionClick('EDITAR_PACIENTE')}
+              style={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '30px 15px', 
+                background: 'linear-gradient(135deg, #e6fffa 100%, #b2f5ea 0%)', 
+                color: '#234e52', 
+                border: '2px solid #81e6d9', 
+                borderRadius: '16px', 
+                cursor: 'pointer', 
+                fontWeight: '800', 
+                fontSize: '15px', 
+                textAlign: 'center',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                transition: 'transform 0.2s, box-shadow 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'scale(1.03)';
+                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+              }}
+            >
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>✏️👤</div>
+              EDITAR PACIENTE
+            </button>
+
+            {/* Button 3: NUEVO ACUERDO */}
             <button 
               onClick={() => handleAccionClick('NUEVO_ACUERDO')}
-              style={{ width: '100%', padding: '26px 20px', background: 'linear-gradient(135deg, #e6fffa 100%, #c6f6d5 0%)', color: '#22543d', border: '2px solid #9ae6b4', borderRadius: '20px', cursor: 'pointer', fontWeight: '800', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px' }}
+              style={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '30px 15px', 
+                background: 'linear-gradient(135deg, #e6fffa 100%, #c6f6d5 0%)', 
+                color: '#22543d', 
+                border: '2px solid #9ae6b4', 
+                borderRadius: '16px', 
+                cursor: 'pointer', 
+                fontWeight: '800', 
+                fontSize: '15px', 
+                textAlign: 'center',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                transition: 'transform 0.2s, box-shadow 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'scale(1.03)';
+                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+              }}
             >
-              <span style={{ fontSize: '28px' }}>🤝📄</span>
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>🤝📄</div>
               NUEVO ACUERDO
             </button>
 
+            {/* Button 4: FICHA PACIENTE */}
             <button 
               onClick={() => handleAccionClick('FICHA_PACIENTE')}
-              style={{ width: '100%', padding: '26px 20px', background: 'linear-gradient(135deg, #fffaf0 100%, #feebc8 0%)', color: '#744210', border: '2px solid #fbd38d', borderRadius: '20px', cursor: 'pointer', fontWeight: '800', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px' }}
+              style={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '30px 15px', 
+                background: 'linear-gradient(135deg, #fffaf0 100%, #feebc8 0%)', 
+                color: '#744210', 
+                border: '2px solid #fbd38d', 
+                borderRadius: '16px', 
+                cursor: 'pointer', 
+                fontWeight: '800', 
+                fontSize: '15px', 
+                textAlign: 'center',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                transition: 'transform 0.2s, box-shadow 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'scale(1.03)';
+                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+              }}
             >
-              <span style={{ fontSize: '28px' }}>📂📋</span>
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>📂📋</div>
               FICHA PACIENTE
             </button>
 
+            {/* Button 5: FICHA PRESTADORES */}
             <button 
               onClick={() => handleAccionClick('FICHA_PRESTADORES')}
-              style={{ width: '100%', padding: '26px 20px', background: 'linear-gradient(135deg, #e0f2fe 100%, #bae6fd 0%)', color: '#0369a1', border: '2px solid #7dd3fc', borderRadius: '20px', cursor: 'pointer', fontWeight: '800', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px' }}
+              style={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '30px 15px', 
+                background: 'linear-gradient(135deg, #e0f2fe 100%, #bae6fd 0%)', 
+                color: '#0369a1', 
+                border: '2px solid #7dd3fc', 
+                borderRadius: '16px', 
+                cursor: 'pointer', 
+                fontWeight: '800', 
+                fontSize: '15px', 
+                textAlign: 'center',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                transition: 'transform 0.2s, box-shadow 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'scale(1.03)';
+                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+              }}
             >
-              <span style={{ fontSize: '28px' }}>🩺💼</span>
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>🩺💼</div>
               FICHA PRESTADORES
             </button>
 
+            {/* Button 6: ASISTENCIA AUXILIARES */}
             <button 
               onClick={() => handleAccionClick('ASISTENCIA_AUXILIARES')}
-              style={{ width: '100%', padding: '26px 20px', background: 'linear-gradient(135deg, #f0fdf4 100%, #dcfce7 0%)', color: '#166534', border: '2px solid #bbf7d0', borderRadius: '20px', cursor: 'pointer', fontWeight: '800', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px' }}
+              style={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '30px 15px', 
+                background: 'linear-gradient(135deg, #f0fdf4 100%, #dcfce7 0%)', 
+                color: '#166534', 
+                border: '2px solid #bbf7d0', 
+                borderRadius: '16px', 
+                cursor: 'pointer', 
+                fontWeight: '800', 
+                fontSize: '15px', 
+                textAlign: 'center',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                transition: 'transform 0.2s, box-shadow 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'scale(1.03)';
+                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+              }}
             >
-              <span style={{ fontSize: '28px' }}>📋🤝</span>
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>📋🤝</div>
               ASISTENCIA AUXILIARES
             </button>
 
+            {/* Button 7: LIQUIDACION AUXILIARES */}
             <button 
               onClick={() => handleAccionClick('LIQUIDACION_AUXILIARES')}
-              style={{ width: '100%', padding: '26px 20px', background: 'linear-gradient(135deg, #fef3c7 100%, #fde68a 0%)', color: '#b45309', border: '2px solid #fde68a', borderRadius: '20px', cursor: 'pointer', fontWeight: '800', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px' }}
+              style={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '30px 15px', 
+                background: 'linear-gradient(135deg, #fef3c7 100%, #fde68a 0%)', 
+                color: '#b45309', 
+                border: '2px solid #fde68a', 
+                borderRadius: '16px', 
+                cursor: 'pointer', 
+                fontWeight: '800', 
+                fontSize: '15px', 
+                textAlign: 'center',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                transition: 'transform 0.2s, box-shadow 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'scale(1.03)';
+                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+              }}
             >
-              <span style={{ fontSize: '28px' }}>💰📊</span>
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>💰📊</div>
               LIQUIDACIÓN AUXILIARES
             </button>
 
+            {/* Button 8: CAJA DIARIA */}
             <button 
               onClick={() => handleAccionClick('CAJA_DIARIA')}
-              style={{ width: '100%', padding: '26px 20px', background: 'linear-gradient(135deg, #fff1f2 100%, #ffe4e6 0%)', color: '#be123c', border: '2px solid #fda4af', borderRadius: '20px', cursor: 'pointer', fontWeight: '800', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px' }}
+              style={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '30px 15px', 
+                background: 'linear-gradient(135deg, #fff1f2 100%, #ffe4e6 0%)', 
+                color: '#be123c', 
+                border: '2px solid #fda4af', 
+                borderRadius: '16px', 
+                cursor: 'pointer', 
+                fontWeight: '800', 
+                fontSize: '15px', 
+                textAlign: 'center',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                transition: 'transform 0.2s, box-shadow 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'scale(1.03)';
+                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+              }}
             >
-              <span style={{ fontSize: '28px' }}>💵💰</span>
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>💵💰</div>
               CAJA DIARIA (EFECTIVO)
-            </button>
-
-            <button 
-              onClick={() => handleAccionClick('SIMULADOR_MORA')}
-              style={{ width: '100%', padding: '26px 20px', background: 'linear-gradient(135deg, #f3e8ff 100%, #e9d5ff 0%)', color: '#6b21a8', border: '2px solid #d8b4fe', borderRadius: '20px', cursor: 'pointer', fontWeight: '800', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px' }}
-            >
-              <span style={{ fontSize: '28px' }}>🧪⚡</span>
-              SIMULADOR MOTOR DE MORA
             </button>
           </div>
         )}
