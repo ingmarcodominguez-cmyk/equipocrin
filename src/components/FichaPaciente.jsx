@@ -222,6 +222,51 @@ export default function FichaPaciente({ onVolver, usuario }) {
     }
   };
 
+  const descargarExcelResumenDetallado = () => {
+    if (!pacienteSeleccionado || movimientosDetallados.length === 0) return;
+
+    let csvContent = "\uFEFF"; // UTF-8 BOM
+    csvContent += "sep=;\n"; // Excel separator instruction
+    csvContent += `Resumen Detallado de Cuenta Corriente - Paciente: ${pacienteSeleccionado.nombre_apellido} (DNI: ${pacienteSeleccionado.dni || 'S/D'})\n\n`;
+    csvContent += "Fecha;Prestación / Acuerdo;Subtipo;Concepto;Debe;Haber;Saldo\n";
+
+    let runningBalance = 0;
+    movimientosDetallados.forEach(mov => {
+      const valDebe = parsearMoneda(mov.debe);
+      const valHaber = parsearMoneda(mov.haber);
+      runningBalance = runningBalance + valDebe - valHaber;
+
+      const fecha = mov.fecha_movimiento || mov.fecha_vencimiento || 'S/D';
+      const prestacion = (mov.nombre_prestacion || '').replace(/;/g, ' ');
+      const subtipo = (mov.subtipo || '').replace(/;/g, ' ');
+      const concepto = (mov.concepto || '').replace(/;/g, ' ');
+      
+      const debeStr = valDebe !== 0 ? valDebe.toFixed(2).replace('.', ',') : '';
+      const haberStr = valHaber !== 0 ? valHaber.toFixed(2).replace('.', ',') : '';
+      const saldoStr = runningBalance.toFixed(2).replace('.', ',');
+
+      csvContent += `${fecha};${prestacion};${subtipo};${concepto};${debeStr};${haberStr};${saldoStr}\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    
+    const cleanName = pacienteSeleccionado.nombre_apellido
+      .trim()
+      .toUpperCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^A-Z0-9]/g, '_');
+    
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Resumen_Detallado_${cleanName}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const seleccionarPacientePorId = async (e) => {
     const pacienteIdStr = e.target.value;
     if (!pacienteIdStr) {
@@ -1374,12 +1419,22 @@ export default function FichaPaciente({ onVolver, usuario }) {
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '2px solid #e2e8f0', paddingBottom: '8px' }}>
                 <h4 style={{ color: '#1e293b', margin: 0 }}>📊 Resumen de Cuenta Detallado (Todos los Movimientos)</h4>
-                <button
-                  onClick={() => setVistaActiva('menu')}
-                  style={{ background: '#e2e8f0', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#334155' }}
-                >
-                  ← Volver al Menú de la Ficha
-                </button>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    onClick={descargarExcelResumenDetallado}
+                    style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px', transition: 'background 0.2s' }}
+                    onMouseOver={(e) => e.target.style.background = '#059669'}
+                    onMouseOut={(e) => e.target.style.background = '#10b981'}
+                  >
+                    📥 Descargar Excel
+                  </button>
+                  <button
+                    onClick={() => setVistaActiva('menu')}
+                    style={{ background: '#e2e8f0', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#334155' }}
+                  >
+                    ← Volver al Menú de la Ficha
+                  </button>
+                </div>
               </div>
 
               {cargando ? (
