@@ -8,6 +8,7 @@ import SimuladorMotorMora from './components/SimuladorMotorMora.jsx'
 import FichaPrestadores from './components/FichaPrestadores.jsx'
 import AsistenciaAuxiliares from './components/AsistenciaAuxiliares.jsx'
 import LiquidacionAuxiliares from './components/LiquidacionAuxiliares.jsx'
+import CajaDiaria from './components/CajaDiaria.jsx'
 
 const normalizarRol = (r) => {
   if (!r) return '';
@@ -766,6 +767,15 @@ function App() {
           </div>
         )}
 
+        {crinAccion === 'CAJA_DIARIA' && (
+          <div style={{ width: '100%', maxWidth: '950px' }}>
+             <CajaDiaria 
+               onVolver={() => setCrinAccion(null)} 
+               usuario={userData?.nombre || session?.user?.email || 'Usuario'} 
+             />
+          </div>
+        )}
+
         {crinAccion === 'SIMULADOR_MORA' && (
           <div style={{ width: '100%', maxWidth: '900px' }}>
             <SimuladorMotorMora />
@@ -830,6 +840,14 @@ function App() {
             >
               <span style={{ fontSize: '28px' }}>💰📊</span>
               LIQUIDACIÓN AUXILIARES
+            </button>
+
+            <button 
+              onClick={() => handleAccionClick('CAJA_DIARIA')}
+              style={{ width: '100%', padding: '26px 20px', background: 'linear-gradient(135deg, #fff1f2 100%, #ffe4e6 0%)', color: '#be123c', border: '2px solid #fda4af', borderRadius: '20px', cursor: 'pointer', fontWeight: '800', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px' }}
+            >
+              <span style={{ fontSize: '28px' }}>💵💰</span>
+              CAJA DIARIA (EFECTIVO)
             </button>
 
             <button 
