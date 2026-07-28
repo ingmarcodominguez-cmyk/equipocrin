@@ -326,16 +326,32 @@ function App() {
     };
 
     try {
-      const { data: movimientos, error: errorMovs } = await supabase
-        .from('movimientoscuenta_motor')
-        .select('*')
-        .order('fecha_movimiento', { ascending: true });
+      let movimientos = [];
+      let epoch = 0;
+      let tieneMas = true;
+      while (tieneMas) {
+        const { data, error } = await supabase
+          .from('movimientoscuenta_motor')
+          .select('*')
+          .range(epoch * 1000, (epoch + 1) * 1000 - 1)
+          .order('id_movimiento', { ascending: true });
 
-      if (errorMovs) {
-        throw new Error("Error al obtener movimientos para recargos: " + errorMovs.message);
+        if (error) {
+          throw new Error("Error al obtener movimientos para recargos: " + error.message);
+        }
+        if (!data || data.length === 0) {
+          tieneMas = false;
+        } else {
+          movimientos = [...movimientos, ...data];
+          if (data.length < 1000) {
+            tieneMas = false;
+          } else {
+            epoch++;
+          }
+        }
       }
 
-      if (!movimientos || movimientos.length === 0) return;
+      if (movimientos.length === 0) return;
 
       const deudasMap = {};
       movimientos.forEach(m => {
@@ -375,11 +391,29 @@ function App() {
 
         if (diasAtrasoTotal <= 0) continue;
 
-        const recargosExistentes = deuda.movimientos.filter(m => {
-          const sub = (m.subtipo || '').toUpperCase();
-          const conc = (m.concepto || '').toUpperCase();
-          return sub === 'RECARGO_MORA' || sub.startsWith('RECARGO_') || conc.includes('RECARGO');
-        });
+        // Calcular el escalón máximo de recargo que ya posee esta deuda
+        const escalonesAplicados = deuda.movimientos
+          .filter(m => {
+            const sub = (m.subtipo || '').toUpperCase();
+            return sub.startsWith('RECARGO_');
+          })
+          .map(m => {
+            const sub = (m.subtipo || '').toUpperCase();
+            if (sub === 'RECARGO_MORA') {
+              const conc = (m.concepto || '').toUpperCase();
+              if (conc.includes('(2)')) return 2;
+              if (conc.includes('(3)')) return 3;
+              if (conc.includes('(4)')) return 4;
+              if (conc.includes('(5)')) return 5;
+              return parseInt(m.escalon_mora || '1', 10);
+            }
+            const match = sub.match(/RECARGO_(\d+)/);
+            return match ? parseInt(match[1], 10) : parseInt(m.escalon_mora || '0', 10);
+          })
+          .filter(e => !isNaN(e) && e > 0);
+
+        const maxEscalon = escalonesAplicados.length > 0 ? Math.max(...escalonesAplicados) : 0;
+        if (maxEscalon >= 5) continue;
 
         const hitosEsperados = [];
         if (diasAtrasoTotal >= 10) hitosEsperados.push({ nro: 1, diasReq: 10, porcentaje: 0.10, label: 'Recargo por mora (10%)' });
@@ -388,7 +422,7 @@ function App() {
         if (diasAtrasoTotal >= 40) hitosEsperados.push({ nro: 4, diasReq: 40, porcentaje: 0.05, label: 'Recargo por mora escalón (4)' });
         if (diasAtrasoTotal >= 50) hitosEsperados.push({ nro: 5, diasReq: 50, porcentaje: 0.05, label: 'Recargo por mora escalón (5)' });
 
-        if (recargosExistentes.length >= hitosEsperados.length) continue;
+        if (maxEscalon >= hitosEsperados.length) continue;
 
         let listaSimulada = [...deuda.movimientos];
         const importeCuotaBase = parseFloat(cuotaBase.debe || 0);
@@ -396,7 +430,7 @@ function App() {
         for (let i = 0; i < hitosEsperados.length; i++) {
           const hito = hitosEsperados[i];
           
-          if (i < recargosExistentes.length) continue;
+          if (i < maxEscalon) continue;
 
           let debeSim = listaSimulada.reduce((acc, m) => acc + parseFloat(m.debe || 0), 0);
           let haberSim = listaSimulada.reduce((acc, m) => acc + parseFloat(m.haber || 0), 0);
@@ -425,7 +459,7 @@ function App() {
             concepto: hito.label,
             debe: montoRecargo.toString(),
             haber: '0',
-            fecha_movimiento: fechaStr,
+            fecha_movimiento: formatearFechaLocal(fechaTrabajo),
             fecha_vencimiento: deuda.fecha_vencimiento
           };
 

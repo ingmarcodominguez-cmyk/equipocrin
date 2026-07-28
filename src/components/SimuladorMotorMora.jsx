@@ -13,13 +13,30 @@ export default function SimuladorMotorMora() {
     setLogResultados(logs)
 
     try {
-      const { data: todosLosMovimientos, error: errMov } = await supabase
-        .from('movimientoscuenta_motor')
-        .select('*')
+      let todosLosMovimientos = [];
+      let epoch = 0;
+      let tieneMas = true;
+      while (tieneMas) {
+        const { data, error } = await supabase
+          .from('movimientoscuenta_motor')
+          .select('*')
+          .range(epoch * 1000, (epoch + 1) * 1000 - 1)
+          .order('id_movimiento', { ascending: true });
 
-      if (errMov) throw errMov
+        if (error) throw error;
+        if (!data || data.length === 0) {
+          tieneMas = false;
+        } else {
+          todosLosMovimientos = [...todosLosMovimientos, ...data];
+          if (data.length < 1000) {
+            tieneMas = false;
+          } else {
+            epoch++;
+          }
+        }
+      }
 
-      if (!todosLosMovimientos || todosLosMovimientos.length === 0) {
+      if (todosLosMovimientos.length === 0) {
         logs.push('ℹ️ No se encontraron movimientos en la tabla.')
         setLogResultados([...logs])
         setCargando(false)
@@ -81,9 +98,24 @@ export default function SimuladorMotorMora() {
         }
 
         const escalonesAplicados = movimientosDeEstaDeuda
-          .filter(m => m.subtipo?.toUpperCase().startsWith('RECARGO_'))
-          .map(m => parseInt(m.escalon_mora || '0', 10))
-          .filter(e => !isNaN(e))
+          .filter(m => {
+            const sub = (m.subtipo || '').toUpperCase();
+            return sub.startsWith('RECARGO_');
+          })
+          .map(m => {
+            const sub = (m.subtipo || '').toUpperCase();
+            if (sub === 'RECARGO_MORA') {
+              const conc = (m.concepto || '').toUpperCase();
+              if (conc.includes('(2)')) return 2;
+              if (conc.includes('(3)')) return 3;
+              if (conc.includes('(4)')) return 4;
+              if (conc.includes('(5)')) return 5;
+              return parseInt(m.escalon_mora || '1', 10);
+            }
+            const match = sub.match(/RECARGO_(\d+)/);
+            return match ? parseInt(match[1], 10) : parseInt(m.escalon_mora || '0', 10);
+          })
+          .filter(e => !isNaN(e) && e > 0);
 
         const maxEscalon = escalonesAplicados.length > 0 ? Math.max(...escalonesAplicados) : 0
         logs.push(`   -> Escalón de mora actual máximo: ${maxEscalon}`)
