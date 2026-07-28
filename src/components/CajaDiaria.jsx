@@ -5,13 +5,22 @@ export default function CajaDiaria({ onVolver, usuario }) {
   const [movimientos, setMovimientos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [filtroFecha, setFiltroFecha] = useState(new Date().toISOString().split('T')[0]);
-  const [modalAbierto, setModalAbierto] = useState(null); // 'ingreso' o 'egreso'
+  const [modalAbierto, setModalAbierto] = useState(null); // 'ingreso', 'egreso', o 'cierre'
   
-  // Estados para el formulario de la transacción
+  // Estados para el formulario de la transacción (Ingreso/Egreso)
   const [fechaTx, setFechaTx] = useState(new Date().toISOString().split('T')[0]);
   const [conceptoTx, setConceptoTx] = useState('');
   const [montoTx, setMontoTx] = useState('');
   const [observacionTx, setObservacionTx] = useState('');
+  
+  // Estados para el formulario de Cierre/Rendición
+  const [saldoRealCierre, setSaldoRealCierre] = useState('');
+  const [turnoCierre, setTurnoCierre] = useState('MAÑANA');
+  const [entregadoPorCierre, setEntregadoPorCierre] = useState(usuario || 'Sistema');
+  const [recibidoPorCierre, setRecibidoPorCierre] = useState('DIRECCIÓN');
+  const [motivoDifCierre, setMotivoDifCierre] = useState('');
+  const [fechaSiguienteApertura, setFechaSiguienteApertura] = useState('');
+
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
@@ -35,7 +44,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
       let saldoAcumulado = 0;
       const movsConSaldo = (data || []).map(m => {
         const imp = parseFloat(m.importe) || 0;
-        if (m.tipo === 'INGRESO') {
+        if (m.tipo === 'INGRESO' || m.tipo === 'APERTURA') {
           saldoAcumulado += imp;
         } else if (m.tipo === 'EGRESO') {
           saldoAcumulado -= imp;
@@ -56,16 +65,35 @@ export default function CajaDiaria({ onVolver, usuario }) {
     }
   };
 
+  // Saldo final absoluto de la caja (el saldo del último movimiento registrado)
+  const saldoCajaTotal = movimientos.length > 0 ? movimientos[0].saldoCalculado : 0;
+
+  // Obtener fecha de mañana por defecto
+  const getTomorrowDate = () => {
+    const today = new Date();
+    today.setDate(today.getDate() + 1);
+    return today.toISOString().split('T')[0];
+  };
+
   // Abrir modal de transacción
   const abrirModal = (tipo) => {
     setModalAbierto(tipo);
     setFechaTx(new Date().toISOString().split('T')[0]);
-    setConceptoTx(tipo === 'egreso' ? '' : 'Ingreso Manual de Caja');
-    setMontoTx('');
-    setObservacionTx('');
+    if (tipo === 'cierre') {
+      setSaldoRealCierre(saldoCajaTotal.toString());
+      setTurnoCierre('MAÑANA');
+      setEntregadoPorCierre(usuario || 'Sistema');
+      setRecibidoPorCierre('DIRECCIÓN');
+      setMotivoDifCierre('');
+      setFechaSiguienteApertura(getTomorrowDate());
+    } else {
+      setConceptoTx(tipo === 'egreso' ? '' : 'Ingreso Manual de Caja');
+      setMontoTx('');
+      setObservacionTx('');
+    }
   };
 
-  // Confirmar y guardar la transacción en la base de datos
+  // Confirmar y guardar la transacción en la base de datos (Ingreso/Egreso simple)
   const confirmarTransaccion = async () => {
     const importeNum = parseFloat(montoTx);
     if (isNaN(importeNum) || importeNum <= 0) {
@@ -90,7 +118,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
         concepto: conceptoTx,
         medio_pago: 'EFECTIVO',
         importe: importeNum.toString(),
-        saldo: '0.00', // Será calculado dinámicamente al cargar
+        saldo: '0.00', 
         id_pago: null,
         observaciones: observacionTx || null,
         cierre_turno: false
@@ -113,22 +141,141 @@ export default function CajaDiaria({ onVolver, usuario }) {
     }
   };
 
+  // Procesar cierre de caja completo con rendición y apertura
+  const confirmarCierreCaja = async () => {
+    const saldoRealNum = parseFloat(saldoRealCierre);
+    if (isNaN(saldoRealNum) || saldoRealNum < 0) {
+      alert("Por favor ingrese un saldo real físico válido (mayor o igual a 0).");
+      return;
+    }
+    if (!fechaSiguienteApertura) {
+      alert("Por favor seleccione la fecha de apertura para el siguiente turno.");
+      return;
+    }
+
+    setGuardando(true);
+    try {
+      const saldoTeorico = saldoCajaTotal;
+      const diferencia = saldoRealNum - saldoTeorico;
+      const fechaHoy = new Date().toISOString().split('T')[0];
+      const hhmm = new Date().toTimeString().split(' ')[0].substring(0, 5).replace(':', '');
+      const autoIdTurno = `${fechaHoy.replace(/-/g, '')}_${hhmm}_${turnoCierre}`;
+
+      // 1. Registrar Ajuste por Diferencia (si la hay) para cuadrar saldo teórico con saldo real físico
+      if (diferencia !== 0) {
+        const registroAjuste = {
+          fecha: fechaHoy,
+          usuario: usuario || 'Sistema',
+          recibido_por: null,
+          entregado_por: null,
+          turno: turnoCierre,
+          id_turno: autoIdTurno,
+          tipo: diferencia < 0 ? 'EGRESO' : 'INGRESO',
+          concepto: diferencia < 0 ? 'Faltante de Caja - Ajuste por Cierre' : 'Sobrante de Caja - Ajuste por Cierre',
+          medio_pago: 'EFECTIVO',
+          importe: Math.abs(diferencia).toString(),
+          saldo: '0.00',
+          id_pago: null,
+          observaciones: motivoDifCierre || (diferencia < 0 ? 'Ajuste por faltante detectado en rendición' : 'Ajuste por sobrante detectado en rendición'),
+          cierre_turno: false
+        };
+
+        const { error: errAjuste } = await supabase.from('caja_motor').insert([registroAjuste]);
+        if (errAjuste) throw errAjuste;
+      }
+
+      // 2. Insertar el registro contable de CIERRE
+      const registroCierre = {
+        fecha: fechaHoy,
+        usuario: usuario || 'Sistema',
+        recibido_por: recibidoPorCierre || null,
+        entregado_por: entregadoPorCierre || null,
+        turno: turnoCierre,
+        id_turno: autoIdTurno,
+        tipo: 'CIERRE',
+        concepto: `CIERRE DE CAJA - TURNO ${turnoCierre}`,
+        medio_pago: 'EFECTIVO',
+        importe: '0',
+        saldo: saldoRealNum.toString(),
+        id_pago: null,
+        observaciones: motivoDifCierre || null,
+        cierre_turno: true,
+        saldo_turno: saldoRealNum.toString(),
+        diferencia: diferencia.toString(),
+        motivo_dif: motivoDifCierre || null
+      };
+
+      const { error: errCierre } = await supabase.from('caja_motor').insert([registroCierre]);
+      if (errCierre) throw errCierre;
+
+      // 3. Registrar el egreso de RENDICION A DIRECCION para dejar la caja física en 0
+      const registroRendicion = {
+        fecha: fechaHoy,
+        usuario: usuario || 'Sistema',
+        recibido_por: recibidoPorCierre || null,
+        entregado_por: entregadoPorCierre || null,
+        turno: turnoCierre,
+        id_turno: autoIdTurno,
+        tipo: 'EGRESO',
+        concepto: 'RENDICION A DIRECCION',
+        medio_pago: 'EFECTIVO',
+        importe: saldoRealNum.toString(),
+        saldo: '0.00',
+        id_pago: null,
+        observaciones: `Rendición de caja por cierre de turno ${turnoCierre}. Caja en cero.`,
+        cierre_turno: false
+      };
+
+      const { error: errRendicion } = await supabase.from('caja_motor').insert([registroRendicion]);
+      if (errRendicion) throw errRendicion;
+
+      // 4. Registrar la APERTURA de caja para el día/turno siguiente con el saldo real físico
+      const registroAperturaSiguiente = {
+        fecha: fechaSiguienteApertura,
+        usuario: usuario || 'Sistema',
+        recibido_por: null,
+        entregado_por: recibidoPorCierre || null,
+        turno: turnoCierre === 'MAÑANA' ? 'TARDE' : 'MAÑANA',
+        id_turno: `${fechaSiguienteApertura.replace(/-/g, '')}_APERTURA_${turnoCierre === 'MAÑANA' ? 'TARDE' : 'MAÑANA'}`,
+        tipo: 'APERTURA',
+        concepto: 'APERTURA DE CAJA',
+        medio_pago: 'EFECTIVO',
+        importe: saldoRealNum.toString(), // El saldo físico arrastrado ingresa como saldo de apertura
+        saldo: saldoRealNum.toString(),
+        id_pago: null,
+        observaciones: `Saldo de apertura inicial arrastrado del cierre anterior`,
+        cierre_turno: false,
+        saldo_turno: saldoRealNum.toString()
+      };
+
+      const { error: errApertura } = await supabase.from('caja_motor').insert([registroAperturaSiguiente]);
+      if (errApertura) throw errApertura;
+
+      alert("Cierre de caja y apertura de siguiente turno procesados con éxito.");
+      setModalAbierto(null);
+      await cargarCaja();
+    } catch (err) {
+      console.error("Error al procesar el cierre de caja:", err);
+      alert("Error al procesar el cierre de caja: " + err.message);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
   // Filtrar los movimientos según la fecha seleccionada
   const movimientosFiltrados = movimientos.filter(m => m.fecha === filtroFecha);
 
   // Totales de la fecha seleccionada
   const ingresosDelDia = movimientosFiltrados
-    .filter(m => m.tipo === 'INGRESO')
+    .filter(m => m.tipo === 'INGRESO' || m.tipo === 'APERTURA')
     .reduce((acc, m) => acc + (parseFloat(m.importe) || 0), 0);
 
   const egresosDelDia = movimientosFiltrados
     .filter(m => m.tipo === 'EGRESO')
     .reduce((acc, m) => acc + (parseFloat(m.importe) || 0), 0);
 
-  const balanceDelDia = ingresosDelDia - egresosDelDia;
-
-  // Saldo final absoluto de la caja (el saldo del último movimiento registrado)
-  const saldoCajaTotal = movimientos.length > 0 ? movimientos[0].saldoCalculado : 0;
+  // Diferencia calculada para el modal de cierre
+  const diferenciaCalculada = (parseFloat(saldoRealCierre) || 0) - saldoCajaTotal;
 
   return (
     <div style={{ background: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b' }}>
@@ -140,7 +287,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
             💵 Caja Diaria en Efectivo
           </h2>
           <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
-            Visualización y control del flujo de caja diario en efectivo.
+            Visualización, control, egresos y cierres de la caja diaria.
           </p>
         </div>
         <button 
@@ -217,12 +364,18 @@ export default function CajaDiaria({ onVolver, usuario }) {
           >
             ➖ Registrar Egreso
           </button>
+          <button
+            onClick={() => abrirModal('cierre')}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(79, 70, 229, 0.1)' }}
+          >
+            🔒 Cerrar Caja / Rendir
+          </button>
         </div>
 
       </div>
 
-      {/* Modal de Transacción */}
-      {modalAbierto && (
+      {/* Modal de Transacción (Ingreso/Egreso) */}
+      {modalAbierto && modalAbierto !== 'cierre' && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
           <div style={{ background: '#ffffff', padding: '25px', borderRadius: '16px', width: '100%', maxWidth: '450px', border: '1px solid #e2e8f0', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
             <h3 style={{ margin: '0 0 15px 0', fontSize: '18px', fontWeight: 'bold', color: '#0f172a' }}>
@@ -292,6 +445,128 @@ export default function CajaDiaria({ onVolver, usuario }) {
         </div>
       )}
 
+      {/* Modal de Cierre de Caja / Rendición */}
+      {modalAbierto === 'cierre' && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#ffffff', padding: '25px', borderRadius: '16px', width: '100%', maxWidth: '480px', border: '1px solid #e2e8f0', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
+            <h3 style={{ margin: '0 0 15px 0', fontSize: '18px', fontWeight: 'bold', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              🔒 Cierre y Rendición de Caja
+            </h3>
+
+            {/* Cuadro de Saldos */}
+            <div style={{ background: '#f8fafc', padding: '12px 15px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '15px', fontSize: '13px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ color: '#475569' }}>Saldo Teórico del Sistema:</span>
+                <span style={{ fontWeight: 'bold', color: '#0f172a' }}>${saldoCajaTotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ color: '#475569' }}>Saldo Real Físico ingresado:</span>
+                <span style={{ fontWeight: 'bold', color: '#0f172a' }}>${(parseFloat(saldoRealCierre) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #cbd5e1', paddingTop: '4px', marginTop: '4px' }}>
+                <span style={{ color: '#475569', fontWeight: '600' }}>Diferencia (Sobrante/Faltante):</span>
+                <span style={{ 
+                  fontWeight: 'bold', 
+                  color: diferenciaCalculada === 0 ? '#166534' : diferenciaCalculada > 0 ? '#b45309' : '#b91c1c' 
+                }}>
+                  {diferenciaCalculada === 0 ? '$0,00 (Cuadrada)' : diferenciaCalculada > 0 ? `+$${diferenciaCalculada.toLocaleString('es-AR', { minimumFractionDigits: 2 })} (Sobrante)` : `-$${Math.abs(diferenciaCalculada).toLocaleString('es-AR', { minimumFractionDigits: 2 })} (Faltante)`}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>Saldo Real Físico (Contado) *</label>
+                <input 
+                  type="number"
+                  value={saldoRealCierre}
+                  onChange={(e) => setSaldoRealCierre(e.target.value)}
+                  placeholder="Ej: 87200"
+                  style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>Turno que Cierra *</label>
+                <select 
+                  value={turnoCierre}
+                  onChange={(e) => setTurnoCierre(e.target.value)}
+                  style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', background: '#fff' }}
+                >
+                  <option value="MAÑANA">MAÑANA</option>
+                  <option value="TARDE">TARDE</option>
+                  <option value="NOCHE">NOCHE</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>Entregado Por *</label>
+                <input 
+                  type="text"
+                  value={entregadoPorCierre}
+                  onChange={(e) => setEntregadoPorCierre(e.target.value)}
+                  style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>Recibido Por (Rendición) *</label>
+                <input 
+                  type="text"
+                  value={recibidoPorCierre}
+                  onChange={(e) => setRecibidoPorCierre(e.target.value)}
+                  style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>Fecha de Apertura Siguiente Turno *</label>
+              <input 
+                type="date"
+                value={fechaSiguienteApertura}
+                onChange={(e) => setFechaSiguienteApertura(e.target.value)}
+                style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+              />
+            </div>
+
+            {diferenciaCalculada !== 0 && (
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#991b1b', marginBottom: '4px' }}>Explicación/Motivo de la Diferencia *</label>
+                <textarea 
+                  value={motivoDifCierre}
+                  onChange={(e) => setMotivoDifCierre(e.target.value)}
+                  placeholder="Ej: Error en vuelto de $100 al paciente X..."
+                  style={{ width: '100%', padding: '8px', border: '1px solid #fca5a5', borderRadius: '6px', fontSize: '13px', height: '50px', resize: 'none', background: '#fff5f5' }}
+                />
+              </div>
+            )}
+
+            <div style={{ background: '#f0fdf4', padding: '10px 12px', borderRadius: '6px', border: '1px solid #bbf7d0', fontSize: '11px', color: '#166534', marginBottom: '20px' }}>
+              ℹ️ Al confirmar: se registrará el Cierre y el ajuste correspondiente; se rendirá el efectivo a Dirección dejando la caja en cero; y se abrirá el siguiente turno con un saldo inicial igual a <strong>${(parseFloat(saldoRealCierre) || 0).toLocaleString('es-AR')}</strong>.
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button 
+                onClick={() => setModalAbierto(null)}
+                disabled={guardando}
+                style={{ padding: '8px 16px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={confirmarCierreCaja}
+                disabled={guardando || (diferenciaCalculada !== 0 && !motivoDifCierre.trim())}
+                style={{ padding: '8px 20px', background: '#4f46e5', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
+              >
+                {guardando ? 'Guardando...' : 'Confirmar Cierre y Apertura'}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {/* Tabla de Movimientos del Día */}
       <div>
         <h3 style={{ fontSize: '15px', color: '#0f172a', fontWeight: 'bold', margin: '0 0 15px 0' }}>
@@ -331,8 +606,8 @@ export default function CajaDiaria({ onVolver, usuario }) {
                           fontWeight: 'bold', 
                           padding: '3px 8px', 
                           borderRadius: '12px',
-                          background: m.tipo === 'INGRESO' ? '#dcfce7' : m.tipo === 'EGRESO' ? '#fecaca' : '#f1f5f9',
-                          color: m.tipo === 'INGRESO' ? '#14532d' : m.tipo === 'EGRESO' ? '#7f1d1d' : '#475569'
+                          background: m.tipo === 'INGRESO' ? '#dcfce7' : m.tipo === 'EGRESO' ? '#fecaca' : m.tipo === 'APERTURA' ? '#eff6ff' : m.tipo === 'CIERRE' ? '#f1f5f9' : '#f1f5f9',
+                          color: m.tipo === 'INGRESO' ? '#14532d' : m.tipo === 'EGRESO' ? '#7f1d1d' : m.tipo === 'APERTURA' ? '#1e40af' : m.tipo === 'CIERRE' ? '#475569' : '#475569'
                         }}>
                           {m.tipo}
                         </span>
@@ -343,14 +618,14 @@ export default function CajaDiaria({ onVolver, usuario }) {
                       <td style={{ padding: '10px', color: '#475569' }}>
                         👤 {m.usuario || 'Sistema'}
                       </td>
-                      <td style={{ padding: '10px', textAlign: 'right', color: m.tipo === 'INGRESO' ? '#166534' : m.tipo === 'EGRESO' ? '#b91c1c' : '#475569', fontWeight: 'bold' }}>
-                        {m.tipo === 'INGRESO' ? '+' : m.tipo === 'EGRESO' ? '-' : ''}${imp.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      <td style={{ padding: '10px', textAlign: 'right', color: (m.tipo === 'INGRESO' || m.tipo === 'APERTURA') ? '#166534' : m.tipo === 'EGRESO' ? '#b91c1c' : '#475569', fontWeight: 'bold' }}>
+                        {(m.tipo === 'INGRESO' || m.tipo === 'APERTURA') ? '+' : m.tipo === 'EGRESO' ? '-' : ''}${imp.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                       </td>
                       <td style={{ padding: '10px', textAlign: 'right', color: '#0f172a', fontWeight: 'bold' }}>
                         ${m.saldoCalculado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                       </td>
                       <td style={{ padding: '10px', color: '#64748b', fontStyle: m.observaciones ? 'normal' : 'italic' }}>
-                        {m.observaciones || '-'}
+                        {m.observaciones || m.motivo_dif || '-'}
                       </td>
                     </tr>
                   );
