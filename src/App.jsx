@@ -420,24 +420,57 @@ function App() {
           .filter(e => !isNaN(e) && e > 0);
 
         const maxEscalon = escalonesAplicados.length > 0 ? Math.max(...escalonesAplicados) : 0;
-        if (maxEscalon >= 5) continue;
 
-        const hitosEsperados = [];
-        if (diasAtrasoTotal >= 10) hitosEsperados.push({ nro: 1, diasReq: 10, porcentaje: 0.10, label: 'Recargo por mora (10%)' });
-        if (diasAtrasoTotal >= 20) hitosEsperados.push({ nro: 2, diasReq: 20, porcentaje: 0.05, label: 'Recargo por mora escalón (2)' });
-        if (diasAtrasoTotal >= 30) hitosEsperados.push({ nro: 3, diasReq: 30, porcentaje: 0.05, label: 'Recargo por mora escalón (3)' });
-        if (diasAtrasoTotal >= 40) hitosEsperados.push({ nro: 4, diasReq: 40, porcentaje: 0.05, label: 'Recargo por mora escalón (4)' });
-        if (diasAtrasoTotal >= 50) hitosEsperados.push({ nro: 5, diasReq: 50, porcentaje: 0.05, label: 'Recargo por mora escalón (5)' });
+        let fechaUltimoRecargo = null;
+        const movimientosRecargos = deuda.movimientos.filter(m => {
+          const sub = (m.subtipo || '').toUpperCase();
+          const conc = (m.concepto || '').toUpperCase();
+          return sub.startsWith('RECARGO') || conc.includes('RECARGO');
+        });
+        if (movimientosRecargos.length > 0) {
+          movimientosRecargos.sort((a, b) => {
+            const dateA = new Date((a.fecha_movimiento || '2000-01-01') + 'T00:00:00');
+            const dateB = new Date((b.fecha_movimiento || '2000-01-01') + 'T00:00:00');
+            return dateB - dateA;
+          });
+          fechaUltimoRecargo = movimientosRecargos[0].fecha_movimiento;
+        }
 
-        if (maxEscalon >= hitosEsperados.length) continue;
+        const recargosAAplicar = [];
+        let startNro = 0;
+        let countNew = 0;
+
+        if (maxEscalon === 0) {
+          if (diasAtrasoTotal >= 10) {
+            startNro = 1;
+            countNew = 1 + Math.floor((diasAtrasoTotal - 10) / 10);
+          }
+        } else {
+          if (fechaUltimoRecargo) {
+            const dateUltimo = new Date(fechaUltimoRecargo + 'T00:00:00');
+            const diasDesdeUltimo = Math.floor((fechaTrabajo.getTime() - dateUltimo.getTime()) / (1000 * 60 * 60 * 24));
+            if (diasDesdeUltimo >= 10) {
+              startNro = maxEscalon + 1;
+              countNew = Math.floor(diasDesdeUltimo / 10);
+            }
+          } else {
+            startNro = maxEscalon + 1;
+            const expectedTotal = 1 + Math.floor((diasAtrasoTotal - 10) / 10);
+            if (expectedTotal > maxEscalon) {
+              countNew = expectedTotal - maxEscalon;
+            }
+          }
+        }
+
+        if (countNew <= 0) continue;
 
         let listaSimulada = [...deuda.movimientos];
         const importeCuotaBase = parsePlano(cuotaBase.debe);
 
-        for (let i = 0; i < hitosEsperados.length; i++) {
-          const hito = hitosEsperados[i];
-          
-          if (i < maxEscalon) continue;
+        for (let idx = 0; idx < countNew; idx++) {
+          const nroRecargo = startNro + idx;
+          const porcentaje = (nroRecargo === 1) ? 0.10 : 0.05;
+          const label = (nroRecargo === 1) ? 'Recargo por mora (10%)' : `Recargo por mora escalón (${nroRecargo})`;
 
           let debeSim = listaSimulada.reduce((acc, m) => acc + parsePlano(m.debe), 0);
           let haberSim = listaSimulada.reduce((acc, m) => acc + parsePlano(m.haber), 0);
@@ -445,17 +478,11 @@ function App() {
 
           if (saldoAcumuladoActual <= 0) break;
 
-          let baseCalculo = (hito.nro === 1) ? importeCuotaBase : saldoAcumuladoActual;
-
-          // Cálculo limpio sin alterar puntos decimales raros
-          const montoRecargo = Math.round((baseCalculo * hito.porcentaje) * 100) / 100;
+          let baseCalculo = (nroRecargo === 1) ? importeCuotaBase : saldoAcumuladoActual;
+          const montoRecargo = Math.round((baseCalculo * porcentaje) * 100) / 100;
           maxIdMovimiento++;
 
-          const fechaHitoObj = new Date(fechaVencObj.getTime());
-          fechaHitoObj.setDate(fechaHitoObj.getDate() + (hito.diasReq - 1));
-          
-          const fechaEfectivaRecargo = fechaHitoObj > fechaTrabajo ? fechaTrabajo : fechaHitoObj;
-          const fechaStr = formatearFechaLocal(fechaEfectivaRecargo);
+          const fechaStr = formatearFechaLocal(fechaTrabajo);
 
           const nuevoRecargoItem = {
             id_acuerdo: deuda.id_acuerdo,
@@ -463,11 +490,12 @@ function App() {
             id_deuda: deuda.id_deuda,
             tipo_movimiento: 'deuda',
             subtipo: 'RECARGO_MORA',
-            concepto: hito.label,
+            concepto: label,
             debe: montoRecargo.toString(),
             haber: '0',
-            fecha_movimiento: formatearFechaLocal(fechaTrabajo),
-            fecha_vencimiento: deuda.fecha_vencimiento
+            fecha_movimiento: fechaStr,
+            fecha_vencimiento: deuda.fecha_vencimiento,
+            escalon_mora: String(nroRecargo)
           };
 
           nuevosRecargosBulk.push(nuevoRecargoItem);

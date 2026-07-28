@@ -128,15 +128,73 @@ export default function SimuladorMotorMora() {
         logs.push(`   -> Escalón de mora actual máximo: ${maxEscalon}`)
         setLogResultados([...logs])
 
-        // REGLA 1: Aplicar Recargo 1 (10%) si pasó 10 días o más y maxEscalon == 0
-        if (diasAtraso >= 10 && maxEscalon === 0) {
-          const recargo10 = parseFloat((saldoDeuda * 0.10).toFixed(2))
+        let fechaUltimoRecargo = null;
+        const movimientosRecargos = movimientosDeEstaDeuda.filter(m => {
+          const sub = (m.subtipo || '').toUpperCase();
+          const conc = (m.concepto || '').toUpperCase();
+          return sub.startsWith('RECARGO') || conc.includes('RECARGO');
+        });
+        if (movimientosRecargos.length > 0) {
+          movimientosRecargos.sort((a, b) => {
+            const dateA = new Date((a.fecha_movimiento || '2000-01-01') + 'T00:00:00');
+            const dateB = new Date((b.fecha_movimiento || '2000-01-01') + 'T00:00:00');
+            return dateB - dateA;
+          });
+          fechaUltimoRecargo = movimientosRecargos[0].fecha_movimiento;
+        }
 
-          logs.push(`   ⚡ Aplicando RECARGO 1 (10% sobre saldo $${saldoDeuda}): $${recargo10}`)
-          setLogResultados([...logs])
+        let startNro = 0;
+        let countNew = 0;
+        let diasDesdeUltimo = 0;
 
-          const [anio, mes] = fechaSimulada.split('-')
-          const cicloMoraCalculado = parseInt(`${anio}${mes}`, 10)
+        if (maxEscalon === 0) {
+          if (diasAtraso >= 10) {
+            startNro = 1;
+            countNew = 1 + Math.floor((diasAtraso - 10) / 10);
+          }
+        } else {
+          if (fechaUltimoRecargo) {
+            const dateUltimo = new Date(fechaUltimoRecargo + 'T00:00:00');
+            diasDesdeUltimo = Math.floor((fechaTrabajo.getTime() - dateUltimo.getTime()) / (1000 * 60 * 60 * 24));
+            logs.push(`   -> Días transcurridos desde el último recargo: ${diasDesdeUltimo}`);
+            setLogResultados([...logs]);
+            if (diasDesdeUltimo >= 10) {
+              startNro = maxEscalon + 1;
+              countNew = Math.floor(diasDesdeUltimo / 10);
+            }
+          } else {
+            startNro = maxEscalon + 1;
+            const expectedTotal = 1 + Math.floor((diasAtraso - 10) / 10);
+            if (expectedTotal > maxEscalon) {
+              countNew = expectedTotal - maxEscalon;
+            }
+          }
+        }
+
+        if (countNew <= 0) {
+          logs.push(`   -> No corresponde aplicar nuevos recargos en esta corrida.`);
+          setLogResultados([...logs]);
+          continue;
+        }
+
+        let saldoAcumuladoActual = saldoDeuda;
+        const importeCuotaBase = parsePlano(deudaOriginal.debe);
+
+        for (let idx = 0; idx < countNew; idx++) {
+          const nroRecargo = startNro + idx;
+          const porcentaje = (nroRecargo === 1) ? 0.10 : 0.05;
+          const label = (nroRecargo === 1) ? 'Recargo por mora (10%)' : `Recargo por mora escalón (${nroRecargo})`;
+
+          if (saldoAcumuladoActual <= 0) break;
+
+          let baseCalculo = (nroRecargo === 1) ? importeCuotaBase : saldoAcumuladoActual;
+          const montoRecargo = Math.round((baseCalculo * porcentaje) * 100) / 100;
+
+          logs.push(`   ⚡ Simulando RECARGO ${nroRecargo} (${porcentaje * 100}% sobre base $${baseCalculo}): $${montoRecargo}`);
+          setLogResultados([...logs]);
+
+          const [anio, mes] = fechaSimulada.split('-');
+          const cicloMoraCalculado = parseInt(`${anio}${mes}`, 10);
 
           const nuevoMovRecargo = {
             id_movimiento: siguienteIdMovimiento++,
@@ -147,79 +205,26 @@ export default function SimuladorMotorMora() {
             fecha_vencimiento: deudaOriginal.fecha_vencimiento,
             fecha_movimiento: fechaSimulada,
             ciclo_mora: cicloMoraCalculado,
-            escalon_mora: '1',
+            escalon_mora: String(nroRecargo),
             tipo_movimiento: 'deuda',
-            subtipo: 'RECARGO_1',
-            id_origen: deudaOriginal.id_movimiento,
-            concepto: 'recargo automático cuota 1',
-            debe: String(recargo10),
+            subtipo: `RECARGO_${nroRecargo}`,
+            id_origen: (movimientosRecargos.length > 0) ? movimientosRecargos[0].id_movimiento : deudaOriginal.id_movimiento,
+            concepto: label,
+            debe: String(montoRecargo),
             haber: '0',
             saldo: '0',
             id_pago: null,
             usuario: 'MotorMora'
-          }
+          };
 
-          const { error: errIns } = await supabase.from('movimientoscuenta_motor').insert([nuevoMovRecargo])
+          const { error: errIns } = await supabase.from('movimientoscuenta_motor').insert([nuevoMovRecargo]);
           if (errIns) {
-            logs.push(`   ❌ Error al insertar recargo 1: ${errIns.message}`)
+            logs.push(`   ❌ Error al insertar recargo ${nroRecargo}: ${errIns.message}`);
           } else {
-            logs.push(`   ✅ Recargo 1 asentado correctamente como deuda en Supabase.`)
+            logs.push(`   ✅ Recargo ${nroRecargo} asentado correctamente en Supabase.`);
+            saldoAcumuladoActual += montoRecargo;
           }
-          setLogResultados([...logs])
-        }
-
-        // REGLA 2: Escalones sucesivos (5% cada 10 días desde el último recargo)
-        const movimientosRecargos = movimientosDeEstaDeuda.filter(m => m.subtipo?.toUpperCase().startsWith('RECARGO_'))
-        
-        if (movimientosRecargos.length > 0) {
-          movimientosRecargos.sort((a, b) => new Date(b.fecha_movimiento) - new Date(a.fecha_movimiento))
-          const ultimoRecargo = movimientosRecargos[0]
-          
-          const fechaUltimoRecargoObj = new Date(ultimoRecargo.fecha_movimiento + 'T00:00:00')
-          const diasDesdeUltimoRecargo = Math.floor((fechaTrabajo.getTime() - fechaUltimoRecargoObj.getTime()) / (1000 * 3600 * 24))
-
-          logs.push(`   -> Días transcurridos desde el último recargo: ${diasDesdeUltimoRecargo}`)
-          setLogResultados([...logs])
-
-          if (diasDesdeUltimoRecargo >= 10 && maxEscalon < 5) {
-            const siguienteEscalon = maxEscalon + 1
-            const recargo5 = parseFloat((saldoDeuda * 0.05).toFixed(2))
-
-            logs.push(`   ⚡ Aplicando RECARGO ${siguienteEscalon} (5% sobre saldo actual $${saldoDeuda}): $${recargo5}`)
-            setLogResultados([...logs])
-
-            const [anio, mes] = fechaSimulada.split('-')
-            const cicloMoraCalculado = parseInt(`${anio}${mes}`, 10)
-
-            const nuevoMovRecargoEscalon = {
-              id_movimiento: siguienteIdMovimiento++,
-              id_paciente: deudaOriginal.id_paciente,
-              id_acuerdo: deudaOriginal.id_acuerdo,
-              id_deuda: idDeudaActual,
-              fecha_cuota_origen: deudaOriginal.fecha_cuota_origen,
-              fecha_vencimiento: deudaOriginal.fecha_vencimiento,
-              fecha_movimiento: fechaSimulada,
-              ciclo_mora: cicloMoraCalculado,
-              escalon_mora: String(siguienteEscalon),
-              tipo_movimiento: 'deuda',
-              subtipo: `RECARGO_${siguienteEscalon}`,
-              id_origen: ultimoRecargo.id_movimiento,
-              concepto: `recargo automático cuota ${siguienteEscalon}`,
-              debe: String(recargo5),
-              haber: '0',
-              saldo: '0',
-              id_pago: null,
-              usuario: 'MotorMora'
-            }
-
-            const { error: errInsEsc } = await supabase.from('movimientoscuenta_motor').insert([nuevoMovRecargoEscalon])
-            if (errInsEsc) {
-              logs.push(`   ❌ Error al insertar recargo ${siguienteEscalon}: ${errInsEsc.message}`)
-            } else {
-              logs.push(`   ✅ Recargo ${siguienteEscalon} asentado correctamente como deuda en Supabase.`)
-            }
-            setLogResultados([...logs])
-          }
+          setLogResultados([...logs]);
         }
       }
 
