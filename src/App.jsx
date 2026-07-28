@@ -712,8 +712,28 @@ function App() {
           >
             ← Volver
           </button>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
             <h2 style={{ margin: 0, fontSize: '24px', color: '#1a365d', fontWeight: '800', letterSpacing: '0.5px' }}>✨ Sistema Crin</h2>
+            <div style={{ fontSize: '12px', color: '#4a5568', background: '#edf2f7', padding: '4px 10px', borderRadius: '8px', display: 'flex', gap: '8px', alignItems: 'center', border: '1px solid #e2e8f0' }}>
+              <span>📅 Fecha de Trabajo: <strong>{(() => {
+                const d = obtenerFechaTrabajo();
+                const day = String(d.getDate()).padStart(2, '0');
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const year = d.getFullYear();
+                return `${day}/${month}/${year}`;
+              })()}</strong></span>
+              {localStorage.getItem('crin_fecha_trabajo_simulada') && (
+                <button 
+                  onClick={() => {
+                    localStorage.removeItem('crin_fecha_trabajo_simulada');
+                    window.location.reload();
+                  }}
+                  style={{ background: 'none', border: 'none', color: '#e53e3e', cursor: 'pointer', textDecoration: 'underline', padding: 0, fontSize: '11px', fontWeight: 'bold' }}
+                >
+                  (Restablecer fecha real)
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
