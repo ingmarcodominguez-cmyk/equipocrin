@@ -595,36 +595,18 @@ export default function FichaPaciente({ onVolver, usuario }) {
       if (errorMaxMov) throw errorMaxMov;
       const nextIdMovimiento = (maxMovData && maxMovData[0]?.id_movimiento ? parseInt(maxMovData[0].id_movimiento) : 0) + 1;
       
-      // 2. Obtener deudas agrupadas y buscar la seleccionada
-      const deudaSeleccionada = deudasAgrupadas.find(d => String(d.id_deuda) === String(deudaSeleccionadaId));
-      if (!deudaSeleccionada) {
-        throw new Error("La deuda seleccionada no es válida.");
-      }
-      
-      // 3. Lógica FIFO de asignación de importes
+      // 2. Obtener deudas agrupadas y buscar la seleccionada o aplicar FIFO
       const asignaciones = [];
-      const balanceSeleccionada = deudaSeleccionada.saldoReal;
-      const montoAsignadoSeleccionada = Math.min(importeNum, balanceSeleccionada);
-      
-      asignaciones.push({
-        id_deuda: deudaSeleccionada.id_deuda,
-        id_acuerdo: deudaSeleccionada.id_acuerdo,
-        montoAsignado: montoAsignadoSeleccionada,
-        concepto: deudaSeleccionada.concepto
-      });
-      
-      let restante = importeNum - montoAsignadoSeleccionada;
-      
-      if (restante > 0) {
-        const otrasDeudas = deudasAgrupadas
-          .filter(d => String(d.id_deuda) !== String(deudaSeleccionadaId))
-          .sort((a, b) => {
-            const dateA = a.fecha_vencimiento || '';
-            const dateB = b.fecha_vencimiento || '';
-            return dateA.localeCompare(dateB);
-          });
-          
-        for (const d of otrasDeudas) {
+      let restante = importeNum;
+
+      if (deudaSeleccionadaId === 'FIFO') {
+        const deudasOrdenadas = [...deudasAgrupadas].sort((a, b) => {
+          const dateA = a.fecha_vencimiento || '';
+          const dateB = b.fecha_vencimiento || '';
+          return dateA.localeCompare(dateB);
+        });
+
+        for (const d of deudasOrdenadas) {
           if (restante <= 0) break;
           const monto = Math.min(restante, d.saldoReal);
           if (monto > 0) {
@@ -637,11 +619,66 @@ export default function FichaPaciente({ onVolver, usuario }) {
             restante -= monto;
           }
         }
-      }
-      
-      // Si todavía sobra dinero (sobrepago absoluto), lo asignamos a la deuda seleccionada inicial
-      if (restante > 0) {
-        asignaciones[0].montoAsignado = Math.round((asignaciones[0].montoAsignado + restante) * 100) / 100;
+
+        // Si todavía sobra dinero (sobrepago absoluto), lo asignamos al primer movimiento o de lo contrario libre
+        if (restante > 0) {
+          if (asignaciones.length > 0) {
+            asignaciones[0].montoAsignado = Math.round((asignaciones[0].montoAsignado + restante) * 100) / 100;
+          } else {
+            asignaciones.push({
+              id_deuda: null,
+              id_acuerdo: null,
+              montoAsignado: restante,
+              concepto: 'Pago a cuenta'
+            });
+          }
+        }
+      } else {
+        const deudaSeleccionada = deudasAgrupadas.find(d => String(d.id_deuda) === String(deudaSeleccionadaId));
+        if (!deudaSeleccionada) {
+          throw new Error("La deuda seleccionada no es válida.");
+        }
+
+        const balanceSeleccionada = deudaSeleccionada.saldoReal;
+        const montoAsignadoSeleccionada = Math.min(restante, balanceSeleccionada);
+        
+        asignaciones.push({
+          id_deuda: deudaSeleccionada.id_deuda,
+          id_acuerdo: deudaSeleccionada.id_acuerdo,
+          montoAsignado: montoAsignadoSeleccionada,
+          concepto: deudaSeleccionada.concepto
+        });
+        
+        restante -= montoAsignadoSeleccionada;
+        
+        if (restante > 0) {
+          const otrasDeudas = deudasAgrupadas
+            .filter(d => String(d.id_deuda) !== String(deudaSeleccionadaId))
+            .sort((a, b) => {
+              const dateA = a.fecha_vencimiento || '';
+              const dateB = b.fecha_vencimiento || '';
+              return dateA.localeCompare(dateB);
+            });
+            
+          for (const d of otrasDeudas) {
+            if (restante <= 0) break;
+            const monto = Math.min(restante, d.saldoReal);
+            if (monto > 0) {
+              asignaciones.push({
+                id_deuda: d.id_deuda,
+                id_acuerdo: d.id_acuerdo,
+                montoAsignado: monto,
+                concepto: d.concepto
+              });
+              restante -= monto;
+            }
+          }
+        }
+        
+        // Si todavía sobra dinero, lo asignamos a la deuda seleccionada inicial
+        if (restante > 0) {
+          asignaciones[0].montoAsignado = Math.round((asignaciones[0].montoAsignado + restante) * 100) / 100;
+        }
       }
       
       // 4. Insertar registros en movimientoscuenta_motor
@@ -971,24 +1008,7 @@ export default function FichaPaciente({ onVolver, usuario }) {
     
     setProcesandoAjuste(true);
     try {
-      // 1. Encontrar la deuda seleccionada
-      const mapaSaldos = {};
-      movimientosDetallados.forEach(m => {
-        if (!m.id_deuda) return;
-        if (!mapaSaldos[m.id_deuda]) {
-          mapaSaldos[m.id_deuda] = {
-            id_deuda: m.id_deuda,
-            concepto: m.concepto || `Deuda #${m.id_deuda}`,
-            id_acuerdo: m.id_acuerdo
-          };
-        }
-      });
-      const deuda = mapaSaldos[deudaAjusteId];
-      if (!deuda) {
-        throw new Error("Deuda seleccionada no encontrada.");
-      }
-      
-      // 2. Insertar en la tabla ajustes_motor
+      // 1. Insertar en la tabla ajustes_motor
       const registroAjuste = {
         id_paciente: pacienteSeleccionado.id_paciente,
         fecha_ajuste: fechaAjuste,
@@ -1005,7 +1025,7 @@ export default function FichaPaciente({ onVolver, usuario }) {
         
       if (errAjuste) throw errAjuste;
       
-      // 3. Obtener el próximo id_movimiento
+      // 2. Obtener el próximo id_movimiento
       const { data: maxMovData, error: errorMaxMov } = await supabase
         .from('movimientoscuenta_motor')
         .select('id_movimiento')
@@ -1013,31 +1033,126 @@ export default function FichaPaciente({ onVolver, usuario }) {
         .limit(1);
 
       if (errorMaxMov) throw errorMaxMov;
-      const nextIdMovimiento = (maxMovData && maxMovData[0]?.id_movimiento ? parseInt(maxMovData[0].id_movimiento) : 0) + 1;
+      let nextIdMovimiento = (maxMovData && maxMovData[0]?.id_movimiento ? parseInt(maxMovData[0].id_movimiento) : 0) + 1;
 
-      // 3b. Insertar en movimientoscuenta_motor para impactar el saldo de la cuenta corriente
-      const nuevoMovimiento = {
-        id_movimiento: nextIdMovimiento,
-        id_paciente: pacienteSeleccionado.id_paciente,
-        id_acuerdo: deuda.id_acuerdo,
-        id_deuda: deuda.id_deuda,
-        fecha_movimiento: fechaAjuste,
-        fecha_cuota_origen: fechaAjuste,
-        fecha_vencimiento: fechaAjuste,
-        tipo_movimiento: 'ajuste',
-        subtipo: tipoAjusteSeleccionado,
-        concepto: `${tipoAjusteSeleccionado === 'nota_credito' ? 'N.Crédito' : 'N.Débito'}: ${conceptoAjuste}`,
-        debe: tipoAjusteSeleccionado === 'nota_debito' ? importeNum.toString() : '0',
-        haber: tipoAjusteSeleccionado === 'nota_credito' ? importeNum.toString() : '0',
-        saldo: '0.00',
-        usuario: usuario || 'Sistema'
-      };
-      
-      const { error: errMov } = await supabase
-        .from('movimientoscuenta_motor')
-        .insert([nuevoMovimiento]);
+      // 3. Imputar movimientos de acuerdo a si es FIFO o seleccionada
+      if (deudaAjusteId === 'FIFO' && tipoAjusteSeleccionado === 'nota_credito') {
+        const mapaSaldos = {};
+        movimientosDetallados.forEach(m => {
+          if (!m.id_deuda) return;
+          if (!mapaSaldos[m.id_deuda]) {
+            mapaSaldos[m.id_deuda] = {
+              id_deuda: m.id_deuda,
+              id_acuerdo: m.id_acuerdo,
+              concepto: m.concepto || `Deuda #${m.id_deuda}`,
+              debe: 0,
+              haber: 0,
+              fecha_vencimiento: m.fecha_vencimiento || m.fecha_movimiento || ''
+            };
+          }
+          mapaSaldos[m.id_deuda].debe += parsearMoneda(m.debe);
+          mapaSaldos[m.id_deuda].haber += parsearMoneda(m.haber);
+        });
+
+        const sortedDeudas = Object.values(mapaSaldos)
+          .map(d => ({ ...d, saldoReal: d.debe - d.haber }))
+          .filter(d => d.saldoReal > 0.01)
+          .sort((a, b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento));
+
+        let restante = importeNum;
+        const nuevosMovs = [];
+
+        for (const d of sortedDeudas) {
+          if (restante <= 0) break;
+          const montoAsignar = Math.min(restante, d.saldoReal);
+          if (montoAsignar > 0) {
+            nuevosMovs.push({
+              id_movimiento: nextIdMovimiento,
+              id_paciente: pacienteSeleccionado.id_paciente,
+              id_acuerdo: d.id_acuerdo,
+              id_deuda: d.id_deuda,
+              fecha_movimiento: fechaAjuste,
+              fecha_cuota_origen: fechaAjuste,
+              fecha_vencimiento: fechaAjuste,
+              tipo_movimiento: 'ajuste',
+              subtipo: 'nota_credito',
+              concepto: `N.Crédito: ${conceptoAjuste || 'Ajuste general'}`,
+              debe: '0',
+              haber: montoAsignar.toString(),
+              saldo: '0.00',
+              usuario: usuario || 'Sistema'
+            });
+            restante -= montoAsignar;
+            nextIdMovimiento++;
+          }
+        }
+
+        if (restante > 0) {
+          nuevosMovs.push({
+            id_movimiento: nextIdMovimiento,
+            id_paciente: pacienteSeleccionado.id_paciente,
+            id_acuerdo: null,
+            id_deuda: null,
+            fecha_movimiento: fechaAjuste,
+            fecha_cuota_origen: fechaAjuste,
+            fecha_vencimiento: fechaAjuste,
+            tipo_movimiento: 'ajuste',
+            subtipo: 'nota_credito',
+            concepto: `N.Crédito: ${conceptoAjuste || 'Ajuste general'}`,
+            debe: '0',
+            haber: restante.toString(),
+            saldo: '0.00',
+            usuario: usuario || 'Sistema'
+          });
+          nextIdMovimiento++;
+        }
+
+        const { error: errInsertMovs } = await supabase
+          .from('movimientoscuenta_motor')
+          .insert(nuevosMovs);
+
+        if (errInsertMovs) throw errInsertMovs;
+
+      } else {
+        const mapaSaldos = {};
+        movimientosDetallados.forEach(m => {
+          if (!m.id_deuda) return;
+          if (!mapaSaldos[m.id_deuda]) {
+            mapaSaldos[m.id_deuda] = {
+              id_deuda: m.id_deuda,
+              concepto: m.concepto || `Deuda #${m.id_deuda}`,
+              id_acuerdo: m.id_acuerdo
+            };
+          }
+        });
+        const deuda = mapaSaldos[deudaAjusteId];
+        if (!deuda && deudaAjusteId !== 'FIFO') {
+          throw new Error("Deuda seleccionada no encontrada.");
+        }
+
+        const nuevoMovimiento = {
+          id_movimiento: nextIdMovimiento,
+          id_paciente: pacienteSeleccionado.id_paciente,
+          id_acuerdo: deuda ? deuda.id_acuerdo : null,
+          id_deuda: deuda ? deuda.id_deuda : null,
+          fecha_movimiento: fechaAjuste,
+          fecha_cuota_origen: fechaAjuste,
+          fecha_vencimiento: fechaAjuste,
+          tipo_movimiento: 'ajuste',
+          subtipo: tipoAjusteSeleccionado,
+          concepto: `${tipoAjusteSeleccionado === 'nota_credito' ? 'N.Crédito' : 'N.Débito'}: ${conceptoAjuste}`,
+          debe: tipoAjusteSeleccionado === 'nota_debito' ? importeNum.toString() : '0',
+          haber: tipoAjusteSeleccionado === 'nota_credito' ? importeNum.toString() : '0',
+          saldo: '0.00',
+          usuario: usuario || 'Sistema'
+        };
         
-      if (errMov) throw errMov;
+        const { error: errMov } = await supabase
+          .from('movimientoscuenta_motor')
+          .insert([nuevoMovimiento]);
+          
+        if (errMov) throw errMov;
+      }
       
       setMensaje({ texto: `${tipoAjusteSeleccionado === 'nota_credito' ? 'Nota de Crédito' : 'Nota de Débito'} registrada correctamente.`, tipo: 'exito' });
       setModalAjusteAbierto(false);
@@ -1301,7 +1416,7 @@ export default function FichaPaciente({ onVolver, usuario }) {
   );
 
   return (
-    <div style={{ maxWidth: '1000px', margin: '0 auto', background: '#fff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+    <div style={{ maxWidth: '1200px', margin: '0 auto', background: '#fff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
       
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '15px', marginBottom: '20px' }}>
         <h2 style={{ color: '#1e293b', margin: 0, fontSize: '22px' }}>🗂️ Ficha Integral de Paciente</h2>
@@ -1319,24 +1434,26 @@ export default function FichaPaciente({ onVolver, usuario }) {
         </div>
       )}
 
-      <div style={{ marginBottom: '25px' }}>
-        <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', color: '#334155', marginBottom: '8px' }}>
-          Seleccionar Paciente (`pacientes_motor`):
-        </label>
-        <select
-          onChange={seleccionarPacientePorId}
-          value={pacienteSeleccionado ? pacienteSeleccionado.id_paciente : ''}
-          disabled={cargandoPacientes}
-          style={{ width: '100%', padding: '12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '15px', background: '#f8fafc', color: '#0f172a', fontWeight: '500' }}
-        >
-          <option value="">{cargandoPacientes ? 'Cargando pacientes...' : '-- Seleccioná un paciente --'}</option>
-          {listaPacientes.map((p) => (
-            <option key={p.id_paciente} value={p.id_paciente}>
-              {p.nombre_apellido} {p.dni ? `- DNI: ${p.dni}` : ''} (ID: {p.id_paciente})
-            </option>
-          ))}
-        </select>
-      </div>
+      {!pacienteSeleccionado && (
+        <div style={{ marginBottom: '25px' }}>
+          <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', color: '#334155', marginBottom: '8px' }}>
+            Seleccionar Paciente (`pacientes_motor`):
+          </label>
+          <select
+            onChange={seleccionarPacientePorId}
+            value={pacienteSeleccionado ? pacienteSeleccionado.id_paciente : ''}
+            disabled={cargandoPacientes}
+            style={{ width: '100%', padding: '12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '15px', background: '#f8fafc', color: '#0f172a', fontWeight: '500' }}
+          >
+            <option value="">{cargandoPacientes ? 'Cargando pacientes...' : '-- Seleccioná un paciente --'}</option>
+            {listaPacientes.map((p) => (
+              <option key={p.id_paciente} value={p.id_paciente}>
+                {p.nombre_apellido} {p.dni ? `- DNI: ${p.dni}` : ''} (ID: {p.id_paciente})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {pacienteSeleccionado && (
         <div>
@@ -1399,6 +1516,17 @@ export default function FichaPaciente({ onVolver, usuario }) {
                 <div style={{ fontSize: '24px', marginBottom: '8px' }}>📝</div>
                 <h4 style={{ margin: '0 0 6px 0', color: '#1e293b', fontSize: '15px' }}>Observaciones y Tareas</h4>
                 <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Seguimiento del tratamiento, observaciones y tareas pendientes.</p>
+              </div>
+
+              <div 
+                onClick={() => setVistaActiva('nuevo_acuerdo')}
+                style={{ border: '2px solid #86efac', borderRadius: '10px', padding: '20px', textAlign: 'center', cursor: 'pointer', background: '#f0fdf4', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '8px' }}>➕🤝</div>
+                <h4 style={{ margin: '0 0 6px 0', color: '#16a34a', fontSize: '15px' }}>Nuevo Acuerdo</h4>
+                <p style={{ margin: 0, fontSize: '12px', color: '#15803d' }}>Registrar directamente un nuevo acuerdo y plan de cobro.</p>
               </div>
             </div>
           )}
@@ -1690,8 +1818,8 @@ export default function FichaPaciente({ onVolver, usuario }) {
                                 <td style={{ padding: '10px', textAlign: 'right', fontWeight: '600', color: runningBalance > 0 ? '#dc2626' : runningBalance < 0 ? '#16a34a' : '#64748b' }}>
                                   {`$${runningBalance.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                                 </td>
-                                <td style={{ padding: '10px', textAlign: 'center' }}>
-                                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
+                                <td style={{ padding: '10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center', whiteSpace: 'nowrap' }}>
                                     {mov.id_pago && mov.subtipo !== 'reverso_pago' && (
                                       <button
                                         onClick={() => verDistribucionPago(mov.id_pago, valHaber, mov.fecha_movimiento || mov.fecha_vencimiento)}
@@ -1982,7 +2110,7 @@ export default function FichaPaciente({ onVolver, usuario }) {
               
               {/* Columna Izquierda: Detalles del Pago */}
               <div>
-                <div style={{ marginBottom: '15px' }}>
+                 <div style={{ marginBottom: '15px' }}>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
                     Seleccionar Deuda Primaria a Pagar *
                   </label>
@@ -1990,14 +2118,20 @@ export default function FichaPaciente({ onVolver, usuario }) {
                     value={deudaSeleccionadaId}
                     onChange={(e) => {
                       setDeudaSeleccionadaId(e.target.value);
-                      const seleccionada = deudasAgrupadas.find(d => String(d.id_deuda) === String(e.target.value));
-                      if (seleccionada) {
-                        setImportePago(seleccionada.saldoReal.toString());
+                      if (e.target.value === 'FIFO') {
+                        const totalDeuda = deudasAgrupadas.reduce((acc, curr) => acc + curr.saldoReal, 0);
+                        setImportePago(totalDeuda.toString());
+                      } else {
+                        const seleccionada = deudasAgrupadas.find(d => String(d.id_deuda) === String(e.target.value));
+                        if (seleccionada) {
+                          setImportePago(seleccionada.saldoReal.toString());
+                        }
                       }
                     }}
                     style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', background: '#f8fafc', color: '#0f172a' }}
                   >
                     <option value="">-- Seleccionar Deuda --</option>
+                    <option value="FIFO" style={{ fontWeight: 'bold', color: '#2563eb' }}>⚡ Pago General FIFO (Cancelar deudas más antiguas)</option>
                     {deudasAgrupadas.map(d => (
                       <option key={d.id_deuda} value={d.id_deuda}>
                         #{d.id_deuda} - {d.concepto} (Saldo: ${d.saldoReal.toLocaleString('es-AR')})
@@ -2022,8 +2156,13 @@ export default function FichaPaciente({ onVolver, usuario }) {
                       <button
                         type="button"
                         onClick={() => {
-                          const seleccionada = deudasAgrupadas.find(d => String(d.id_deuda) === String(deudaSeleccionadaId));
-                          if (seleccionada) setImportePago(seleccionada.saldoReal.toString());
+                          if (deudaSeleccionadaId === 'FIFO') {
+                            const totalDeuda = deudasAgrupadas.reduce((acc, curr) => acc + curr.saldoReal, 0);
+                            setImportePago(totalDeuda.toString());
+                          } else {
+                            const seleccionada = deudasAgrupadas.find(d => String(d.id_deuda) === String(deudaSeleccionadaId));
+                            if (seleccionada) setImportePago(seleccionada.saldoReal.toString());
+                          }
                         }}
                         style={{ padding: '8px 12px', background: '#e2e8f0', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', color: '#334155' }}
                       >
@@ -2032,7 +2171,7 @@ export default function FichaPaciente({ onVolver, usuario }) {
                     )}
                   </div>
                   <span style={{ fontSize: '11px', color: '#64748b', display: 'block', marginTop: '4px' }}>
-                    Si el monto supera la deuda, se aplicará el sobrante en sistema FIFO a otras deudas.
+                    Si el monto supera la deuda primaria, o si seleccionó Pago General FIFO, se aplicará el sobrante/total en sistema FIFO a las deudas.
                   </span>
                 </div>
 
@@ -2281,10 +2420,19 @@ export default function FichaPaciente({ onVolver, usuario }) {
                 </label>
                 <select
                   value={deudaAjusteId}
-                  onChange={(e) => setDeudaAjusteId(e.target.value)}
+                  onChange={(e) => {
+                    setDeudaAjusteId(e.target.value);
+                    if (e.target.value === 'FIFO') {
+                      const totalDeuda = deudasDisponibles.reduce((acc, curr) => acc + curr.saldoReal, 0);
+                      setImporteAjuste(totalDeuda.toString());
+                    }
+                  }}
                   style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', background: '#f8fafc', color: '#0f172a' }}
                 >
                   <option value="">-- Seleccionar Deuda --</option>
+                  {tipoAjusteSeleccionado === 'nota_credito' && (
+                    <option value="FIFO" style={{ fontWeight: 'bold', color: '#2563eb' }}>⚡ Aplicar General FIFO (Saldar deudas más antiguas)</option>
+                  )}
                   {deudasDisponibles.map(d => (
                     <option key={d.id_deuda} value={d.id_deuda}>
                       #{d.id_deuda} - {d.concepto} (Saldo: ${d.saldoReal.toLocaleString('es-AR')})

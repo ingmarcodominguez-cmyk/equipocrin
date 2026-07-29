@@ -2,6 +2,14 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
 const MovimientosPrestadores = () => {
+  const parsearDecimal = (val) => {
+    if (val === null || val === undefined || val === '') return 0;
+    if (typeof val === 'number') return val;
+    const clean = String(val).replace(/\$/g, '').replace(/\./g, '').replace(/,/g, '.').trim();
+    const parsed = Number.parseFloat(clean);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
   const [datos, setDatos] = useState([]);
   const [prestadorSeleccionado, setPrestadorSeleccionado] = useState(null);
   const [cargando, setCargando] = useState(true);
@@ -46,8 +54,8 @@ const MovimientosPrestadores = () => {
       const saldosMap = {};
       movements.forEach(m => {
         const pId = m.id_prestador;
-        const debe = parseFloat(String(m.debe || '0').replace(/\./g, '').replace(',', '.')) || 0;
-        const haber = parseFloat(String(m.haber || '0').replace(/\./g, '').replace(',', '.')) || 0;
+        const debe = parsearDecimal(m.debe);
+        const haber = parsearDecimal(m.haber);
         if (!saldosMap[pId]) saldosMap[pId] = 0;
         saldosMap[pId] += (haber - debe);
       });
@@ -135,8 +143,8 @@ const DetallePrestador = ({ prestador, volver }) => {
 
         let saldoAcumulado = 0;
         const conSaldo = (data || []).map(m => {
-          const debe = parseFloat(String(m.debe || '0').replace(/\./g, '').replace(',', '.')) || 0;
-          const haber = parseFloat(String(m.haber || '0').replace(/\./g, '').replace(',', '.')) || 0;
+          const debe = parsearDecimal(m.debe);
+          const haber = parsearDecimal(m.haber);
           saldoAcumulado += (haber - debe);
           return { ...m, saldo: saldoAcumulado.toFixed(2) };
         });

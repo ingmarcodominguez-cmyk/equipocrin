@@ -311,44 +311,52 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
         {/* SECCIÓN 1: SELECTOR DE PACIENTE */}
         <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0', position: 'relative' }}>
           <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px', color: '#0f172a' }}>
-            Buscar y Seleccionar Paciente *
+            Paciente Asociado *
           </label>
-          <input 
-            type="text" 
-            value={busquedaPaciente}
-            onChange={(e) => {
-              setBusquedaPaciente(e.target.value)
-              setPacienteSeleccionadoObj(null)
-              setForm({ ...form, id_paciente: '' })
-            }}
-            placeholder="Escriba el nombre o DNI del paciente..."
-            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '15px' }}
-          />
-
-          {pacientesFiltrados.length > 0 && !pacienteSeleccionadoObj && (
-            <ul style={{ 
-              position: 'absolute', top: '75px', left: '15px', right: '15px', 
-              background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', 
-              maxHeight: '180px', overflowY: 'auto', listStyle: 'none', padding: '0', margin: '0', zIndex: 10, boxShadow: '0 4px 6px rgba(0,0,0,0.1)' 
-            }}>
-              {pacientesFiltrados.map(p => (
-                <li 
-                  key={p.id || p.id_paciente}
-                  onClick={() => handleSeleccionarPaciente(p)}
-                  style={{ padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', fontSize: '14px' }}
-                  onMouseEnter={(e) => e.target.style.background = '#f1f5f9'}
-                  onMouseLeave={(e) => e.target.style.background = '#fff'}
-                >
-                  <strong>{p.nombre_apellido}</strong> {p.dni ? `- DNI: ${p.dni}` : ''}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {pacienteSeleccionadoObj && (
-            <div style={{ marginTop: '8px', fontSize: '13px', color: '#16a34a', fontWeight: 'bold' }}>
-              ✓ Paciente seleccionado: {pacienteSeleccionadoObj.nombre_apellido} (ID: {pacienteSeleccionadoObj.id || pacienteSeleccionadoObj.id_paciente})
+          {pacientePreseleccionado ? (
+            <div style={{ padding: '8px 12px', fontSize: '15px', fontWeight: 'bold', color: '#0f172a', background: '#e2e8f0', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              👤 {pacienteSeleccionadoObj?.nombre_apellido || pacientePreseleccionado.nombre_apellido} (ID: {pacientePreseleccionado.id_paciente})
             </div>
+          ) : (
+            <>
+              <input 
+                type="text" 
+                value={busquedaPaciente}
+                onChange={(e) => {
+                  setBusquedaPaciente(e.target.value)
+                  setPacienteSeleccionadoObj(null)
+                  setForm({ ...form, id_paciente: '' })
+                }}
+                placeholder="Escriba el nombre o DNI del paciente..."
+                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '15px' }}
+              />
+
+              {pacientesFiltrados.length > 0 && !pacienteSeleccionadoObj && (
+                <ul style={{ 
+                  position: 'absolute', top: '75px', left: '15px', right: '15px', 
+                  background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', 
+                  maxHeight: '180px', overflowY: 'auto', listStyle: 'none', padding: '0', margin: '0', zIndex: 10, boxShadow: '0 4px 6px rgba(0,0,0,0.1)' 
+                }}>
+                  {pacientesFiltrados.map(p => (
+                    <li 
+                      key={p.id || p.id_paciente}
+                      onClick={() => handleSeleccionarPaciente(p)}
+                      style={{ padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', fontSize: '14px' }}
+                      onMouseEnter={(e) => e.target.style.background = '#f1f5f9'}
+                      onMouseLeave={(e) => e.target.style.background = '#fff'}
+                    >
+                      <strong>{p.nombre_apellido}</strong> {p.dni ? `- DNI: ${p.dni}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {pacienteSeleccionadoObj && (
+                <div style={{ marginTop: '8px', fontSize: '13px', color: '#16a34a', fontWeight: 'bold' }}>
+                  ✓ Paciente seleccionado: {pacienteSeleccionadoObj.nombre_apellido} (ID: {pacienteSeleccionadoObj.id || pacienteSeleccionadoObj.id_paciente})
+                </div>
+              )}
+            </>
           )}
         </div>
 

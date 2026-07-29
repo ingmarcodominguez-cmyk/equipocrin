@@ -522,73 +522,94 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                 <tbody>
                   {auxiliares
                     .filter(aux => (aux.nombre || '').toLowerCase().includes(filtroNombre.toLowerCase()))
-                    .map(aux => {
-                      const asist = mapaAsistencias[aux.id_auxiliar];
-                    return (
-                      <tr key={aux.id_auxiliar} style={{ borderBottom: '1px solid #e2e8f0', background: asist ? '#f0fdf4' : '#fff' }}>
-                        <td style={{ padding: '12px 10px', fontWeight: 'bold', color: '#1e293b' }}>
-                          👤 {aux.nombre}
-                        </td>
-                        <td style={{ padding: '12px 10px' }}>
-                          <span style={{ fontSize: '10px', background: '#f1f5f9', color: '#475569', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
-                            {asist ? asist.tipo_liq : aux.tipo_liq}
-                          </span>
-                        </td>
-                        
-                        {asist ? (
-                          <>
-                            <td style={{ padding: '12px 10px', color: '#334155' }}>
-                              🌅 {asist.hora_entrada_m ? `${asist.hora_entrada_m.substring(0, 5)} a ${asist.hora_salida_m ? asist.hora_salida_m.substring(0, 5) : '?'}` : '-'}
-                            </td>
-                            <td style={{ padding: '12px 10px', color: '#334155' }}>
-                              🌆 {asist.hora_entrada_t ? `${asist.hora_entrada_t.substring(0, 5)} a ${asist.hora_salida_t ? asist.hora_salida_t.substring(0, 5) : '?'}` : '-'}
-                            </td>
-                            <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 'bold', color: '#0f172a' }}>
-                              {asist.tipo_liq === 'HORA' ? `⏱️ ${asist.horas_trabajadas || 0} hs` : `📑 ${asist.sesiones || 0} ses`}
-                            </td>
-                            <td style={{ padding: '12px 10px', fontWeight: '600', color: '#15803d' }}>
-                              {asist.tipo_liq === 'HORA' ? `$${asist.valor_hora}/hs` : `$${asist.valor_sesion}/ses`}
-                            </td>
-                            <td style={{ padding: '12px 10px', color: '#64748b', fontStyle: asist.obs ? 'normal' : 'italic' }}>
-                              {asist.obs || '-'}
-                            </td>
-                          </>
-                        ) : (
-                          <>
-                            <td colSpan="5" style={{ padding: '12px 10px', color: '#94a3b8', fontStyle: 'italic' }}>
-                              Ausente / Sin Registrar
-                            </td>
-                          </>
-                        )}
-
-                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                    .flatMap(aux => {
+                      const asists = asistenciasDia.filter(a => a.id_auxiliar === aux.id_auxiliar);
+                      if (asists.length === 0) {
+                        return [{ aux, asist: null, showAddButton: true }];
+                      } else {
+                        return asists.map((asist, idx) => ({
+                          aux,
+                          asist,
+                          showAddButton: idx === asists.length - 1
+                        }));
+                      }
+                    })
+                    .map(({ aux, asist, showAddButton }, idxFlat) => {
+                      const rowKey = asist ? `asist-${asist.id_registro}` : `aux-${aux.id_auxiliar}`;
+                      return (
+                        <tr key={rowKey} style={{ borderBottom: '1px solid #e2e8f0', background: asist ? '#f0fdf4' : '#fff' }}>
+                          <td style={{ padding: '12px 10px', fontWeight: 'bold', color: '#1e293b' }}>
+                            👤 {aux.nombre}
+                          </td>
+                          <td style={{ padding: '12px 10px' }}>
+                            <span style={{ fontSize: '10px', background: '#f1f5f9', color: '#475569', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+                              {asist ? asist.tipo_liq : aux.tipo_liq}
+                            </span>
+                          </td>
+                          
                           {asist ? (
-                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                              <button
-                                onClick={() => abrirFormularioAsistencia(aux, asist)}
-                                style={{ background: '#f59e0b', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
-                              >
-                                Editar
-                              </button>
-                              <button
-                                onClick={() => eliminarAsistencia(asist.id_registro)}
-                                style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
-                              >
-                                Quitar
-                              </button>
-                            </div>
+                            <>
+                              <td style={{ padding: '12px 10px', color: '#334155' }}>
+                                🌅 {asist.hora_entrada_m ? `${asist.hora_entrada_m.substring(0, 5)} a ${asist.hora_salida_m ? asist.hora_salida_m.substring(0, 5) : '?'}` : '-'}
+                              </td>
+                              <td style={{ padding: '12px 10px', color: '#334155' }}>
+                                🌆 {asist.hora_entrada_t ? `${asist.hora_entrada_t.substring(0, 5)} a ${asist.hora_salida_t ? asist.hora_salida_t.substring(0, 5) : '?'}` : '-'}
+                              </td>
+                              <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 'bold', color: '#0f172a' }}>
+                                {asist.tipo_liq === 'HORA' ? `⏱️ ${asist.horas_trabajadas || 0} hs` : `📑 ${asist.sesiones || 0} ses`}
+                              </td>
+                              <td style={{ padding: '12px 10px', fontWeight: '600', color: '#15803d' }}>
+                                {asist.tipo_liq === 'HORA' ? `$${asist.valor_hora}/hs` : `$${asist.valor_sesion}/ses`}
+                              </td>
+                              <td style={{ padding: '12px 10px', color: '#64748b', fontStyle: asist.obs ? 'normal' : 'italic' }}>
+                                {asist.obs || '-'}
+                              </td>
+                            </>
                           ) : (
-                            <button
-                              onClick={() => abrirFormularioAsistencia(aux)}
-                              style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
-                            >
-                              ✍️ Presente
-                            </button>
+                            <>
+                              <td colSpan="5" style={{ padding: '12px 10px', color: '#94a3b8', fontStyle: 'italic' }}>
+                                Ausente / Sin Registrar
+                              </td>
+                            </>
                           )}
-                        </td>
-                      </tr>
-                    );
-                  })}
+
+                          <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                            {asist ? (
+                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
+                                <button
+                                  onClick={() => abrirFormularioAsistencia(aux, asist)}
+                                  style={{ background: '#f59e0b', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                                >
+                                  Editar
+                                </button>
+                                <button
+                                  onClick={() => eliminarAsistencia(asist.id_registro)}
+                                  style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                                >
+                                  Quitar
+                                </button>
+                                {showAddButton && (
+                                  <button
+                                    onClick={() => abrirFormularioAsistencia(aux)}
+                                    style={{ background: '#10b981', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                                    title="Registrar otro horario para este día"
+                                  >
+                                    ➕ Otro
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => abrirFormularioAsistencia(aux)}
+                                style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                              >
+                                ✍️ Presente
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>

@@ -2,6 +2,14 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
 export default function FichaPrestadores({ onVolver, usuario }) {
+  const parsearDecimal = (val) => {
+    if (val === null || val === undefined || val === '') return 0;
+    if (typeof val === 'number') return val;
+    const clean = String(val).replace(/\$/g, '').replace(/\./g, '').replace(/,/g, '.').trim();
+    const parsed = Number.parseFloat(clean);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
   const [prestadores, setPrestadores] = useState([]);
   const [prestadorSeleccionado, setPrestadorSeleccionado] = useState(null);
   const [movimientos, setMovimientos] = useState([]);
@@ -68,8 +76,8 @@ export default function FichaPrestadores({ onVolver, usuario }) {
       const saldosMapa = {};
       (listaMovs || []).forEach(m => {
         const id = m.id_prestador;
-        const debeVal = parseFloat(String(m.debe || '0').replace(/\./g, '').replace(',', '.')) || 0;
-        const haberVal = parseFloat(String(m.haber || '0').replace(/\./g, '').replace(',', '.')) || 0;
+        const debeVal = parsearDecimal(m.debe);
+        const haberVal = parsearDecimal(m.haber);
         if (!saldosMapa[id]) {
           saldosMapa[id] = 0;
         }
@@ -117,8 +125,8 @@ export default function FichaPrestadores({ onVolver, usuario }) {
       // Calcular saldo acumulado cronológicamente
       let saldoAcumulado = 0;
       const movimientosConSaldo = (data || []).map(m => {
-        const debe = parseFloat(m.debe) || 0;
-        const haber = parseFloat(m.haber) || 0;
+        const debe = parsearDecimal(m.debe);
+        const haber = parsearDecimal(m.haber);
         saldoAcumulado += (haber - debe);
         return {
           ...m,
@@ -143,8 +151,8 @@ export default function FichaPrestadores({ onVolver, usuario }) {
     // 2. Calcular saldo acumulado
     let running = 0;
     const conSaldo = sortedMovs.map(m => {
-      const debe = parseFloat(String(m.debe || '0').replace(/\./g, '').replace(',', '.')) || 0;
-      const haber = parseFloat(String(m.haber || '0').replace(/\./g, '').replace(',', '.')) || 0;
+      const debe = parsearDecimal(m.debe);
+      const haber = parsearDecimal(m.haber);
       running += (haber - debe);
       return {
         ...m,
@@ -303,8 +311,8 @@ export default function FichaPrestadores({ onVolver, usuario }) {
   };
 
   // Calcular totales para las tarjetas de información
-  const totalHaber = movimientos.reduce((acc, m) => acc + (parseFloat(m.haber) || 0), 0);
-  const totalDebe = movimientos.reduce((acc, m) => acc + (parseFloat(m.debe) || 0), 0);
+  const totalHaber = movimientos.reduce((acc, m) => acc + parsearDecimal(m.haber), 0);
+  const totalDebe = movimientos.reduce((acc, m) => acc + parsearDecimal(m.debe), 0);
   const saldoFinal = totalHaber - totalDebe;
 
   return (
@@ -576,8 +584,8 @@ export default function FichaPrestadores({ onVolver, usuario }) {
                   </thead>
                   <tbody>
                     {movimientos.map((m, idx) => {
-                      const valDebe = parseFloat(m.debe) || 0;
-                      const valHaber = parseFloat(m.haber) || 0;
+                      const valDebe = parsearDecimal(m.debe);
+                      const valHaber = parsearDecimal(m.haber);
                       return (
                         <tr key={m.id_mov || idx} style={{ borderBottom: '1px solid #e2e8f0', transition: 'background 0.15s' }}>
                           <td style={{ padding: '10px', whiteSpace: 'nowrap', fontWeight: '500', color: '#475569' }}>
