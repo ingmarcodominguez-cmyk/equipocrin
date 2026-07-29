@@ -1005,38 +1005,6 @@ function App() {
               EDITAR PACIENTE
             </button>
 
-            {/* Button 3: NUEVO ACUERDO */}
-            <button 
-              onClick={() => handleAccionClick('NUEVO_ACUERDO')}
-              style={{ 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '30px 15px', 
-                background: 'linear-gradient(135deg, #e6fffa 100%, #c6f6d5 0%)', 
-                color: '#22543d', 
-                border: '2px solid #9ae6b4', 
-                borderRadius: '16px', 
-                cursor: 'pointer', 
-                fontWeight: '800', 
-                fontSize: '15px', 
-                textAlign: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.03)';
-                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>🤝📄</div>
-              NUEVO ACUERDO
-            </button>
 
             {/* Button 4: FICHA PACIENTE */}
             <button 

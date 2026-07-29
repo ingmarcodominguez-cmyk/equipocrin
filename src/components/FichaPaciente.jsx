@@ -1,5 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase.js';
+import FormularioAcuerdo from './FormularioAcuerdo.jsx';
+
+const deducirSesiones = (valores) => {
+  if (!valores || valores.length === 0) return [];
+  const nonZero = valores.filter(v => v > 0.01);
+  if (nonZero.length === 0) return valores.map(() => 0);
+  const minVal = Math.min(...nonZero);
+  for (let scale = 1; scale <= 20; scale++) {
+    const candidate = valores.map(v => {
+      if (v <= 0.01) return 0;
+      const rawRatio = (v / minVal) * scale;
+      return Math.round(rawRatio * 100) / 100;
+    });
+    const allIntegers = candidate.every(c => Math.abs(c - Math.round(c)) < 0.05);
+    if (allIntegers) {
+      return candidate.map(c => Math.round(c));
+    }
+  }
+  return valores.map(v => (v > 0.01 ? Math.round(v / minVal) : 0));
+};
 
 export default function FichaPaciente({ onVolver, usuario }) {
   const [listaPacientes, setListaPacientes] = useState([]);
@@ -41,6 +61,12 @@ export default function FichaPaciente({ onVolver, usuario }) {
   const [entregadoPor, setEntregadoPor] = useState('');
   const [sesionesPrestadores, setSesionesPrestadores] = useState({});
   const [procesandoPago, setProcesandoPago] = useState(false);
+  const [cargandoUltimaDist, setCargandoUltimaDist] = useState(false);
+  const [ultimaDistInfo, setUltimaDistInfo] = useState(null);
+  const [modalDistPagoAbierto, setModalDistPagoAbierto] = useState(false);
+  const [distPagoId, setDistPagoId] = useState(null);
+  const [distPagoInfo, setDistPagoInfo] = useState(null);
+  const [cargandoDistPago, setCargandoDistPago] = useState(false);
 
   // Estados para Nota de Crédito / Débito (Ajustes)
   const [modalAjusteAbierto, setModalAjusteAbierto] = useState(false);
@@ -776,6 +802,152 @@ export default function FichaPaciente({ onVolver, usuario }) {
     }
   };
 
+  const consultarUltimaDistribucion = async () => {
+    if (!pacienteSeleccionado) return;
+    setCargandoUltimaDist(true);
+    setUltimaDistInfo(null);
+    try {
+      const { data: pagos, error: errPagos } = await supabase
+        .from('pagos_motor')
+        .select('*')
+        .eq('id_paciente', pacienteSeleccionado.id_paciente.toString())
+        .eq('estado', 'ACTIVO')
+        .order('id_pago', { ascending: false })
+        .limit(1);
+
+      if (errPagos) throw errPagos;
+      if (!pagos || pagos.length === 0) {
+        alert("Este paciente no registra pagos previos activos.");
+        return;
+      }
+
+      const ultimoPago = pagos[0];
+
+      const { data: movs, error: errMovs } = await supabase
+        .from('movprestadores_motor')
+        .select('*')
+        .eq('id_pago', ultimoPago.id_pago);
+
+      if (errMovs) throw errMovs;
+
+      const lineas = (movs || []).map(m => {
+        const prestadorObj = prestadoresList.find(p => p.id_prestador === m.id_prestador);
+        return {
+          ...m,
+          nombre_prestador: prestadorObj ? prestadorObj.nombre_prestador : `Prestador ID: ${m.id_prestador}`
+        };
+      });
+
+      // Deducir las sesiones a partir de la proporción de haberes
+      const importes = lineas.map(l => parsearMoneda(l.haber));
+      const sesionesDeducidas = deducirSesiones(importes);
+      
+      const lineasConSesiones = lineas.map((l, index) => ({
+        ...l,
+        sesionesDeducidas: sesionesDeducidas[index] || 0
+      }));
+
+      setUltimaDistInfo({
+        pago: ultimoPago,
+        lineas: lineasConSesiones
+      });
+    } catch (err) {
+      console.error("Error al consultar última distribución:", err);
+      alert("Error al obtener la información: " + err.message);
+    } finally {
+      setCargandoUltimaDist(false);
+    }
+  };
+
+  const verDistribucionPago = async (idPago, montoPago, fechaPago) => {
+    setDistPagoId(idPago);
+    setModalDistPagoAbierto(true);
+    setCargandoDistPago(true);
+    setDistPagoInfo(null);
+    try {
+      const { data: movs, error: errMovs } = await supabase
+        .from('movprestadores_motor')
+        .select('*')
+        .eq('id_pago', idPago);
+
+      if (errMovs) throw errMovs;
+
+      if (!movs || movs.length === 0) {
+        setDistPagoInfo({
+          id_pago: idPago,
+          monto: montoPago,
+          fecha: fechaPago,
+          lineas: []
+        });
+        return;
+      }
+
+      const idsPrestadores = [...new Set(movs.map(m => m.id_prestador))];
+      const { data: prestadoresInfo, error: errPrestadores } = await supabase
+        .from('prestadores_motor')
+        .select('id_prestador, nombre_prestador')
+        .in('id_prestador', idsPrestadores);
+
+      if (errPrestadores) throw errPrestadores;
+
+      const mapaNombres = {};
+      (prestadoresInfo || []).forEach(p => {
+        mapaNombres[String(p.id_prestador)] = p.nombre_prestador;
+      });
+
+      const lineas = movs.map(m => {
+        return {
+          ...m,
+          nombre_prestador: mapaNombres[String(m.id_prestador)] || `Prestador ID: ${m.id_prestador}`
+        };
+      });
+
+      const importes = lineas.map(l => parsearMoneda(l.haber));
+      const sesionesDeducidas = deducirSesiones(importes);
+      
+      const lineasConSesiones = lineas.map((l, index) => ({
+        ...l,
+        sesionesDeducidas: sesionesDeducidas[index] || 0
+      }));
+
+      setDistPagoInfo({
+        id_pago: idPago,
+        monto: montoPago,
+        fecha: fechaPago,
+        lineas: lineasConSesiones
+      });
+    } catch (err) {
+      console.error("Error al ver distribución de pago:", err);
+      alert("Error al cargar la distribución: " + err.message);
+    } finally {
+      setCargandoDistPago(false);
+    }
+  };
+
+  const handleNuevoAcuerdoGuardado = async (newIdAcuerdo) => {
+    // 1. Recargar el paciente
+    await seleccionarPacientePorId({ target: { value: pacienteSeleccionado.id_paciente } });
+    
+    // 2. Esperar a que se actualicen las deudas en el estado local de React
+    setTimeout(() => {
+      // 3. Abrir el modal de cobro/pago
+      setModalPagoAbierto(true);
+      // 4. Intentar seleccionar la nueva deuda en el select (que estará en deudasAgrupadas)
+      supabase.from('movimientoscuenta_motor')
+        .select('id_deuda, debe')
+        .eq('id_acuerdo', newIdAcuerdo)
+        .order('id_movimiento', { ascending: false })
+        .limit(1)
+        .then(({ data }) => {
+          if (data && data.length > 0) {
+            const dId = String(data[0].id_deuda);
+            setDeudaSeleccionadaId(dId);
+            setImportePago(String(data[0].debe));
+          }
+        });
+    }, 200);
+  };
+
   useEffect(() => {
     if (modalAjusteAbierto) {
       setFechaAjuste(localStorage.getItem('crin_fecha_trabajo_simulada') || new Date().toISOString().split('T')[0]);
@@ -1235,12 +1407,20 @@ export default function FichaPaciente({ onVolver, usuario }) {
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '2px solid #e2e8f0', paddingBottom: '8px' }}>
                 <h4 style={{ color: '#1e293b', margin: 0 }}>📋 Acuerdos Activos (Sin valor 0)</h4>
-                <button
-                  onClick={() => setVistaActiva('menu')}
-                  style={{ background: '#e2e8f0', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#334155' }}
-                >
-                  ← Volver al Menú de la Ficha
-                </button>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    onClick={() => setVistaActiva('nuevo_acuerdo')}
+                    style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
+                  >
+                    ➕ Incluir Nuevo Acuerdo
+                  </button>
+                  <button
+                    onClick={() => setVistaActiva('menu')}
+                    style={{ background: '#e2e8f0', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#334155' }}
+                  >
+                    ← Volver al Menú de la Ficha
+                  </button>
+                </div>
               </div>
 
               {cargando ? (
@@ -1305,6 +1485,25 @@ export default function FichaPaciente({ onVolver, usuario }) {
                   })}
                 </div>
               )}
+            </div>
+          )}
+
+          {vistaActiva === 'nuevo_acuerdo' && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '2px solid #e2e8f0', paddingBottom: '8px' }}>
+                <h4 style={{ color: '#1e293b', margin: 0 }}>➕ Registrar Nuevo Acuerdo para el Paciente</h4>
+                <button
+                  onClick={() => setVistaActiva('acuerdos')}
+                  style={{ background: '#e2e8f0', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#334155' }}
+                >
+                  ← Cancelar y Volver
+                </button>
+              </div>
+              <FormularioAcuerdo 
+                onVolver={() => setVistaActiva('acuerdos')}
+                pacientePreseleccionado={pacienteSeleccionado}
+                onGuardadoExitoso={handleNuevoAcuerdoGuardado}
+              />
             </div>
           )}
 
@@ -1492,16 +1691,28 @@ export default function FichaPaciente({ onVolver, usuario }) {
                                   {`$${runningBalance.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                                 </td>
                                 <td style={{ padding: '10px', textAlign: 'center' }}>
-                                  {mov.id_pago && mov.subtipo !== 'reverso_pago' && !idsPagosRevertidos.has(mov.id_pago) && (
-                                    <button
-                                      onClick={() => manejarReversionPago(mov.id_pago)}
-                                      style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold', transition: 'background 0.2s' }}
-                                      onMouseOver={(e) => e.target.style.background = '#991b1b'}
-                                      onMouseOut={(e) => e.target.style.background = '#dc2626'}
-                                    >
-                                      Revertir
-                                    </button>
-                                  )}
+                                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
+                                    {mov.id_pago && mov.subtipo !== 'reverso_pago' && (
+                                      <button
+                                        onClick={() => verDistribucionPago(mov.id_pago, valHaber, mov.fecha_movimiento || mov.fecha_vencimiento)}
+                                        style={{ background: '#0284c7', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold', transition: 'background 0.2s' }}
+                                        onMouseOver={(e) => e.target.style.background = '#0369a1'}
+                                        onMouseOut={(e) => e.target.style.background = '#0284c7'}
+                                      >
+                                        🩺 Distribución
+                                      </button>
+                                    )}
+                                    {mov.id_pago && mov.subtipo !== 'reverso_pago' && !idsPagosRevertidos.has(mov.id_pago) && (
+                                      <button
+                                        onClick={() => manejarReversionPago(mov.id_pago)}
+                                        style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold', transition: 'background 0.2s' }}
+                                        onMouseOver={(e) => e.target.style.background = '#991b1b'}
+                                        onMouseOut={(e) => e.target.style.background = '#dc2626'}
+                                      >
+                                        Revertir
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -2277,6 +2488,106 @@ export default function FichaPaciente({ onVolver, usuario }) {
                 }}
               >
                 {procesandoObservacion ? 'Guardando...' : 'Guardar Observación'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalDistPagoAbierto && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1200,
+          padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '12px',
+            width: '100%',
+            maxWidth: '600px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            padding: '25px',
+            color: '#1e293b',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            fontFamily: 'Segoe UI, system-ui, sans-serif'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '15px', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: '#0f172a' }}>
+                🩺 Distribución de Honorarios a Prestadores (Pago #{distPagoId})
+              </h3>
+              <button
+                onClick={() => setModalDistPagoAbierto(false)}
+                style={{ background: 'transparent', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8' }}
+              >
+                &times;
+              </button>
+            </div>
+
+            {cargandoDistPago ? (
+              <p style={{ textAlign: 'center', padding: '30px', color: '#64748b', fontSize: '14px' }}>Cargando distribución de honorarios...</p>
+            ) : distPagoInfo ? (
+              <div>
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', marginBottom: '20px', fontSize: '13px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <span style={{ color: '#64748b' }}>Importe del Pago:</span>
+                    <strong style={{ color: '#0f172a' }}>${distPagoInfo.monto.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>Fecha de Pago:</span>
+                    <strong style={{ color: '#0f172a' }}>{distPagoInfo.fecha ? new Date(distPagoInfo.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/D'}</strong>
+                  </div>
+                </div>
+
+                <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 'bold', color: '#334155' }}>Detalle de Liquidación por Profesional:</h4>
+                {distPagoInfo.lineas.length === 0 ? (
+                  <p style={{ fontStyle: 'italic', color: '#64748b', textAlign: 'center', padding: '20px' }}>Este pago no tiene registradas distribuciones a prestadores en movprestadores_motor.</p>
+                ) : (
+                  <div style={{ border: '1px solid #cbd5e1', borderRadius: '8px', overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ background: '#f1f5f9', color: '#475569', borderBottom: '1px solid #cbd5e1' }}>
+                          <th style={{ padding: '10px' }}>Prestador</th>
+                          <th style={{ padding: '10px' }}>Concepto</th>
+                          <th style={{ padding: '10px', textAlign: 'center' }}>Sesiones Deducidas</th>
+                          <th style={{ padding: '10px', textAlign: 'right' }}>Monto Acreditado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {distPagoInfo.lineas.map((l, idx) => (
+                          <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                            <td style={{ padding: '10px', fontWeight: '500', color: '#0f172a' }}>{l.nombre_prestador}</td>
+                            <td style={{ padding: '10px', color: '#64748b' }}>{l.acuerdo || 'Liquidación'}</td>
+                            <td style={{ padding: '10px', textAlign: 'center', fontWeight: 'bold', color: '#0284c7' }}>
+                              {l.sesionesDeducidas} {l.sesionesDeducidas === 1 ? 'sesión' : 'sesiones'}
+                            </td>
+                            <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: '#16a34a' }}>
+                              ${parsearMoneda(l.haber).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p style={{ textAlign: 'center', padding: '20px', color: '#dc2626' }}>No se pudo recuperar la distribución de este pago.</p>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '25px', borderTop: '1px solid #e2e8f0', paddingTop: '15px' }}>
+              <button
+                type="button"
+                onClick={() => setModalDistPagoAbierto(false)}
+                style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '8px 20px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
+              >
+                Cerrar
               </button>
             </div>
           </div>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 
-export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
+export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePreseleccionado, onGuardadoExitoso }) {
   const [form, setForm] = useState(acuerdoAEditar || {
     fecha_acuerdo: new Date().toISOString().split('T')[0],
     id_paciente: '',
@@ -55,11 +55,22 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
               setBusquedaPaciente(pacEncontrado.nombre_apellido || '')
             }
           }
+        } else if (pacientePreseleccionado) {
+          const pacIdStr = String(pacientePreseleccionado.id_paciente);
+          const pacEncontrado = (dataPacientes || []).find(p => String(p.id_paciente) === pacIdStr);
+          if (pacEncontrado) {
+            setPacienteSeleccionadoObj(pacEncontrado)
+            setBusquedaPaciente(pacEncontrado.nombre_apellido || '')
+            setForm(prev => ({
+              ...prev,
+              id_paciente: pacEncontrado.id_paciente
+            }))
+          }
         }
       }
     }
     cargarDatosIniciales()
-  }, [acuerdoAEditar])
+  }, [acuerdoAEditar, pacientePreseleccionado])
 
   function handleChange(e) {
     const { name, value } = e.target
@@ -276,7 +287,11 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar }) {
       }
 
       alert(idAcuerdoEditar ? '¡Acuerdo actualizado con éxito!' : '¡Acuerdo registrado con éxito y deuda inicial generada en cuenta corriente!');
-      if (onVolver) onVolver()
+      if (onGuardadoExitoso) {
+        onGuardadoExitoso(idAcuerdoRegistrado);
+      } else if (onVolver) {
+        onVolver();
+      }
 
     } catch (err) {
       alert('Error al guardar el acuerdo: ' + err.message)
