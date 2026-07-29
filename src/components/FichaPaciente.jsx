@@ -508,7 +508,7 @@ export default function FichaPaciente({ onVolver, usuario }) {
     }
   }, [modalPagoAbierto, pacienteSeleccionado, usuario]);
 
-  const confirmarRegistroPago = async () => {
+const confirmarRegistroPago = async () => {
     // 1. Validar Importe
     const importeNum = parseFloat(importePago);
     if (isNaN(importeNum) || importeNum <= 0) {
@@ -550,6 +550,14 @@ export default function FichaPaciente({ onVolver, usuario }) {
     
     setProcesandoPago(true);
     try {
+      // 🛠️ RESOLVER OBJETO DE DEUDA SELECCIONADA DE FORMA SEGURA
+      let deudaSeleccionadaObj = null;
+      if (deudaSeleccionadaId !== 'FIFO') {
+        deudaSeleccionadaObj = deudasAgrupadas.find(d => String(d.id_deuda) === String(deudaSeleccionadaId));
+      } else {
+        deudaSeleccionadaObj = deudasAgrupadas[0] || null;
+      }
+
       // 1. Obtener el próximo id_pago consultando movimientoscuenta_motor (filtrando NULL)
       const { data: maxPagoDataMov, error: errorMaxPagoMov } = await supabase
         .from('movimientoscuenta_motor')
@@ -560,7 +568,6 @@ export default function FichaPaciente({ onVolver, usuario }) {
         
       if (errorMaxPagoMov) throw errorMaxPagoMov;
 
-      // También consultamos movprestadores_motor para asegurar unicidad
       const { data: maxPagoDataPrest, error: errorMaxPagoPrest } = await supabase
         .from('movprestadores_motor')
         .select('id_pago')
@@ -570,7 +577,6 @@ export default function FichaPaciente({ onVolver, usuario }) {
 
       if (errorMaxPagoPrest) throw errorMaxPagoPrest;
 
-      // También consultamos pagos_motor
       const { data: maxPagoDataMotorTab, error: errorMaxPagoDataMotor } = await supabase
         .from('pagos_motor')
         .select('id_pago')
@@ -585,7 +591,6 @@ export default function FichaPaciente({ onVolver, usuario }) {
       const maxPagoMotorTab = (maxPagoDataMotorTab && maxPagoDataMotorTab[0]?.id_pago) ? parseInt(maxPagoDataMotorTab[0].id_pago) : 0;
       const nextIdPago = Math.max(maxPagoMov, maxPagoPrest, maxPagoMotorTab) + 1;
 
-      // 1b. Obtener el próximo id_movimiento consultando movimientoscuenta_motor para evitar violar la pkey
       const { data: maxMovData, error: errorMaxMov } = await supabase
         .from('movimientoscuenta_motor')
         .select('id_movimiento')
@@ -595,7 +600,6 @@ export default function FichaPaciente({ onVolver, usuario }) {
       if (errorMaxMov) throw errorMaxMov;
       const nextIdMovimiento = (maxMovData && maxMovData[0]?.id_movimiento ? parseInt(maxMovData[0].id_movimiento) : 0) + 1;
       
-      // 2. Obtener deudas agrupadas y buscar la seleccionada o aplicar FIFO
       const asignaciones = [];
       let restante = importeNum;
 
@@ -620,7 +624,6 @@ export default function FichaPaciente({ onVolver, usuario }) {
           }
         }
 
-        // Si todavía sobra dinero (sobrepago absoluto), lo asignamos al primer movimiento o de lo contrario libre
         if (restante > 0) {
           if (asignaciones.length > 0) {
             asignaciones[0].montoAsignado = Math.round((asignaciones[0].montoAsignado + restante) * 100) / 100;
@@ -634,19 +637,19 @@ export default function FichaPaciente({ onVolver, usuario }) {
           }
         }
       } else {
-        const deudaSeleccionada = deudasAgrupadas.find(d => String(d.id_deuda) === String(deudaSeleccionadaId));
-        if (!deudaSeleccionada) {
+        const deudaSel = deudasAgrupadas.find(d => String(d.id_deuda) === String(deudaSeleccionadaId));
+        if (!deudaSel) {
           throw new Error("La deuda seleccionada no es válida.");
         }
 
-        const balanceSeleccionada = deudaSeleccionada.saldoReal;
+        const balanceSeleccionada = deudaSel.saldoReal;
         const montoAsignadoSeleccionada = Math.min(restante, balanceSeleccionada);
         
         asignaciones.push({
-          id_deuda: deudaSeleccionada.id_deuda,
-          id_acuerdo: deudaSeleccionada.id_acuerdo,
+          id_deuda: deudaSel.id_deuda,
+          id_acuerdo: deudaSel.id_acuerdo,
           montoAsignado: montoAsignadoSeleccionada,
-          concepto: deudaSeleccionada.concepto
+          concepto: deudaSel.concepto
         });
         
         restante -= montoAsignadoSeleccionada;
@@ -675,13 +678,11 @@ export default function FichaPaciente({ onVolver, usuario }) {
           }
         }
         
-        // Si todavía sobra dinero, lo asignamos a la deuda seleccionada inicial
         if (restante > 0) {
           asignaciones[0].montoAsignado = Math.round((asignaciones[0].montoAsignado + restante) * 100) / 100;
         }
       }
       
-      // 4. Insertar registros en movimientoscuenta_motor
       const nuevosMovimientos = asignaciones.map((asig, idx) => ({
         id_movimiento: nextIdMovimiento + idx,
         id_paciente: pacienteSeleccionado.id_paciente,
@@ -706,7 +707,6 @@ export default function FichaPaciente({ onVolver, usuario }) {
         
       if (errInsertMovs) throw errInsertMovs;
       
-      // 5. Insertar en caja_motor, billeteras_motor o bancos_motor según el medio de pago
       if (formaPago === 'Efectivo') {
         const registroCaja = {
           fecha: fechaPago,
@@ -759,7 +759,6 @@ export default function FichaPaciente({ onVolver, usuario }) {
         if (errBanco) throw errBanco;
       }
       
-      // 6. Distribuir a prestadores e insertar en movprestadores_motor
       const totalSesiones = Object.values(sesionesPrestadores).reduce((acc, curr) => acc + (parseInt(curr) || 0), 0);
       if (totalSesiones > 0) {
         const prestadoresConSesiones = prestadoresList.filter(p => (sesionesPrestadores[p.id_prestador] || 0) > 0);
@@ -778,8 +777,6 @@ export default function FichaPaciente({ onVolver, usuario }) {
         
         const diffRedondeo = Math.round((importeNum - sumaImportes) * 100) / 100;
         if (diffRedondeo !== 0 && prestadoresConSesiones.length > 0) {
-    
-    
           const firstId = prestadoresConSesiones[0].id_prestador;
           importesDistribuidos[firstId] = Math.round((importesDistribuidos[firstId] + diffRedondeo) * 100) / 100;
         }
@@ -794,7 +791,7 @@ export default function FichaPaciente({ onVolver, usuario }) {
           haber: importesDistribuidos[p.id_prestador].toString(),
           saldo: '0.00',
           usuario: usuario || 'Sistema',
-          acuerdo: deudaSeleccionada.nombre_prestacion || `Acuerdo ID: ${deudaSeleccionada.id_acuerdo}`
+          acuerdo: deudaSeleccionadaObj?.nombre_prestacion || `Acuerdo ID: ${deudaSeleccionadaObj?.id_acuerdo || 'S/D'}`
         }));
         
         const { error: errInsertPrestadores } = await supabase
@@ -804,7 +801,6 @@ export default function FichaPaciente({ onVolver, usuario }) {
         if (errInsertPrestadores) throw errInsertPrestadores;
       }
       
-      // 7. Insertar registro en pagos_motor
       const nuevoRegistroPago = {
         id_pago: nextIdPago,
         id_cuota: null,
@@ -815,7 +811,7 @@ export default function FichaPaciente({ onVolver, usuario }) {
         forma_pago: formaPago.toUpperCase(),
         usuario: usuario || 'Sistema',
         fecha_registro: new Date().toISOString(),
-        id_acuerdo: deudaSeleccionada.id_acuerdo,
+        id_acuerdo: deudaSeleccionadaObj ? deudaSeleccionadaObj.id_acuerdo : null,
         estado: 'ACTIVO'
       };
 
@@ -828,7 +824,6 @@ export default function FichaPaciente({ onVolver, usuario }) {
       setMensaje({ texto: "Pago registrado exitosamente.", tipo: 'exito' });
       setModalPagoAbierto(false);
       
-      // Simular recarga de la ficha de paciente
       seleccionarPacientePorId({ target: { value: pacienteSeleccionado.id_paciente } });
       
     } catch (error) {
