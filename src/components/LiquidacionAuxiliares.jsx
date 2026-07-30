@@ -3,8 +3,36 @@ import { supabase } from '../lib/supabase';
 
 const parsearDecimal = (val) => {
   if (val === null || val === undefined || val === '') return 0;
-  const str = String(val).trim().replace(',', '.');
-  const num = Number.parseFloat(str);
+  if (typeof val === 'number') return val;
+  
+  const str = String(val).replace(/\$/g, '').trim();
+  
+  if (str.includes(',')) {
+    const limpio = str.replace(/\./g, '').replace(',', '.');
+    const num = Number(limpio);
+    return isNaN(num) ? 0 : num;
+  }
+  
+  if (str.includes('.')) {
+    const partes = str.split('.');
+    if (partes.length > 2) {
+      const limpio = str.replace(/\./g, '');
+      const num = Number(limpio);
+      return isNaN(num) ? 0 : num;
+    }
+    
+    const decimales = partes[1];
+    if (decimales.length === 3) {
+      const limpio = str.replace(/\./g, '');
+      const num = Number(limpio);
+      return isNaN(num) ? 0 : num;
+    }
+    
+    const num = Number(str);
+    return isNaN(num) ? 0 : num;
+  }
+  
+  const num = Number(str);
   return isNaN(num) ? 0 : num;
 };
 
