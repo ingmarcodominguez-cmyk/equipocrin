@@ -163,11 +163,6 @@ const DetallePrestador = ({ prestador, volver }) => {
 
         setTodosMovimientos(data || []);
 
-        const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
-        const hace10Dias = new Date(hoy);
-        hace10Dias.setDate(hoy.getDate() - 10);
-
         let saldoAcumulado = 0;
         const conSaldo = (data || []).map(m => {
           const debe = parsearDecimal(m.debe);
@@ -176,12 +171,7 @@ const DetallePrestador = ({ prestador, volver }) => {
           return { ...m, saldo: saldoAcumulado.toFixed(2) };
         });
 
-        const filtrados = conSaldo.filter(m => {
-          const fechaMov = new Date((m.fecha || '') + 'T00:00:00');
-          return fechaMov >= hace10Dias;
-        });
-
-        setMovimientos(filtrados.reverse());
+        setMovimientos(conSaldo.reverse());
       } catch (err) {
         console.error("Error al cargar movimientos de prestador:", err);
       } finally {
@@ -279,7 +269,7 @@ const DetallePrestador = ({ prestador, volver }) => {
           </button>
         )}
       </div>
-      <h3>Resumen: {prestador.nombre_prestador} (Últimos 10 días)</h3>
+      <h3>Resumen de Cuenta: {prestador.nombre_prestador}</h3>
       {cargandoMovs ? <p>Cargando movimientos...</p> : (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
@@ -298,10 +288,10 @@ const DetallePrestador = ({ prestador, volver }) => {
                 <td style={{ padding: '8px' }}>{m.fecha ? new Date(m.fecha + 'T00:00:00').toLocaleDateString() : 'S/D'}</td>
                 <td style={{ padding: '8px' }}>{m.concepto}</td>
                 <td style={{ padding: '8px' }}>{m.acuerdo || '-'}</td>
-                <td style={{ padding: '8px', textAlign: 'right' }}>{parseFloat(m.debe) > 0 ? `$${parseFloat(m.debe).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}</td>
-                <td style={{ padding: '8px', textAlign: 'right' }}>{parseFloat(m.haber) > 0 ? `$${parseFloat(m.haber).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}</td>
-                <td style={{ padding: '8px', textAlign: 'right', color: parseFloat(m.saldo) >= 0 ? '#00ff00' : '#ff4444' }}>
-                  ${parseFloat(m.saldo).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <td style={{ padding: '8px', textAlign: 'right' }}>{parsearDecimal(m.debe) > 0 ? `$${parsearDecimal(m.debe).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}</td>
+                <td style={{ padding: '8px', textAlign: 'right' }}>{parsearDecimal(m.haber) > 0 ? `$${parsearDecimal(m.haber).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}</td>
+                <td style={{ padding: '8px', textAlign: 'right', color: parsearDecimal(m.saldo) >= 0 ? '#00ff00' : '#ff4444' }}>
+                  ${parsearDecimal(m.saldo).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
               </tr>
             ))}
