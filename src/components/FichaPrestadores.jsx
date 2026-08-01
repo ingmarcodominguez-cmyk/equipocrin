@@ -172,38 +172,22 @@ export default function FichaPrestadores({ onVolver, usuario }) {
   };
 
   const manejarDescargaExcel = (movs, nombrePrestador) => {
-    // Revertir para procesar en orden cronológico ascendente (historial completo)
-    const sortedMovs = [...movs].reverse();
-
-    let running = 0;
-    const conSaldo = sortedMovs.map(m => {
-      const debe = parsearDecimal(m.debe);
-      const haber = parsearDecimal(m.haber);
-      running += (haber - debe);
-      return {
-        ...m,
-        debeNum: debe,
-        haberNum: haber,
-        saldoCalculado: running
-      };
-    });
-
-    // Exportar absolutamente todos los movimientos sin cortes
-    const filtradosReporte = conSaldo;
-
-    // Generar el CSV compatible con Excel en español (separador punto y coma)
+    // Usamos directamente los movimientos tal como se muestran en pantalla (orden descendiente: lo más nuevo arriba)
     const BOM = "\uFEFF";
     let csv = "sep=;\n";
     csv += `Historial Completo - Profesional: ${nombrePrestador}\n\n`;
-    csv += "Fecha;Concepto;Acuerdo;Debe ($);Haber ($);Saldo ($)\r\n";
+    csv += "Fecha;Concepto;Acuerdo;Debe ($);Haber ($);Saldo Acumulado ($)\r\n";
 
-    filtradosReporte.forEach(m => {
+    movs.forEach(m => {
+      const valDebe = parsearDecimal(m.debe);
+      const valHaber = parsearDecimal(m.haber);
+
       const fecha = m.fecha ? new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/D';
       const concepto = (m.concepto || '').replace(/;/g, ',');
       const acuerdo = (m.acuerdo || '-').replace(/;/g, ',');
-      const debeStr = m.debeNum > 0 ? m.debeNum.toFixed(2).replace('.', ',') : '';
-      const haberStr = m.haberNum > 0 ? m.haberNum.toFixed(2).replace('.', ',') : '';
-      const saldoStr = m.saldoCalculado.toFixed(2).replace('.', ',');
+      const debeStr = valDebe > 0 ? valDebe.toFixed(2).replace('.', ',') : '';
+      const haberStr = valHaber > 0 ? valHaber.toFixed(2).replace('.', ',') : '';
+      const saldoStr = (m.saldoAcumulado !== undefined ? m.saldoAcumulado : 0).toFixed(2).replace('.', ',');
       
       csv += `${fecha};${concepto};${acuerdo};${debeStr};${haberStr};${saldoStr}\r\n`;
     });
@@ -267,16 +251,14 @@ export default function FichaPrestadores({ onVolver, usuario }) {
       let haberInsert = '0';
 
       if (modalAbierto === 'pago') {
-        // Los pagos van al DEBE (disminuyen lo que la clínica le debe al prestador)
         debeInsert = montoNum.toString();
       } else if (modalAbierto === 'gasto') {
-        // Los gastos del prestador van al DEBE (disminuyen lo que la clínica le debe al prestador)
         debeInsert = montoNum.toString();
       } else if (modalAbierto === 'ajuste') {
         if (tipoAjuste === 'credito') {
-          haberInsert = montoNum.toString(); // Crédito -> Haber (A favor del prestador)
+          haberInsert = montoNum.toString();
         } else {
-          debeInsert = montoNum.toString();  // Débito -> Debe (En contra del prestador)
+          debeInsert = montoNum.toString();
         }
       }
 
@@ -286,7 +268,7 @@ export default function FichaPrestadores({ onVolver, usuario }) {
         concepto: conceptoTx + (observacionTx ? ` (${observacionTx})` : ''),
         debe: debeInsert,
         haber: haberInsert,
-        saldo: '0.00', // Campo requerido
+        saldo: '0.00',
         usuario: usuario || 'Sistema',
         acuerdo: 'Ajuste Manual'
       };
@@ -300,7 +282,6 @@ export default function FichaPrestadores({ onVolver, usuario }) {
       mostrarAlerta("Transacción registrada con éxito.", "exito");
       setModalAbierto(null);
       
-      // Recargar listados para refrescar saldos
       await cargarPrestadores();
       await cargarMovimientos(prestadorSeleccionado.id_prestador);
 
@@ -312,7 +293,6 @@ export default function FichaPrestadores({ onVolver, usuario }) {
     }
   };
 
-  // Calcular totales para las tarjetas de información
   const totalHaber = movimientos.reduce((acc, m) => acc + parsearDecimal(m.haber), 0);
   const totalDebe = movimientos.reduce((acc, m) => acc + parsearDecimal(m.debe), 0);
   const saldoFinal = totalHaber - totalDebe;
@@ -320,7 +300,6 @@ export default function FichaPrestadores({ onVolver, usuario }) {
   return (
     <div style={{ background: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b' }}>
       
-      {/* Cabecera */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '18px', marginBottom: '25px' }}>
         <div>
           <h2 style={{ color: '#0f172a', margin: 0, fontSize: '22px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -353,7 +332,6 @@ export default function FichaPrestadores({ onVolver, usuario }) {
         </div>
       )}
 
-      {/* Selector de Prestador */}
       <div style={{ marginBottom: '25px', background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
         <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#475569', marginBottom: '8px' }}>
           Seleccione un Profesional de la lista:
@@ -381,7 +359,6 @@ export default function FichaPrestadores({ onVolver, usuario }) {
 
       {prestadorSeleccionado && (
         <div>
-          {/* Tarjetas de Balance */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '25px' }}>
             
             <div style={{ padding: '20px', borderRadius: '12px', background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '1px solid #bfdbfe', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
@@ -421,7 +398,6 @@ export default function FichaPrestadores({ onVolver, usuario }) {
             </div>
           </div>
 
-          {/* Panel de Botones de Transacción */}
           <div style={{ display: 'flex', gap: '15px', marginBottom: '30px', background: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
             <button
               onClick={() => abrirFormulario('pago')}
@@ -451,7 +427,6 @@ export default function FichaPrestadores({ onVolver, usuario }) {
             </button>
           </div>
 
-          {/* Formulario de Transacción Inline */}
           {modalAbierto && (
             <div style={{ background: '#f8fafc', padding: '25px', borderRadius: '12px', border: '1px solid #cbd5e1', marginBottom: '30px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #cbd5e1', paddingBottom: '10px', marginBottom: '15px' }}>
@@ -550,7 +525,6 @@ export default function FichaPrestadores({ onVolver, usuario }) {
             </div>
           )}
 
-          {/* Tabla de Cuenta Corriente */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
               <h3 style={{ fontSize: '16px', color: '#0f172a', fontWeight: 'bold', margin: 0 }}>
