@@ -172,10 +172,9 @@ export default function FichaPrestadores({ onVolver, usuario }) {
   };
 
   const manejarDescargaExcel = (movs, nombrePrestador) => {
-    // Revertir para procesar en orden cronológico ascendente
+    // Revertir para procesar en orden cronológico ascendente (historial completo)
     const sortedMovs = [...movs].reverse();
 
-    // 2. Calcular saldo acumulado
     let running = 0;
     const conSaldo = sortedMovs.map(m => {
       const debe = parsearDecimal(m.debe);
@@ -189,38 +188,14 @@ export default function FichaPrestadores({ onVolver, usuario }) {
       };
     });
 
-    // 3. Buscar último saldo en cero
-    let startIndex = -1;
-    for (let i = conSaldo.length - 1; i >= 0; i--) {
-      if (Math.abs(conSaldo[i].saldoCalculado) < 1.0) {
-        startIndex = i;
-        break;
-      }
-    }
+    // Exportar absolutamente todos los movimientos sin cortes
+    const filtradosReporte = conSaldo;
 
-    // 4. Si no hay saldo cero, buscar el último pago
-    if (startIndex === -1) {
-      for (let i = conSaldo.length - 1; i >= 0; i--) {
-        const concepto = (conSaldo[i].concepto || '').toUpperCase();
-        const subtipo = (conSaldo[i].subtipo || '').toUpperCase();
-        if (subtipo.includes('PAGO') || concepto.includes('PAGO')) {
-          startIndex = i;
-          break;
-        }
-      }
-    }
-
-    // 5. Si tampoco hay pagos, exportamos todos
-    if (startIndex === -1) {
-      startIndex = 0;
-    }
-
-    // 6. Recortar la lista de movimientos para el reporte
-    const filtradosReporte = conSaldo.slice(startIndex);
-
-    // 7. Generar el CSV compatible con Excel en español
+    // Generar el CSV compatible con Excel en español (separador punto y coma)
     const BOM = "\uFEFF";
-    let csv = "Fecha;Concepto;Acuerdo;Debe ($);Haber ($);Saldo ($)\r\n";
+    let csv = "sep=;\n";
+    csv += `Historial Completo - Profesional: ${nombrePrestador}\n\n`;
+    csv += "Fecha;Concepto;Acuerdo;Debe ($);Haber ($);Saldo ($)\r\n";
 
     filtradosReporte.forEach(m => {
       const fecha = m.fecha ? new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/D';
@@ -233,12 +208,12 @@ export default function FichaPrestadores({ onVolver, usuario }) {
       csv += `${fecha};${concepto};${acuerdo};${debeStr};${haberStr};${saldoStr}\r\n`;
     });
 
-    // 8. Descargar el archivo
+    // Descargar el archivo
     const blob = new Blob([BOM + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `Liquidacion_${nombrePrestador.replace(/\s+/g, '_')}.csv`);
+    link.setAttribute("download", `Historico_Completo_${nombrePrestador.replace(/\s+/g, '_')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

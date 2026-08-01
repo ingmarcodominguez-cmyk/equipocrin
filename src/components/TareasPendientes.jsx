@@ -5,6 +5,7 @@ export default function TareasPendientes({ onVolver }) {
   const [tareas, setTareas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
+  const [agruparPorPaciente, setAgruparPorPaciente] = useState(true);
   
   // Estados para edición en línea
   const [editandoId, setEditandoId] = useState(null);
@@ -100,14 +101,31 @@ export default function TareasPendientes({ onVolver }) {
         </button>
       </div>
 
-      <div style={{ marginBottom: '20px' }}>
+      <div style={{ marginBottom: '20px', display: 'flex', gap: '12px', alignItems: 'center' }}>
         <input 
           type="text" 
           placeholder="Buscar por paciente o tarea..." 
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '15px', outline: 'none' }}
+          style={{ flex: 1, padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '15px', outline: 'none' }}
         />
+        <button
+          onClick={() => setAgruparPorPaciente(!agruparPorPaciente)}
+          style={{ 
+            background: agruparPorPaciente ? '#5b21b6' : '#e2e8f0', 
+            color: agruparPorPaciente ? '#ffffff' : '#475569', 
+            border: 'none', 
+            padding: '12px 20px', 
+            borderRadius: '10px', 
+            cursor: 'pointer', 
+            fontSize: '14px', 
+            fontWeight: 'bold', 
+            transition: 'all 0.2s',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          👤 {agruparPorPaciente ? 'Desagrupar' : 'Agrupar por Paciente'}
+        </button>
       </div>
 
       {cargando ? (
@@ -115,6 +133,118 @@ export default function TareasPendientes({ onVolver }) {
       ) : filtradas.length === 0 ? (
         <div style={{ textAlign: 'center', color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '30px', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
           {tareas.length === 0 ? '✨ ¡Excelente! No hay tareas pendientes registradas.' : 'No se encontraron tareas con esa búsqueda.'}
+        </div>
+      ) : agruparPorPaciente ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '550px', overflowY: 'auto' }}>
+          {Object.entries(
+            filtradas.reduce((acc, t) => {
+              // Agrupar por id_paciente si existe, de lo contrario por nombre
+              const key = t.id_paciente ? `ID_${t.id_paciente}` : `NAME_${t.nombre || 'Sin Paciente Asignado'}`;
+              if (!acc[key]) acc[key] = [];
+              acc[key].push(t);
+              return acc;
+            }, {})
+          )
+          .sort((a, b) => {
+            const dateA = a[1][0]?.fecha || '';
+            const dateB = b[1][0]?.fecha || '';
+            if (dateA !== dateB) {
+              return dateB.localeCompare(dateA); // Newest date first
+            }
+            const nameA = a[1][0]?.nombre || '';
+            const nameB = b[1][0]?.nombre || '';
+            return nameA.localeCompare(nameB); // Alphabetical fallback
+          })
+          .map(([grupoKey, tareasDelPaciente]) => {
+            const nombrePaciente = tareasDelPaciente[0]?.nombre || 'Sin Paciente Asignado';
+            return (
+              <div key={grupoKey} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '18px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.02)' }}>
+                <h4 style={{ margin: '0 0 15px 0', fontSize: '15px', fontWeight: 'bold', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
+                  👤 {nombrePaciente}
+                  <span style={{ fontSize: '11px', background: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
+                    {tareasDelPaciente.length} {tareasDelPaciente.length === 1 ? 'tarea' : 'tareas'}
+                  </span>
+                </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {[...tareasDelPaciente]
+                  .sort((t1, t2) => {
+                    const f1 = t1.fecha || '';
+                    const f2 = t2.fecha || '';
+                    if (f1 !== f2) {
+                      return f2.localeCompare(f1);
+                    }
+                    return (t2.id || 0) - (t1.id || 0);
+                  })
+                  .map(t => (
+                  <div key={t.id} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.01)' }}>
+                    {editandoId === t.id ? (
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
+                          <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                            {t.fecha ? new Date(t.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/D'}
+                          </span>
+                        </div>
+                        <textarea
+                          value={editandoTexto}
+                          onChange={(e) => setEditandoTexto(e.target.value)}
+                          rows="2"
+                          style={{ width: '100%', padding: '10px', border: '1px solid #c084fc', borderRadius: '8px', fontSize: '14px', fontFamily: 'inherit', resize: 'vertical', outline: 'none', marginBottom: '8px' }}
+                        />
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            onClick={() => guardarEdicion(t.id)}
+                            style={{ background: '#5b21b6', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                          >
+                            💾 Guardar
+                          </button>
+                          <button
+                            onClick={() => setEditandoId(null)}
+                            style={{ background: '#e2e8f0', color: '#475569', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
+                            <span style={{ fontSize: '11px', background: '#fef3c7', color: '#b45309', fontWeight: 'bold', padding: '2px 6px', borderRadius: '4px' }}>PENDIENTE</span>
+                            <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                              {t.fecha ? new Date(t.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/D'}
+                            </span>
+                          </div>
+                          <p style={{ margin: 0, fontSize: '14px', color: '#475569', whiteSpace: 'pre-line' }}>{t.tarea}</p>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                          <button
+                            onClick={() => {
+                              setEditandoId(t.id);
+                              setEditandoTexto(t.tarea);
+                            }}
+                            style={{ background: 'transparent', border: '1px solid #cbd5e1', color: '#475569', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', transition: 'background 0.2s' }}
+                            onMouseOver={(e) => e.target.style.background = '#f1f5f9'}
+                            onMouseOut={(e) => e.target.style.background = 'transparent'}
+                          >
+                            ✏️ Editar
+                          </button>
+                          <button
+                            onClick={() => marcarRealizada(t.id)}
+                            style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', transition: 'background 0.2s' }}
+                            onMouseOver={(e) => e.target.style.background = '#059669'}
+                            onMouseOut={(e) => e.target.style.background = '#10b981'}
+                          >
+                            ✓ Completar
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '550px', overflowY: 'auto' }}>

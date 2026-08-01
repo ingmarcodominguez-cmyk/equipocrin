@@ -22,7 +22,8 @@ export default function CajaDiaria({ onVolver, usuario }) {
   const [movimientos, setMovimientos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [filtroFecha, setFiltroFecha] = useState(getLocalDateString());
-  const [modalAbierto, setModalAbierto] = useState(null); // 'ingreso', 'egreso', o 'cierre'
+  const [modalAbierto, setModalAbierto] = useState(null); // 'ingreso', 'egreso', 'ajuste', o 'cierre'
+  const [tipoAjusteCaja, setTipoAjusteCaja] = useState('INGRESO');
   
   // Estados para el formulario de la transacción (Ingreso/Egreso)
   const [fechaTx, setFechaTx] = useState(getLocalDateString());
@@ -105,9 +106,10 @@ export default function CajaDiaria({ onVolver, usuario }) {
       setMotivoDifCierre('');
       setFechaSiguienteApertura(getTomorrowDate());
     } else {
-      setConceptoTx(tipo === 'egreso' ? '' : 'Ingreso Manual de Caja');
+      setConceptoTx(tipo === 'egreso' ? '' : tipo === 'ajuste' ? 'Ajuste de Caja' : 'Ingreso Manual de Caja');
       setMontoTx('');
       setObservacionTx('');
+      setTipoAjusteCaja('INGRESO');
     }
   };
 
@@ -132,7 +134,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
         entregado_por: null,
         turno: null,
         id_turno: null,
-        tipo: modalAbierto.toUpperCase(), // 'INGRESO' o 'EGRESO'
+        tipo: modalAbierto === 'ajuste' ? tipoAjusteCaja : modalAbierto.toUpperCase(), // 'INGRESO' o 'EGRESO'
         concepto: conceptoTx,
         medio_pago: 'EFECTIVO',
         importe: importeNum.toString(),
@@ -393,7 +395,13 @@ export default function CajaDiaria({ onVolver, usuario }) {
             onClick={() => abrirModal('egreso')}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#ef4444', color: '#ffffff', border: 'none', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(239, 68, 68, 0.1)' }}
           >
-            ➖ Registrar Egreso
+            ➖ Registrar Gasto
+          </button>
+          <button
+            onClick={() => abrirModal('ajuste')}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f59e0b', color: '#ffffff', border: 'none', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(245, 158, 11, 0.1)' }}
+          >
+            ⚙️ Ajuste de Caja
           </button>
           <button
             onClick={() => abrirModal('cierre')}
@@ -405,13 +413,43 @@ export default function CajaDiaria({ onVolver, usuario }) {
 
       </div>
 
-      {/* Modal de Transacción (Ingreso/Egreso) */}
+      {/* Modal de Transacción (Ingreso/Egreso/Ajuste) */}
       {modalAbierto && modalAbierto !== 'cierre' && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
           <div style={{ background: '#ffffff', padding: '25px', borderRadius: '16px', width: '100%', maxWidth: '450px', border: '1px solid #e2e8f0', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
             <h3 style={{ margin: '0 0 15px 0', fontSize: '18px', fontWeight: 'bold', color: '#0f172a' }}>
-              {modalAbierto === 'egreso' ? '➖ Registrar Egreso de Caja' : '➕ Registrar Ingreso Manual'}
+              {modalAbierto === 'egreso' ? '➖ Registrar Gasto (Egreso)' : modalAbierto === 'ajuste' ? '⚙️ Ajuste de Caja' : '➕ Registrar Ingreso Manual'}
             </h3>
+
+            {modalAbierto === 'ajuste' && (
+              <div style={{ marginBottom: '15px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '8px' }}>
+                  Tipo de Ajuste *
+                </label>
+                <div style={{ display: 'flex', gap: '20px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '600', color: '#166534', cursor: 'pointer' }}>
+                    <input 
+                      type="radio" 
+                      name="tipoAjusteCaja" 
+                      value="INGRESO" 
+                      checked={tipoAjusteCaja === 'INGRESO'} 
+                      onChange={(e) => setTipoAjusteCaja(e.target.value)} 
+                    />
+                    ➕ INGRESO (Entrada)
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '600', color: '#b91c1c', cursor: 'pointer' }}>
+                    <input 
+                      type="radio" 
+                      name="tipoAjusteCaja" 
+                      value="EGRESO" 
+                      checked={tipoAjusteCaja === 'EGRESO'} 
+                      onChange={(e) => setTipoAjusteCaja(e.target.value)} 
+                    />
+                    ➖ EGRESO (Salida)
+                  </label>
+                </div>
+              </div>
+            )}
 
             <div style={{ marginBottom: '12px' }}>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>Fecha *</label>
@@ -429,7 +467,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
                 type="text"
                 value={conceptoTx}
                 onChange={(e) => setConceptoTx(e.target.value)}
-                placeholder={modalAbierto === 'egreso' ? "Ej: Artículos de limpieza, Pago remis, etc." : "Ej: Carga inicial de caja"}
+                placeholder={modalAbierto === 'egreso' ? "Ej: Artículos de limpieza, Pago remis, etc." : modalAbierto === 'ajuste' ? "Ej: Error en cobranza paciente X" : "Ej: Carga inicial de caja"}
                 style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px' }}
               />
             </div>
@@ -466,7 +504,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
               <button 
                 onClick={confirmarTransaccion}
                 disabled={guardando}
-                style={{ padding: '8px 20px', background: modalAbierto === 'egreso' ? '#ef4444' : '#10b981', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
+                style={{ padding: '8px 20px', background: (modalAbierto === 'egreso' || (modalAbierto === 'ajuste' && tipoAjusteCaja === 'EGRESO')) ? '#ef4444' : '#10b981', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
               >
                 {guardando ? 'Guardando...' : 'Confirmar'}
               </button>
