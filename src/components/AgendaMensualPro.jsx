@@ -12,6 +12,7 @@ function AgendaMensualPro({ userData }) {
   const [filtroFechaInput, setFiltroFechaInput] = useState('') 
   const [filtroProfesional, setFiltroProfesional] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
+  const [filtroPaciente, setFiltroPaciente] = useState('')
   
   const [form, setForm] = useState({ 
     paciente_nombre: '', profesional_id: '', prestacion: 'Turno primera vez', 
@@ -109,6 +110,11 @@ function AgendaMensualPro({ userData }) {
   let turnosVisibles = esAdmin ? turnos : turnos.filter(t => String(t.profesional_id || '').trim() === String(userData?.id || '').trim());
   if (filtroProfesional) turnosVisibles = turnosVisibles.filter(t => String(t.profesional_id) === String(filtroProfesional));
   if (filtroEstado) turnosVisibles = turnosVisibles.filter(t => t.estado === filtroEstado);
+  if (filtroPaciente) {
+    turnosVisibles = turnosVisibles.filter(t => 
+      t.paciente_nombre && t.paciente_nombre.toLowerCase().includes(filtroPaciente.toLowerCase())
+    );
+  }
 
   const prestaciones = ['Turno primera vez', 'Evaluacion', 'Reunion', 'Entrenamiento', 'Devolucion','Visita A Instituciones','Tratamiento'];
   const diasEnMes = new Date(mesActual.getFullYear(), mesActual.getMonth() + 1, 0).getDate();
@@ -142,6 +148,14 @@ function AgendaMensualPro({ userData }) {
             <option value="">Todos los Profesionales</option>
             {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
           </select>
+          
+          <input 
+            type="text" 
+            placeholder="Filtrar por paciente..." 
+            value={filtroPaciente} 
+            onChange={e => setFiltroPaciente(e.target.value)} 
+            style={{ padding: '10px', fontSize: '16px', borderRadius: '4px', border: '1px solid #ccc' }}
+          />
           
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <label style={{ fontSize: '10px', color: '#666', fontWeight: 'bold', textAlign: 'center' }}>FECHA</label>
