@@ -21,7 +21,7 @@ const deducirSesiones = (valores) => {
   return valores.map(v => (v > 0.01 ? Math.round(v / minVal) : 0));
 };
 
-export default function FichaPaciente({ onVolver, usuario }) {
+export default function FichaPaciente({ onVolver, usuario, pacientePreseleccionado }) {
   const [listaPacientes, setListaPacientes] = useState([]);
 
   // Estados para Observaciones y Tareas
@@ -109,6 +109,60 @@ export default function FichaPaciente({ onVolver, usuario }) {
     }
     cargarDatosIniciales();
   }, []);
+
+  useEffect(() => {
+    async function cargarPacientePreseleccionado() {
+      if (pacientePreseleccionado && listaPacientes.length > 0 && prestaciones.length > 0) {
+        const pId = pacientePreseleccionado.id_paciente;
+        const encontrado = listaPacientes.find(p => String(p.id_paciente) === String(pId));
+        if (encontrado) {
+          setPacienteSeleccionado(encontrado);
+          setVistaActiva('menu');
+          setCargando(true);
+          setMensaje({ texto: '', tipo: '' });
+
+          try {
+            const [
+              { data: acuerdosData, error: errorAcuerdos },
+              { data: movimientosData, error: errorMovimientos }
+            ] = await Promise.all([
+              supabase.from('acuerdos_motor').select('*').eq('id_paciente', encontrado.id_paciente),
+              supabase.from('movimientoscuenta_motor').select('*').eq('id_paciente', encontrado.id_paciente)
+            ]);
+
+            if (errorAcuerdos) throw errorAcuerdos;
+            if (errorMovimientos) throw errorMovimientos;
+
+            await cargarObservaciones(encontrado.id_paciente);
+
+            const acuerdosConPrestacion = (acuerdosData || []).map(acuerdo => {
+              const prestacionEncontrada = prestaciones.find(
+                p => String(p.id_prestacion).trim() === String(acuerdo.id_prestacion).trim()
+              );
+              return {
+                ...acuerdo,
+                prestacion: prestacionEncontrada ? prestacionEncontrada.nombre_prestacion : 'S/D'
+              };
+            });
+            setAcuerdos(acuerdosConPrestacion);
+
+            const ordenados = (movimientosData || []).sort((a, b) => {
+              const dateA = a.fecha_movimiento || '';
+              const dateB = b.fecha_movimiento || '';
+              return dateA.localeCompare(dateB);
+            });
+            setMovimientosDetallados(ordenados);
+          } catch (error) {
+            console.error('Error al precargar paciente:', error);
+            setMensaje({ texto: 'Error al precargar el paciente: ' + error.message, tipo: 'error' });
+          } finally {
+            setCargando(false);
+          }
+        }
+      }
+    }
+    cargarPacientePreseleccionado();
+  }, [pacientePreseleccionado, listaPacientes, prestaciones]);
 
   const parsearMoneda = (val) => {
     if (val === null || val === undefined || val === '') return 0;

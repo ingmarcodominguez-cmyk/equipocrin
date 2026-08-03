@@ -46,6 +46,11 @@ function App() {
   )
   const [porcentajeAumentoInput, setPorcentajeAumentoInput] = useState('0')
 
+  // Estados para buscador por ID
+  const [criterioBusquedaId, setCriterioBusquedaId] = useState('')
+  const [pacienteBuscado, setPacienteBuscado] = useState(null)
+  const [buscandoId, setBuscandoId] = useState(false)
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
@@ -190,10 +195,10 @@ function App() {
         return;
       }
 
-      // 3. Obtener mayor id_deuda existente
+      // 3. Obtener mayor id_deuda e id_movimiento existente
       const { data: todosMovimientos, error: errorMovs } = await supabase
         .from('movimientoscuenta_motor')
-        .select('id_deuda')
+        .select('id_movimiento, id_deuda')
         .order('id_movimiento', { ascending: false });
 
       if (errorMovs) {
@@ -201,7 +206,11 @@ function App() {
       }
 
       let maxIdDeuda = 0;
+      let maxIdMovimiento = 0;
       if (todosMovimientos) {
+        if (todosMovimientos.length > 0) {
+          maxIdMovimiento = parseInt(todosMovimientos[0].id_movimiento, 10) || 0;
+        }
         for (const mov of todosMovimientos) {
           const idDeudaNum = parseInt(mov.id_deuda, 10);
           if (!isNaN(idDeudaNum) && idDeudaNum > maxIdDeuda) {
@@ -210,13 +219,28 @@ function App() {
         }
       }
 
+      // 3b. Obtener cuotas ya generadas para evitar duplicaciones
+      const { data: cuotasExistentes, error: errorCuotas } = await supabase
+        .from('movimientoscuenta_motor')
+        .select('id_acuerdo, ciclo_mora')
+        .eq('tipo_movimiento', 'cuota')
+        .in('ciclo_mora', periodosAProcesar);
+
+      if (errorCuotas) {
+        throw new Error("Error al consultar cuotas existentes: " + errorCuotas.message);
+      }
+
+      const setCuotasExistentes = new Set(
+        (cuotasExistentes || []).map(c => `${c.id_acuerdo}_${c.ciclo_mora}`)
+      );
+
       const nuevosMovimientosBulk = [];
       const actualizacionesAcuerdos = [];
       const controlPeriodosBulk = [];
 
       // Mapeamos los acuerdos filtrados a memoria para llevar registro de sus importes
       const listaAcuerdosEnMemoria = acuerdosFiltrados.map(a => {
-        const importeStr = String(a.importe_actual || '0')
+        const importeStr = String(a.importe_actual || a.monto_cuota_base || '0')
           .replace(/\./g, '')       
           .replace(',', '.');       
 
@@ -241,6 +265,11 @@ function App() {
         });
 
         for (const acuerdo of listaAcuerdosEnMemoria) {
+          const keyCuota = `${acuerdo.id_acuerdo}_${periodo}`;
+          if (setCuotasExistentes.has(keyCuota)) {
+            continue; // Evitar duplicados
+          }
+
           let nuevoImporte = acuerdo.importeBase;
 
           // El porcentaje de aumento solo se aplica al período final de trabajo actual
@@ -253,6 +282,9 @@ function App() {
           maxIdDeuda++;
           const nuevoIdDeuda = maxIdDeuda.toString();
 
+          maxIdMovimiento++;
+          const nuevoIdMovimiento = maxIdMovimiento;
+
           const diaVencimientoPactado = acuerdo.dia_vencimiento || 10;
           const mesStrPadded = String(mes).padStart(2, '0');
           const diaStrPadded = String(diaVencimientoPactado).padStart(2, '0');
@@ -260,6 +292,7 @@ function App() {
           const fechaMovimientoStr = `${anio}-${mesStrPadded}-01`;
 
           nuevosMovimientosBulk.push({
+            id_movimiento: nuevoIdMovimiento,
             id_acuerdo: acuerdo.id_acuerdo,
             id_paciente: acuerdo.id_paciente,
             id_deuda: nuevoIdDeuda,
@@ -610,6 +643,73 @@ function App() {
     window.location.reload()
   }
 
+  async function handleBuscarPacientePorId() {
+    const inputVal = criterioBusquedaId.trim();
+    if (!inputVal) {
+      alert("Por favor, ingresá un ID de Paciente o un ID de Acuerdo.");
+      return;
+    }
+
+    const idNum = parseInt(inputVal, 10);
+    if (isNaN(idNum)) {
+      alert("El ID ingresado debe ser un número válido.");
+      return;
+    }
+
+    setBuscandoId(true);
+    try {
+      // 1. Intentar buscar en pacientes_motor por id_paciente
+      const { data: paciente, error: errorPac } = await supabase
+        .from('pacientes_motor')
+        .select('*')
+        .eq('id_paciente', idNum)
+        .maybeSingle();
+
+      if (errorPac) throw errorPac;
+
+      if (paciente) {
+        setPacienteBuscado(paciente);
+        setCrinAccion('FICHA_PACIENTE');
+        setCriterioBusquedaId('');
+        return;
+      }
+
+      // 2. Si no se encuentra, intentar buscar en acuerdos_motor por id_acuerdo
+      const { data: acuerdo, error: errorAc } = await supabase
+        .from('acuerdos_motor')
+        .select('id_paciente')
+        .eq('id_acuerdo', idNum)
+        .maybeSingle();
+
+      if (errorAc) throw errorAc;
+
+      if (acuerdo) {
+        // Encontró el acuerdo, buscar ahora el paciente correspondiente
+        const { data: pacienteDelAcuerdo, error: errorPacAc } = await supabase
+          .from('pacientes_motor')
+          .select('*')
+          .eq('id_paciente', acuerdo.id_paciente)
+          .maybeSingle();
+
+        if (errorPacAc) throw errorPacAc;
+
+        if (pacienteDelAcuerdo) {
+          setPacienteBuscado(pacienteDelAcuerdo);
+          setCrinAccion('FICHA_PACIENTE');
+          setCriterioBusquedaId('');
+          return;
+        }
+      }
+
+      alert("No se encontró ningún paciente con ese ID de Paciente ni asociado a ese ID de Acuerdo.");
+    } catch (err) {
+      console.error("Error al buscar por ID:", err);
+      alert("Ocurrió un error al realizar la búsqueda: " + err.message);
+    } finally {
+      setBuscandoId(false);
+    }
+  }
+
   if (cargando) {
     return (
       <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', fontFamily: 'sans-serif', gap: '20px' }}>
@@ -872,8 +972,9 @@ function App() {
         {crinAccion === 'FICHA_PACIENTE' && (
           <div style={{ width: '100%', maxWidth: '1200px' }}>
              <FichaPaciente 
-               onVolver={() => setCrinAccion(null)} 
+               onVolver={() => { setCrinAccion(null); setPacienteBuscado(null); }} 
                usuario={userData?.nombre || session?.user?.email || 'Usuario'} 
+               pacientePreseleccionado={pacienteBuscado}
              />
           </div>
         )}
@@ -960,12 +1061,78 @@ function App() {
           <div style={{ 
             width: '100%', 
             maxWidth: '1100px', 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', 
-            gap: '20px',
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '25px', 
             padding: '20px',
             boxSizing: 'border-box'
           }}>
+            {/* Buscador de Paciente por ID */}
+            <div style={{ 
+              alignSelf: 'center',
+              width: '100%', 
+              maxWidth: '650px', 
+              background: '#ffffff', 
+              padding: '20px', 
+              borderRadius: '20px', 
+              boxShadow: '0 8px 16px rgba(0,0,0,0.04)', 
+              border: '1px solid #e2e8f0',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              boxSizing: 'border-box'
+            }}>
+              <h3 style={{ margin: 0, fontSize: '15px', color: '#1e3a8a', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                🔍 Buscar Paciente por ID Paciente o ID Acuerdo
+              </h3>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <input 
+                  type="text" 
+                  placeholder="Ej: ID Paciente '225' o ID Acuerdo '610'..." 
+                  value={criterioBusquedaId}
+                  onChange={(e) => setCriterioBusquedaId(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleBuscarPacientePorId();
+                  }}
+                  style={{ 
+                    flex: 1, 
+                    padding: '12px 16px', 
+                    borderRadius: '12px', 
+                    border: '1px solid #cbd5e1', 
+                    fontSize: '14px', 
+                    outline: 'none',
+                    transition: 'border-color 0.2s'
+                  }}
+                />
+                <button 
+                  onClick={handleBuscarPacientePorId}
+                  disabled={buscandoId}
+                  style={{ 
+                    background: '#1e3a8a', 
+                    color: '#fff', 
+                    border: 'none', 
+                    padding: '0 24px', 
+                    borderRadius: '12px', 
+                    fontWeight: 'bold', 
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    transition: 'background 0.2s'
+                  }}
+                  onMouseOver={(e) => e.target.style.background = '#1e40af'}
+                  onMouseOut={(e) => e.target.style.background = '#1e3a8a'}
+                >
+                  {buscandoId ? 'Buscando...' : 'Buscar'}
+                </button>
+              </div>
+            </div>
+
+            {/* Grid de Botones del Menú */}
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', 
+              gap: '20px',
+              width: '100%'
+            }}>
             {/* Button 1: NUEVO PACIENTE */}
             <button 
               onClick={() => handleAccionClick('NUEVO_PACIENTE')}
@@ -1363,10 +1530,11 @@ function App() {
               REPORTE COBRANZAS
             </button>
           </div>
-        )}
-      </div>
-    )
-  }
+        </div>
+      )}
+    </div>
+  )
+}
 
   return (
     <div style={{ width: '100vw', height: '100vh', margin: 0, padding: 0 }}>
