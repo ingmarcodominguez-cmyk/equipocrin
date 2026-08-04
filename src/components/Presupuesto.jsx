@@ -554,6 +554,29 @@ export default function Presupuesto({ onVolver }) {
                 💬 Enviar enlace por WhatsApp
               </button>
             )}
+
+            {creadoDocId && (
+              <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '12px', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#065f46' }}>✅ ¡Presupuesto guardado en la nube!</span>
+                <a 
+                  href={`${window.location.origin}/?presupuesto=${creadoDocId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: '12.5px', color: '#2563eb', fontWeight: 'bold', textDecoration: 'underline', wordBreak: 'break-all' }}
+                >
+                  🔗 Abrir Enlace Público
+                </a>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}/?presupuesto=${creadoDocId}`);
+                    alert("¡Enlace copiado al portapapeles!");
+                  }}
+                  style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', marginTop: '4px' }}
+                >
+                  📋 Copiar Enlace
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

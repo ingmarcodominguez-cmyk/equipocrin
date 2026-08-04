@@ -76,8 +76,15 @@ export default function Documentos() {
               {archivos.length === 0 ? <p>No hay documentos para este paciente.</p> : 
                archivos.map((doc) => (
                 // CORRECCIÓN: Usamos doc.id (debe ser único en tu DB) como key
-                <li key={doc.id} style={{ marginBottom: '10px', padding: '10px', border: '1px solid #333', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{doc.nombre_archivo}</span>
+                <li key={doc.id} style={{ marginBottom: '10px', padding: '10px', border: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <a 
+                    href={doc.url_storage && doc.url_storage.startsWith('JSON:') ? `${window.location.origin}/?presupuesto=${doc.id}` : `https://gqhfrzvtccxrixdtazzs.supabase.co/storage/v1/object/public/documentos_pacientes/${doc.url_storage}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: '#00f2ff', textDecoration: 'underline', cursor: 'pointer', fontWeight: '500', flex: 1, marginRight: '10px', textAlign: 'left' }}
+                  >
+                    📄 {doc.nombre_archivo}
+                  </a>
                   <button onClick={() => {
                     if (doc.url_storage && doc.url_storage.startsWith('JSON:')) {
                       window.open(`${window.location.origin}/?presupuesto=${doc.id}`, '_blank');
@@ -85,7 +92,7 @@ export default function Documentos() {
                       const url = `https://gqhfrzvtccxrixdtazzs.supabase.co/storage/v1/object/public/documentos_pacientes/${doc.url_storage}`;
                       window.open(`https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`, '_blank');
                     }
-                  }}>👁️ Ver</button>
+                  }} style={{ flexShrink: 0 }}>👁️ Ver</button>
                 </li>
               ))}
             </ul>
