@@ -110,10 +110,10 @@ export default function Presupuesto({ onVolver }) {
         </button>
       </div>
 
-      <div className="no-print" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '30px', alignItems: 'start', marginBottom: '40px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '30px', alignItems: 'start', marginBottom: '40px' }}>
         
         {/* Formulario de Configuración (Izquierda) */}
-        <div style={{ background: '#f8fafc', padding: '25px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        <div className="no-print" style={{ background: '#f8fafc', padding: '25px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', color: '#1e293b', fontWeight: 'bold', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>⚙️ Datos del Presupuesto</h3>
           
           {/* Autocompletar desde paciente existente */}
@@ -314,7 +314,7 @@ export default function Presupuesto({ onVolver }) {
 
         {/* Vista Previa del Presupuesto (Derecha) */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b' }}>👁️ Vista Previa en Pantalla:</span>
+          <span className="no-print" style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b' }}>👁️ Vista Previa en Pantalla:</span>
           
           {/* Contenedor Imprimible */}
           <div 
