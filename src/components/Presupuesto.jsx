@@ -15,12 +15,10 @@ export default function Presupuesto({ onVolver }) {
   const [horariosPresupuesto, setHorariosPresupuesto] = useState('');
   const [valorPresupuesto, setValorPresupuesto] = useState('');
   const [vencimientoPresupuesto, setVencimientoPresupuesto] = useState('Del 1 al 10 de cada mes');
-  const [formasPagoPresupuesto, setFormasPagoPresupuesto] = useState({
-    efectivo: true,
-    transferencia: true,
-    billeteras: true,
-    tarjetas: false
-  });
+  const [formaPago1, setFormaPago1] = useState('Subsidio de Salud: $ ');
+  const [formaPago2, setFormaPago2] = useState('Efectivo / Transferencia / Tarjeta: $ ');
+  const [formaPago3, setFormaPago3] = useState('');
+  const [formaPago4, setFormaPago4] = useState('');
 
   // Cargar lista de pacientes por si se desea autocompletar uno existente
   useEffect(() => {
@@ -214,44 +212,36 @@ export default function Presupuesto({ onVolver }) {
             />
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Formas de Pago Habilitadas:</label>
-            
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
-              <input 
-                type="checkbox" 
-                checked={formasPagoPresupuesto.efectivo} 
-                onChange={(e) => setFormasPagoPresupuesto({ ...formasPagoPresupuesto, efectivo: e.target.checked })}
-              />
-              Efectivo
-            </label>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
-              <input 
-                type="checkbox" 
-                checked={formasPagoPresupuesto.transferencia} 
-                onChange={(e) => setFormasPagoPresupuesto({ ...formasPagoPresupuesto, transferencia: e.target.checked })}
-              />
-              Transferencia Bancaria
-            </label>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
-              <input 
-                type="checkbox" 
-                checked={formasPagoPresupuesto.billeteras} 
-                onChange={(e) => setFormasPagoPresupuesto({ ...formasPagoPresupuesto, billeteras: e.target.checked })}
-              />
-              Billeteras Virtuales (Mercado Pago, etc.)
-            </label>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
-              <input 
-                type="checkbox" 
-                checked={formasPagoPresupuesto.tarjetas} 
-                onChange={(e) => setFormasPagoPresupuesto({ ...formasPagoPresupuesto, tarjetas: e.target.checked })}
-              />
-              Tarjeta de Crédito / Débito
-            </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Formas de Pago (Hasta 4 casilleros libres):</label>
+            <input 
+              type="text" 
+              placeholder="Casillero 1 (ej: Subsidio de Salud: $48000)" 
+              value={formaPago1} 
+              onChange={(e) => setFormaPago1(e.target.value)}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+            />
+            <input 
+              type="text" 
+              placeholder="Casillero 2 (ej: Efectivo / Transferencia: $282000)" 
+              value={formaPago2} 
+              onChange={(e) => setFormaPago2(e.target.value)}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+            />
+            <input 
+              type="text" 
+              placeholder="Casillero 3 (opcional)" 
+              value={formaPago3} 
+              onChange={(e) => setFormaPago3(e.target.value)}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+            />
+            <input 
+              type="text" 
+              placeholder="Casillero 4 (opcional)" 
+              value={formaPago4} 
+              onChange={(e) => setFormaPago4(e.target.value)}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+            />
           </div>
 
           <button
@@ -341,75 +331,32 @@ export default function Presupuesto({ onVolver }) {
 
                 {/* Forma de Pago (Casilleros) */}
                 <div style={{ marginTop: '10px' }}>
-                  <span style={{ color: '#64748b', fontWeight: '600', display: 'block', marginBottom: '10px' }}>Formas de Pago Habilitadas:</span>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ 
-                        display: 'inline-block', 
-                        width: '16px', 
-                        height: '16px', 
-                        border: '1px solid #475569', 
-                        textAlign: 'center', 
-                        lineHeight: '14px', 
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                        background: formasPagoPresupuesto.efectivo ? '#f1f5f9' : '#fff'
-                      }}>
-                        {formasPagoPresupuesto.efectivo ? 'X' : ''}
-                      </span>
-                      <span>Efectivo</span>
-                    </div>
-                    
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ 
-                        display: 'inline-block', 
-                        width: '16px', 
-                        height: '16px', 
-                        border: '1px solid #475569', 
-                        textAlign: 'center', 
-                        lineHeight: '14px', 
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                        background: formasPagoPresupuesto.transferencia ? '#f1f5f9' : '#fff'
-                      }}>
-                        {formasPagoPresupuesto.transferencia ? 'X' : ''}
-                      </span>
-                      <span>Transferencia Bancaria</span>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ 
-                        display: 'inline-block', 
-                        width: '16px', 
-                        height: '16px', 
-                        border: '1px solid #475569', 
-                        textAlign: 'center', 
-                        lineHeight: '14px', 
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                        background: formasPagoPresupuesto.billeteras ? '#f1f5f9' : '#fff'
-                      }}>
-                        {formasPagoPresupuesto.billeteras ? 'X' : ''}
-                      </span>
-                      <span>Billeteras Virtuales (Mercado Pago, etc.)</span>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ 
-                        display: 'inline-block', 
-                        width: '16px', 
-                        height: '16px', 
-                        border: '1px solid #475569', 
-                        textAlign: 'center', 
-                        lineHeight: '14px', 
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                        background: formasPagoPresupuesto.tarjetas ? '#f1f5f9' : '#fff'
-                      }}>
-                        {formasPagoPresupuesto.tarjetas ? 'X' : ''}
-                      </span>
-                      <span>Tarjeta de Crédito / Débito</span>
-                    </div>
+                  <span style={{ color: '#64748b', fontWeight: '600', display: 'block', marginBottom: '10px' }}>Detalle de las Formas de Pago:</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {formaPago1 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ display: 'inline-block', width: '16px', height: '16px', border: '1px solid #475569', background: '#f1f5f9', textAlign: 'center', lineHeight: '14px', fontSize: '11px', fontWeight: 'bold' }}>X</span>
+                        <span>{formaPago1}</span>
+                      </div>
+                    )}
+                    {formaPago2 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ display: 'inline-block', width: '16px', height: '16px', border: '1px solid #475569', background: '#f1f5f9', textAlign: 'center', lineHeight: '14px', fontSize: '11px', fontWeight: 'bold' }}>X</span>
+                        <span>{formaPago2}</span>
+                      </div>
+                    )}
+                    {formaPago3 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ display: 'inline-block', width: '16px', height: '16px', border: '1px solid #475569', background: '#f1f5f9', textAlign: 'center', lineHeight: '14px', fontSize: '11px', fontWeight: 'bold' }}>X</span>
+                        <span>{formaPago3}</span>
+                      </div>
+                    )}
+                    {formaPago4 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ display: 'inline-block', width: '16px', height: '16px', border: '1px solid #475569', background: '#f1f5f9', textAlign: 'center', lineHeight: '14px', fontSize: '11px', fontWeight: 'bold' }}>X</span>
+                        <span>{formaPago4}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
