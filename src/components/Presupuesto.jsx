@@ -61,6 +61,50 @@ export default function Presupuesto({ onVolver }) {
     }
   };
 
+  const handleTotalChange = (val) => {
+    setValorPresupuesto(val);
+    const total = parseFloat(val) || 0;
+    const m1 = parseFloat(montoPago1) || 0;
+    if (montoPago1 === '') {
+      setMontoPago2(total > 0 ? String(total) : '');
+    } else {
+      const rem2 = Math.max(0, total - m1);
+      setMontoPago2(rem2 > 0 ? String(rem2) : '');
+    }
+    setMontoPago3('');
+    setMontoPago4('');
+  };
+
+  const handleMonto1Change = (val) => {
+    setMontoPago1(val);
+    const total = parseFloat(valorPresupuesto) || 0;
+    const m1 = parseFloat(val) || 0;
+    const rem2 = Math.max(0, total - m1);
+    setMontoPago2(rem2 > 0 ? String(rem2) : '');
+    setMontoPago3('');
+    setMontoPago4('');
+  };
+
+  const handleMonto2Change = (val) => {
+    setMontoPago2(val);
+    const total = parseFloat(valorPresupuesto) || 0;
+    const m1 = parseFloat(montoPago1) || 0;
+    const m2 = parseFloat(val) || 0;
+    const rem3 = Math.max(0, total - m1 - m2);
+    setMontoPago3(rem3 > 0 ? String(rem3) : '');
+    setMontoPago4('');
+  };
+
+  const handleMonto3Change = (val) => {
+    setMontoPago3(val);
+    const total = parseFloat(valorPresupuesto) || 0;
+    const m1 = parseFloat(montoPago1) || 0;
+    const m2 = parseFloat(montoPago2) || 0;
+    const m3 = parseFloat(val) || 0;
+    const rem4 = Math.max(0, total - m1 - m2 - m3);
+    setMontoPago4(rem4 > 0 ? String(rem4) : '');
+  };
+
   return (
     <div style={{ padding: '0', backgroundColor: '#ffffff', color: '#1e293b', fontSize: '14px', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       
@@ -202,7 +246,7 @@ export default function Presupuesto({ onVolver }) {
               type="text" 
               placeholder="Ej: 330000" 
               value={valorPresupuesto} 
-              onChange={(e) => setValorPresupuesto(e.target.value)}
+              onChange={(e) => handleTotalChange(e.target.value)}
               style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}
             />
           </div>
@@ -233,7 +277,7 @@ export default function Presupuesto({ onVolver }) {
                 type="text" 
                 placeholder="Monto ($)" 
                 value={montoPago1} 
-                onChange={(e) => setMontoPago1(e.target.value)}
+                onChange={(e) => handleMonto1Change(e.target.value)}
                 style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
               />
             </div>
@@ -251,7 +295,7 @@ export default function Presupuesto({ onVolver }) {
                 type="text" 
                 placeholder="Monto ($)" 
                 value={montoPago2} 
-                onChange={(e) => setMontoPago2(e.target.value)}
+                onChange={(e) => handleMonto2Change(e.target.value)}
                 style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
               />
             </div>
@@ -269,7 +313,7 @@ export default function Presupuesto({ onVolver }) {
                 type="text" 
                 placeholder="Monto ($)" 
                 value={montoPago3} 
-                onChange={(e) => setMontoPago3(e.target.value)}
+                onChange={(e) => handleMonto3Change(e.target.value)}
                 style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
               />
             </div>
