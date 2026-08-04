@@ -15,6 +15,7 @@ import ReporteAcuerdosMensuales from './components/ReporteAcuerdosMensuales.jsx'
 import AjusteMasivo from './components/AjusteMasivo.jsx'
 import ReporteCobranzas from './components/ReporteCobranzas.jsx'
 import Presupuesto from './components/Presupuesto.jsx'
+import PresupuestoPublico from './components/PresupuestoPublico.jsx'
 
 const normalizarRol = (r) => {
   if (!r) return '';
@@ -709,6 +710,14 @@ function App() {
     } finally {
       setBuscandoId(false);
     }
+  }
+
+  // Detectar si es una vista pública de presupuesto
+  const searchParams = new URLSearchParams(window.location.search);
+  const publicPresupuestoId = searchParams.get('presupuesto');
+
+  if (publicPresupuestoId) {
+    return <PresupuestoPublico id={publicPresupuestoId} />;
   }
 
   if (cargando) {

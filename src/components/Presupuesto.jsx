@@ -30,6 +30,20 @@ const parsearImporte = (val) => {
   return isNaN(num) ? 0 : num;
 };
 
+const limpiarTelefono = (tel) => {
+  if (!tel) return '';
+  let limpio = String(tel).replace(/\D/g, '');
+  if (limpio.startsWith('0')) limpio = limpio.substring(1);
+  if (!limpio.startsWith('54')) {
+    if (limpio.length === 10) {
+      limpio = '549' + limpio;
+    } else {
+      limpio = '54' + limpio;
+    }
+  }
+  return limpio;
+};
+
 export default function Presupuesto({ onVolver }) {
   const [listaPacientes, setListaPacientes] = useState([])
   const [cargandoPacientes, setCargandoPacientes] = useState(false)
@@ -55,6 +69,8 @@ export default function Presupuesto({ onVolver }) {
   const [incluirFirma, setIncluirFirma] = useState(false);
   const [idPacienteSeleccionado, setIdPacienteSeleccionado] = useState(null);
   const [subiendoPdf, setSubiendoPdf] = useState(false);
+  const [creadoDocId, setCreadoDocId] = useState(null);
+  const [telefonoPaciente, setTelefonoPaciente] = useState('');
 
   // Cargar lista de pacientes por si se desea autocompletar uno existente
   useEffect(() => {
@@ -63,7 +79,7 @@ export default function Presupuesto({ onVolver }) {
       try {
         const { data, error } = await supabase
           .from('pacientes_motor')
-          .select('id_paciente, nombre_apellido, dni')
+          .select('id_paciente, nombre_apellido, dni, tel_padres, tel_alternativo')
           .order('nombre_apellido', { ascending: true })
 
         if (error) throw error
@@ -83,6 +99,8 @@ export default function Presupuesto({ onVolver }) {
       setNombrePaciente('');
       setDniPaciente('');
       setIdPacienteSeleccionado(null);
+      setTelefonoPaciente('');
+      setCreadoDocId(null);
       return;
     }
 
@@ -91,6 +109,8 @@ export default function Presupuesto({ onVolver }) {
       setNombrePaciente(paciente.nombre_apellido || '');
       setDniPaciente(paciente.dni || '');
       setIdPacienteSeleccionado(paciente.id_paciente);
+      setTelefonoPaciente(paciente.tel_padres || paciente.tel_alternativo || '');
+      setCreadoDocId(null); // Resetear documento creado para obligar a guardar el nuevo
     }
   };
 
@@ -139,12 +159,17 @@ export default function Presupuesto({ onVolver }) {
   };
 
   const handleGuardarPdf = async () => {
+    if (!idPacienteSeleccionado) {
+      alert("Para guardar en la nube de Supabase y poder enviar por WhatsApp (con los botones de Aceptar/Rechazar), tenés que seleccionar un paciente registrado de la lista.\n\nSi es un paciente nuevo, registralo primero en la pestaña de Pacientes.");
+      return;
+    }
     if (!nombrePaciente.trim()) {
       alert("Por favor, ingresá el nombre del paciente antes de guardar.");
       return;
     }
     
     setSubiendoPdf(true);
+    setCreadoDocId(null);
     try {
       const element = document.getElementById("printable-presupuesto-area");
       if (!element) throw new Error("No se encontró la vista previa del presupuesto.");
@@ -186,7 +211,7 @@ export default function Presupuesto({ onVolver }) {
       const uniqueFileName = `presupuesto_${cleanName}_${dateStr}_${randomId}.pdf`;
 
       // Definir la ruta en storage
-      const folder = idPacienteSeleccionado ? String(idPacienteSeleccionado) : 'potenciales';
+      const folder = String(idPacienteSeleccionado);
       const pathInStorage = `${folder}/${uniqueFileName}`;
 
       // Subir archivo al bucket 'documentos_pacientes'
@@ -209,26 +234,48 @@ export default function Presupuesto({ onVolver }) {
       const publicUrl = publicUrlData?.publicUrl;
 
       // Registrar en la tabla de base de datos 'documentos_pacientes'
-      const { error: dbError } = await supabase
+      const { data: dbData, error: dbError } = await supabase
         .from('documentos_pacientes')
         .insert({
-          id_paciente_excel: idPacienteSeleccionado ? idPacienteSeleccionado : null,
-          nombre_archivo: `Presupuesto - ${nombrePaciente}`,
+          id_paciente_excel: idPacienteSeleccionado,
+          nombre_archivo: `[PENDIENTE] Presupuesto - ${nombrePaciente}`,
           url_storage: pathInStorage,
           fecha_subida: new Date().toISOString()
-        });
+        })
+        .select();
 
       if (dbError) {
-        console.warn("No se pudo vincular en la base de datos (por ser un paciente potencial o restricciones), pero el archivo se guardó correctamente en Storage.", dbError);
-        alert(`¡Presupuesto guardado con éxito en la nube!\n\nSe subió a la carpeta de archivos generales.\n\nLink al PDF:\n${publicUrl}`);
-      } else {
-        alert(`¡Presupuesto guardado y vinculado con éxito en Supabase!\n\nA partir de ahora figurará en la sección "Documentos" del paciente.\n\nLink al PDF:\n${publicUrl}`);
+        throw dbError;
       }
+
+      if (dbData && dbData.length > 0) {
+        setCreadoDocId(dbData[0].id);
+      }
+
+      alert(`¡Presupuesto guardado y vinculado con éxito en Supabase!\n\nA partir de ahora figurará en la sección "Documentos" del paciente.\n\nLink al PDF:\n${publicUrl}\n\nYa podés enviarlo por WhatsApp presionando el botón correspondiente.`);
     } catch (err) {
       console.error("Error al guardar PDF:", err);
       alert(`Error al generar o guardar el PDF: ${err.message}`);
     } finally {
       setSubiendoPdf(false);
+    }
+  };
+
+  const handleEnviarWhatsApp = () => {
+    if (!creadoDocId) {
+      alert("Por favor, guardá primero el presupuesto en Supabase antes de enviarlo.");
+      return;
+    }
+    const publicLink = `${window.location.origin}/?presupuesto=${creadoDocId}`;
+    const textoMsg = `¡Hola! Le compartimos el presupuesto del tratamiento para ${nombrePaciente}. Puede revisarlo, descargarlo y confirmarlo (Aceptar o Rechazar) ingresando en este link:\n\n${publicLink}`;
+    
+    const telLimpio = limpiarTelefono(telefonoPaciente);
+    if (telLimpio) {
+      const url = `https://wa.me/${telLimpio}?text=${encodeURIComponent(textoMsg)}`;
+      window.open(url, '_blank');
+    } else {
+      const url = `https://wa.me/?text=${encodeURIComponent(textoMsg)}`;
+      window.open(url, '_blank');
     }
   };
 
@@ -522,6 +569,32 @@ export default function Presupuesto({ onVolver }) {
             >
               {subiendoPdf ? '⏳ Generando y Subiendo a Supabase...' : '💾 Guardar en Supabase (Nube)'}
             </button>
+
+            {creadoDocId && (
+              <button
+                onClick={handleEnviarWhatsApp}
+                style={{ 
+                  background: '#25d366', 
+                  color: '#fff', 
+                  border: 'none', 
+                  padding: '12px 20px', 
+                  borderRadius: '10px', 
+                  fontWeight: 'bold', 
+                  cursor: 'pointer', 
+                  fontSize: '15px', 
+                  boxShadow: '0 4px 6px rgba(37, 211, 102, 0.25)', 
+                  transition: 'background 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+                onMouseOver={(e) => e.target.style.background = '#128c7e'}
+                onMouseOut={(e) => e.target.style.background = '#25d366'}
+              >
+                💬 Enviar enlace por WhatsApp
+              </button>
+            )}
           </div>
         </div>
 
