@@ -23,6 +23,7 @@ export default function Presupuesto({ onVolver }) {
   const [montoPago3, setMontoPago3] = useState('');
   const [conceptoPago4, setConceptoPago4] = useState('');
   const [montoPago4, setMontoPago4] = useState('');
+  const [incluirFirma, setIncluirFirma] = useState(false);
 
   // Cargar lista de pacientes por si se desea autocompletar uno existente
   useEffect(() => {
@@ -292,6 +293,15 @@ export default function Presupuesto({ onVolver }) {
             </div>
           </div>
 
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', background: '#f5f3ff', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', marginTop: '10px' }}>
+            <input 
+              type="checkbox" 
+              checked={incluirFirma} 
+              onChange={(e) => setIncluirFirma(e.target.checked)}
+            />
+            <strong>🖋️ Incluir Firma Digital de la Coordinación</strong>
+          </label>
+
           <button
             onClick={() => window.print()}
             style={{ background: '#7c3aed', color: '#fff', border: 'none', padding: '12px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px', marginTop: '10px', boxShadow: '0 4px 6px rgba(124, 58, 237, 0.25)', transition: 'background 0.2s' }}
@@ -433,7 +443,26 @@ export default function Presupuesto({ onVolver }) {
             {/* Firmas y Datos de Pie */}
             <div style={{ marginTop: '55px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '40px', padding: '0 20px' }}>
-                <div style={{ width: '200px', borderTop: '1px solid #cbd5e1', textAlign: 'center', paddingTop: '8px', fontSize: '12px', color: '#64748b' }}>
+                <div style={{ width: '200px', borderTop: '1px solid #cbd5e1', textAlign: 'center', paddingTop: '8px', fontSize: '12px', color: '#64748b', position: 'relative' }}>
+                  {incluirFirma && (
+                    <img 
+                      src="/firma_coordinacion.png" 
+                      alt="Firma" 
+                      style={{ 
+                        position: 'absolute', 
+                        bottom: '22px', 
+                        left: '50%', 
+                        transform: 'translateX(-50%)', 
+                        height: '55px', 
+                        objectFit: 'contain',
+                        mixBlendMode: 'multiply',
+                        pointerEvents: 'none'
+                      }}
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                      }}
+                    />
+                  )}
                   Firma Coordinación
                 </div>
                 <div style={{ width: '200px', borderTop: '1px solid #cbd5e1', textAlign: 'center', paddingTop: '8px', fontSize: '12px', color: '#64748b' }}>
