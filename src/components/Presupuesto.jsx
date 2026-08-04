@@ -15,10 +15,14 @@ export default function Presupuesto({ onVolver }) {
   const [horariosPresupuesto, setHorariosPresupuesto] = useState('');
   const [valorPresupuesto, setValorPresupuesto] = useState('');
   const [vencimientoPresupuesto, setVencimientoPresupuesto] = useState('Del 1 al 10 de cada mes');
-  const [formaPago1, setFormaPago1] = useState('Obra Social: $ ');
-  const [formaPago2, setFormaPago2] = useState('Efectivo / Transferencia / Tarjeta: $ ');
-  const [formaPago3, setFormaPago3] = useState('');
-  const [formaPago4, setFormaPago4] = useState('');
+  const [conceptoPago1, setConceptoPago1] = useState('Obra Social (Subsidio de Salud)');
+  const [montoPago1, setMontoPago1] = useState('');
+  const [conceptoPago2, setConceptoPago2] = useState('Efectivo / Transferencia / Tarjeta');
+  const [montoPago2, setMontoPago2] = useState('');
+  const [conceptoPago3, setConceptoPago3] = useState('');
+  const [montoPago3, setMontoPago3] = useState('');
+  const [conceptoPago4, setConceptoPago4] = useState('');
+  const [montoPago4, setMontoPago4] = useState('');
 
   // Cargar lista de pacientes por si se desea autocompletar uno existente
   useEffect(() => {
@@ -212,36 +216,80 @@ export default function Presupuesto({ onVolver }) {
             />
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Formas de Pago (Hasta 4 casilleros libres):</label>
-            <input 
-              type="text" 
-              placeholder="Casillero 1 (ej: Obra Social: $48000)" 
-              value={formaPago1} 
-              onChange={(e) => setFormaPago1(e.target.value)}
-              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-            />
-            <input 
-              type="text" 
-              placeholder="Casillero 2 (ej: Efectivo / Transferencia: $282000)" 
-              value={formaPago2} 
-              onChange={(e) => setFormaPago2(e.target.value)}
-              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-            />
-            <input 
-              type="text" 
-              placeholder="Casillero 3 (opcional)" 
-              value={formaPago3} 
-              onChange={(e) => setFormaPago3(e.target.value)}
-              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-            />
-            <input 
-              type="text" 
-              placeholder="Casillero 4 (opcional)" 
-              value={formaPago4} 
-              onChange={(e) => setFormaPago4(e.target.value)}
-              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-            />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Detalle de Formas de Pago (Concepto y Monto):</label>
+            
+            {/* Fila 1 */}
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input 
+                type="text" 
+                placeholder="Concepto 1 (ej: Subsidio de Salud)" 
+                value={conceptoPago1} 
+                onChange={(e) => setConceptoPago1(e.target.value)}
+                style={{ flex: 2, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+              />
+              <input 
+                type="text" 
+                placeholder="Monto ($)" 
+                value={montoPago1} 
+                onChange={(e) => setMontoPago1(e.target.value)}
+                style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+              />
+            </div>
+
+            {/* Fila 2 */}
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input 
+                type="text" 
+                placeholder="Concepto 2 (ej: Efectivo)" 
+                value={conceptoPago2} 
+                onChange={(e) => setConceptoPago2(e.target.value)}
+                style={{ flex: 2, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+              />
+              <input 
+                type="text" 
+                placeholder="Monto ($)" 
+                value={montoPago2} 
+                onChange={(e) => setMontoPago2(e.target.value)}
+                style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+              />
+            </div>
+
+            {/* Fila 3 */}
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input 
+                type="text" 
+                placeholder="Concepto 3 (ej: Transferencia)" 
+                value={conceptoPago3} 
+                onChange={(e) => setConceptoPago3(e.target.value)}
+                style={{ flex: 2, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+              />
+              <input 
+                type="text" 
+                placeholder="Monto ($)" 
+                value={montoPago3} 
+                onChange={(e) => setMontoPago3(e.target.value)}
+                style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+              />
+            </div>
+
+            {/* Fila 4 */}
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input 
+                type="text" 
+                placeholder="Concepto 4 (ej: Tarjeta de Crédito)" 
+                value={conceptoPago4} 
+                onChange={(e) => setConceptoPago4(e.target.value)}
+                style={{ flex: 2, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+              />
+              <input 
+                type="text" 
+                placeholder="Monto ($)" 
+                value={montoPago4} 
+                onChange={(e) => setMontoPago4(e.target.value)}
+                style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+              />
+            </div>
           </div>
 
           <button
@@ -333,28 +381,48 @@ export default function Presupuesto({ onVolver }) {
                 <div style={{ marginTop: '10px' }}>
                   <span style={{ color: '#64748b', fontWeight: '600', display: 'block', marginBottom: '10px' }}>Detalle de las Formas de Pago:</span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {formaPago1 && (
+                    {conceptoPago1 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ display: 'inline-block', width: '16px', height: '16px', border: '1px solid #475569', background: '#f1f5f9', textAlign: 'center', lineHeight: '14px', fontSize: '11px', fontWeight: 'bold' }}>X</span>
-                        <span>{formaPago1}</span>
+                        <span>{conceptoPago1}</span>
+                        {montoPago1 && (
+                          <strong style={{ marginLeft: 'auto' }}>
+                            {isNaN(parseFloat(montoPago1)) ? montoPago1 : `$${parseFloat(montoPago1).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          </strong>
+                        )}
                       </div>
                     )}
-                    {formaPago2 && (
+                    {conceptoPago2 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ display: 'inline-block', width: '16px', height: '16px', border: '1px solid #475569', background: '#f1f5f9', textAlign: 'center', lineHeight: '14px', fontSize: '11px', fontWeight: 'bold' }}>X</span>
-                        <span>{formaPago2}</span>
+                        <span>{conceptoPago2}</span>
+                        {montoPago2 && (
+                          <strong style={{ marginLeft: 'auto' }}>
+                            {isNaN(parseFloat(montoPago2)) ? montoPago2 : `$${parseFloat(montoPago2).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          </strong>
+                        )}
                       </div>
                     )}
-                    {formaPago3 && (
+                    {conceptoPago3 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ display: 'inline-block', width: '16px', height: '16px', border: '1px solid #475569', background: '#f1f5f9', textAlign: 'center', lineHeight: '14px', fontSize: '11px', fontWeight: 'bold' }}>X</span>
-                        <span>{formaPago3}</span>
+                        <span>{conceptoPago3}</span>
+                        {montoPago3 && (
+                          <strong style={{ marginLeft: 'auto' }}>
+                            {isNaN(parseFloat(montoPago3)) ? montoPago3 : `$${parseFloat(montoPago3).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          </strong>
+                        )}
                       </div>
                     )}
-                    {formaPago4 && (
+                    {conceptoPago4 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ display: 'inline-block', width: '16px', height: '16px', border: '1px solid #475569', background: '#f1f5f9', textAlign: 'center', lineHeight: '14px', fontSize: '11px', fontWeight: 'bold' }}>X</span>
-                        <span>{formaPago4}</span>
+                        <span>{conceptoPago4}</span>
+                        {montoPago4 && (
+                          <strong style={{ marginLeft: 'auto' }}>
+                            {isNaN(parseFloat(montoPago4)) ? montoPago4 : `$${parseFloat(montoPago4).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          </strong>
+                        )}
                       </div>
                     )}
                   </div>
