@@ -171,67 +171,25 @@ export default function Presupuesto({ onVolver }) {
     setSubiendoPdf(true);
     setCreadoDocId(null);
     try {
-      const element = document.getElementById("printable-presupuesto-area");
-      if (!element) throw new Error("No se encontró la vista previa del presupuesto.");
+      // Compilar los datos del presupuesto en un objeto JSON
+      const datosPresupuesto = {
+        fecha: fechaPresupuesto,
+        paciente: nombrePaciente,
+        dni: dniPaciente,
+        modalidad: modalidadPresupuesto,
+        horarios: horariosPresupuesto,
+        total: valorPresupuesto,
+        vencimiento: vencimientoPresupuesto,
+        incluirFirma: incluirFirma,
+        pagos: [
+          { c: conceptoPago1, m: montoPago1 },
+          { c: conceptoPago2, m: montoPago2 },
+          { c: conceptoPago3, m: montoPago3 },
+          { c: conceptoPago4, m: montoPago4 }
+        ]
+      };
 
-      // Generar canvas
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: "#ffffff"
-      });
-
-      const imgData = canvas.toDataURL("image/png");
-
-      // Dimensiones de A4
-      const pdf = new jsPDF("p", "mm", "a4");
-      const imgWidth = 210; 
-      const pageHeight = 295; 
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
-
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
-
-      const pdfBlob = pdf.output("blob");
-
-      // Nombres de archivos y rutas
-      const cleanName = nombrePaciente.replace(/\s+/g, '_').toLowerCase();
-      const dateStr = new Date().toISOString().split('T')[0];
-      const randomId = Math.floor(1000 + Math.random() * 9000);
-      const uniqueFileName = `presupuesto_${cleanName}_${dateStr}_${randomId}.pdf`;
-
-      // Definir la ruta en storage
-      const folder = String(idPacienteSeleccionado);
-      const pathInStorage = `${folder}/${uniqueFileName}`;
-
-      // Subir archivo al bucket 'documentos_pacientes'
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('documentos_pacientes')
-        .upload(pathInStorage, pdfBlob, {
-          contentType: 'application/pdf',
-          upsert: true
-        });
-
-      if (uploadError) {
-        throw new Error(`Error al subir a Supabase Storage: ${uploadError.message}`);
-      }
-
-      // Obtener la URL pública del PDF
-      const { data: publicUrlData } = supabase.storage
-        .from('documentos_pacientes')
-        .getPublicUrl(pathInStorage);
-
-      const publicUrl = publicUrlData?.publicUrl;
+      const pathStorageJson = `JSON:${JSON.stringify(datosPresupuesto)}`;
 
       // Registrar en la tabla de base de datos 'documentos_pacientes'
       const { data: dbData, error: dbError } = await supabase
@@ -239,7 +197,7 @@ export default function Presupuesto({ onVolver }) {
         .insert({
           id_paciente_excel: idPacienteSeleccionado,
           nombre_archivo: `[PENDIENTE] Presupuesto - ${nombrePaciente}`,
-          url_storage: pathInStorage,
+          url_storage: pathStorageJson,
           fecha_subida: new Date().toISOString()
         })
         .select();
@@ -252,10 +210,11 @@ export default function Presupuesto({ onVolver }) {
         setCreadoDocId(dbData[0].id);
       }
 
-      alert(`¡Presupuesto guardado y vinculado con éxito en Supabase!\n\nA partir de ahora figurará en la sección "Documentos" del paciente.\n\nLink al PDF:\n${publicUrl}\n\nYa podés enviarlo por WhatsApp presionando el botón correspondiente.`);
+      const publicLink = `${window.location.origin}/?presupuesto=${dbData[0].id}`;
+      alert(`¡Presupuesto guardado y vinculado con éxito en la nube de Supabase!\n\nA partir de ahora figurará en la sección "Documentos" del paciente.\n\nEnlace público:\n${publicLink}\n\nYa podés enviarlo por WhatsApp presionando el botón correspondiente.`);
     } catch (err) {
-      console.error("Error al guardar PDF:", err);
-      alert(`Error al generar o guardar el PDF: ${err.message}`);
+      console.error("Error al guardar presupuesto en nube:", err);
+      alert(`Error al guardar el presupuesto en la nube: ${err.message}`);
     } finally {
       setSubiendoPdf(false);
     }

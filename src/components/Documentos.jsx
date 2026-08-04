@@ -79,8 +79,12 @@ export default function Documentos() {
                 <li key={doc.id} style={{ marginBottom: '10px', padding: '10px', border: '1px solid #333', display: 'flex', justifyContent: 'space-between' }}>
                   <span>{doc.nombre_archivo}</span>
                   <button onClick={() => {
-                    const url = `https://gqhfrzvtccxrixdtazzs.supabase.co/storage/v1/object/public/documentos_pacientes/${doc.url_storage}`;
-                    window.open(`https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`, '_blank');
+                    if (doc.url_storage && doc.url_storage.startsWith('JSON:')) {
+                      window.open(`${window.location.origin}/?presupuesto=${doc.id}`, '_blank');
+                    } else {
+                      const url = `https://gqhfrzvtccxrixdtazzs.supabase.co/storage/v1/object/public/documentos_pacientes/${doc.url_storage}`;
+                      window.open(`https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`, '_blank');
+                    }
                   }}>👁️ Ver</button>
                 </li>
               ))}
