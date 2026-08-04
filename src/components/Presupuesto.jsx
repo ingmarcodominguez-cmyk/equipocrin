@@ -43,50 +43,18 @@ export default function Presupuesto({ onVolver }) {
     cargarPacientes()
   }, [])
 
-  const handleSeleccionarPacienteExistente = async (e) => {
+  const handleSeleccionarPacienteExistente = (e) => {
     const pId = e.target.value;
-    if (!pId) return;
+    if (!pId) {
+      setNombrePaciente('');
+      setDniPaciente('');
+      return;
+    }
 
     const paciente = listaPacientes.find(p => String(p.id_paciente) === String(pId));
     if (paciente) {
       setNombrePaciente(paciente.nombre_apellido || '');
       setDniPaciente(paciente.dni || '');
-      
-      // Intentar buscar si tiene algún acuerdo activo para autocompletar el valor y la prestación
-      try {
-        const { data: acuerdos, error } = await supabase
-          .from('acuerdos_motor')
-          .select('*')
-          .eq('id_paciente', paciente.id_paciente)
-          .eq('estado', 'ACTIVO')
-          .neq('monto_cuota_base', 0)
-          .limit(1);
-
-        if (error) throw error;
-
-        if (acuerdos && acuerdos.length > 0) {
-          const ac = acuerdos[0];
-          setValorPresupuesto(String(ac.importe_actual || ac.monto_cuota_base || ''));
-          
-          // Buscar el nombre de la prestación
-          const { data: prestacion, error: errPrest } = await supabase
-            .from('prestaciones_motor')
-            .select('nombre_prestacion')
-            .eq('id_prestacion', ac.id_prestacion)
-            .maybeSingle();
-
-          if (!errPrest && prestacion) {
-            setModalidadPresupuesto(prestacion.nombre_prestacion);
-          } else {
-            setModalidadPresupuesto(ac.tipo_acuerdo || '');
-          }
-        } else {
-          setValorPresupuesto('');
-          setModalidadPresupuesto('');
-        }
-      } catch (err) {
-        console.error("Error al cargar acuerdo para presupuesto:", err);
-      }
     }
   };
 
