@@ -15,7 +15,7 @@ export default function Presupuesto({ onVolver }) {
   const [horariosPresupuesto, setHorariosPresupuesto] = useState('');
   const [valorPresupuesto, setValorPresupuesto] = useState('');
   const [vencimientoPresupuesto, setVencimientoPresupuesto] = useState('Del 1 al 10 de cada mes');
-  const [formaPago1, setFormaPago1] = useState('Subsidio de Salud: $ ');
+  const [formaPago1, setFormaPago1] = useState('Obra Social: $ ');
   const [formaPago2, setFormaPago2] = useState('Efectivo / Transferencia / Tarjeta: $ ');
   const [formaPago3, setFormaPago3] = useState('');
   const [formaPago4, setFormaPago4] = useState('');
@@ -216,7 +216,7 @@ export default function Presupuesto({ onVolver }) {
             <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Formas de Pago (Hasta 4 casilleros libres):</label>
             <input 
               type="text" 
-              placeholder="Casillero 1 (ej: Subsidio de Salud: $48000)" 
+              placeholder="Casillero 1 (ej: Obra Social: $48000)" 
               value={formaPago1} 
               onChange={(e) => setFormaPago1(e.target.value)}
               style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
