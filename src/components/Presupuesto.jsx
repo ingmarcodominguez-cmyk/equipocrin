@@ -655,7 +655,7 @@ export default function Presupuesto({ onVolver }) {
 
             {/* Firmas y Datos de Pie */}
             <div style={{ marginTop: '55px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '40px', padding: '0 20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '40px', padding: '0 20px' }}>
                 <div style={{ width: '200px', borderTop: '1px solid #cbd5e1', textAlign: 'center', paddingTop: '8px', fontSize: '12px', color: '#64748b', position: 'relative' }}>
                   {incluirFirma && (
                     <img 
@@ -677,9 +677,6 @@ export default function Presupuesto({ onVolver }) {
                     />
                   )}
                   Firma Coordinación
-                </div>
-                <div style={{ width: '200px', borderTop: '1px solid #cbd5e1', textAlign: 'center', paddingTop: '8px', fontSize: '12px', color: '#64748b' }}>
-                  Aceptación Familiar / Tutor
                 </div>
               </div>
               <div style={{ textAlign: 'center', marginTop: '40px', borderTop: '1px solid #e2e8f0', paddingTop: '12px', fontSize: '11px', color: '#94a3b8' }}>
