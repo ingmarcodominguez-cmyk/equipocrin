@@ -1,6 +1,33 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 
+const parsearImporte = (val) => {
+  if (val === null || val === undefined || val === '') return 0;
+  if (typeof val === 'number') return val;
+  
+  const str = String(val).trim()
+    .replace(/\s/g, '')
+    .replace(/\$/g, '');
+
+  if (str.includes(',')) {
+    const limpio = str.replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(limpio);
+    return isNaN(num) ? 0 : num;
+  }
+  
+  if (str.includes('.')) {
+    const partes = str.split('.');
+    if (partes.length > 2 || partes[1].length === 3) {
+      const limpio = str.replace(/\./g, '');
+      const num = parseFloat(limpio);
+      return isNaN(num) ? 0 : num;
+    }
+  }
+
+  const num = parseFloat(str);
+  return isNaN(num) ? 0 : num;
+};
+
 export default function Presupuesto({ onVolver }) {
   const [listaPacientes, setListaPacientes] = useState([])
   const [cargandoPacientes, setCargandoPacientes] = useState(false)
@@ -63,8 +90,8 @@ export default function Presupuesto({ onVolver }) {
 
   const handleTotalChange = (val) => {
     setValorPresupuesto(val);
-    const total = parseFloat(val) || 0;
-    const m1 = parseFloat(montoPago1) || 0;
+    const total = parsearImporte(val);
+    const m1 = parsearImporte(montoPago1);
     if (montoPago1 === '') {
       setMontoPago2(total > 0 ? String(total) : '');
     } else {
@@ -77,8 +104,8 @@ export default function Presupuesto({ onVolver }) {
 
   const handleMonto1Change = (val) => {
     setMontoPago1(val);
-    const total = parseFloat(valorPresupuesto) || 0;
-    const m1 = parseFloat(val) || 0;
+    const total = parsearImporte(valorPresupuesto);
+    const m1 = parsearImporte(val);
     const rem2 = Math.max(0, total - m1);
     setMontoPago2(rem2 > 0 ? String(rem2) : '');
     setMontoPago3('');
@@ -87,9 +114,9 @@ export default function Presupuesto({ onVolver }) {
 
   const handleMonto2Change = (val) => {
     setMontoPago2(val);
-    const total = parseFloat(valorPresupuesto) || 0;
-    const m1 = parseFloat(montoPago1) || 0;
-    const m2 = parseFloat(val) || 0;
+    const total = parsearImporte(valorPresupuesto);
+    const m1 = parsearImporte(montoPago1);
+    const m2 = parsearImporte(val);
     const rem3 = Math.max(0, total - m1 - m2);
     setMontoPago3(rem3 > 0 ? String(rem3) : '');
     setMontoPago4('');
@@ -97,10 +124,10 @@ export default function Presupuesto({ onVolver }) {
 
   const handleMonto3Change = (val) => {
     setMontoPago3(val);
-    const total = parseFloat(valorPresupuesto) || 0;
-    const m1 = parseFloat(montoPago1) || 0;
-    const m2 = parseFloat(montoPago2) || 0;
-    const m3 = parseFloat(val) || 0;
+    const total = parsearImporte(valorPresupuesto);
+    const m1 = parsearImporte(montoPago1);
+    const m2 = parsearImporte(montoPago2);
+    const m3 = parsearImporte(val);
     const rem4 = Math.max(0, total - m1 - m2 - m3);
     setMontoPago4(rem4 > 0 ? String(rem4) : '');
   };
@@ -241,14 +268,17 @@ export default function Presupuesto({ onVolver }) {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Valor de la Cuota ($):</label>
-            <input 
-              type="text" 
-              placeholder="Ej: 330000" 
-              value={valorPresupuesto} 
-              onChange={(e) => handleTotalChange(e.target.value)}
-              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}
-            />
+            <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Valor de la Cuota:</label>
+            <div style={{ display: 'flex', alignItems: 'center', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', paddingLeft: '12px', overflow: 'hidden' }}>
+              <span style={{ color: '#64748b', fontWeight: 'bold', fontSize: '14px' }}>$</span>
+              <input 
+                type="text" 
+                placeholder="Ej: 330000" 
+                value={valorPresupuesto} 
+                onChange={(e) => handleTotalChange(e.target.value)}
+                style={{ border: 'none', outline: 'none', padding: '8px 12px 8px 6px', fontSize: '14px', width: '100%', background: 'transparent' }}
+              />
+            </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -265,7 +295,7 @@ export default function Presupuesto({ onVolver }) {
             <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Detalle de Formas de Pago (Concepto y Monto):</label>
             
             {/* Fila 1 */}
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <input 
                 type="text" 
                 placeholder="Concepto 1 (ej: Subsidio de Salud)" 
@@ -273,17 +303,20 @@ export default function Presupuesto({ onVolver }) {
                 onChange={(e) => setConceptoPago1(e.target.value)}
                 style={{ flex: 2, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
               />
-              <input 
-                type="text" 
-                placeholder="Monto ($)" 
-                value={montoPago1} 
-                onChange={(e) => handleMonto1Change(e.target.value)}
-                style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-              />
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', paddingLeft: '10px', overflow: 'hidden' }}>
+                <span style={{ color: '#64748b', fontWeight: 'bold', fontSize: '13px' }}>$</span>
+                <input 
+                  type="text" 
+                  placeholder="Monto" 
+                  value={montoPago1} 
+                  onChange={(e) => handleMonto1Change(e.target.value)}
+                  style={{ border: 'none', outline: 'none', padding: '8px 10px 8px 4px', fontSize: '13px', width: '100%', background: 'transparent' }}
+                />
+              </div>
             </div>
 
             {/* Fila 2 */}
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <input 
                 type="text" 
                 placeholder="Concepto 2 (ej: Efectivo)" 
@@ -291,17 +324,20 @@ export default function Presupuesto({ onVolver }) {
                 onChange={(e) => setConceptoPago2(e.target.value)}
                 style={{ flex: 2, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
               />
-              <input 
-                type="text" 
-                placeholder="Monto ($)" 
-                value={montoPago2} 
-                onChange={(e) => handleMonto2Change(e.target.value)}
-                style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-              />
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', paddingLeft: '10px', overflow: 'hidden' }}>
+                <span style={{ color: '#64748b', fontWeight: 'bold', fontSize: '13px' }}>$</span>
+                <input 
+                  type="text" 
+                  placeholder="Monto" 
+                  value={montoPago2} 
+                  onChange={(e) => handleMonto2Change(e.target.value)}
+                  style={{ border: 'none', outline: 'none', padding: '8px 10px 8px 4px', fontSize: '13px', width: '100%', background: 'transparent' }}
+                />
+              </div>
             </div>
 
             {/* Fila 3 */}
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <input 
                 type="text" 
                 placeholder="Concepto 3 (ej: Transferencia)" 
@@ -309,17 +345,20 @@ export default function Presupuesto({ onVolver }) {
                 onChange={(e) => setConceptoPago3(e.target.value)}
                 style={{ flex: 2, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
               />
-              <input 
-                type="text" 
-                placeholder="Monto ($)" 
-                value={montoPago3} 
-                onChange={(e) => handleMonto3Change(e.target.value)}
-                style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-              />
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', paddingLeft: '10px', overflow: 'hidden' }}>
+                <span style={{ color: '#64748b', fontWeight: 'bold', fontSize: '13px' }}>$</span>
+                <input 
+                  type="text" 
+                  placeholder="Monto" 
+                  value={montoPago3} 
+                  onChange={(e) => handleMonto3Change(e.target.value)}
+                  style={{ border: 'none', outline: 'none', padding: '8px 10px 8px 4px', fontSize: '13px', width: '100%', background: 'transparent' }}
+                />
+              </div>
             </div>
 
             {/* Fila 4 */}
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <input 
                 type="text" 
                 placeholder="Concepto 4 (ej: Tarjeta de Crédito)" 
@@ -327,13 +366,16 @@ export default function Presupuesto({ onVolver }) {
                 onChange={(e) => setConceptoPago4(e.target.value)}
                 style={{ flex: 2, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
               />
-              <input 
-                type="text" 
-                placeholder="Monto ($)" 
-                value={montoPago4} 
-                onChange={(e) => setMontoPago4(e.target.value)}
-                style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-              />
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', paddingLeft: '10px', overflow: 'hidden' }}>
+                <span style={{ color: '#64748b', fontWeight: 'bold', fontSize: '13px' }}>$</span>
+                <input 
+                  type="text" 
+                  placeholder="Monto" 
+                  value={montoPago4} 
+                  onChange={(e) => setMontoPago4(e.target.value)}
+                  style={{ border: 'none', outline: 'none', padding: '8px 10px 8px 4px', fontSize: '13px', width: '100%', background: 'transparent' }}
+                />
+              </div>
             </div>
           </div>
 
@@ -422,7 +464,7 @@ export default function Presupuesto({ onVolver }) {
                 <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
                   <span style={{ color: '#64748b', fontWeight: '600', display: 'inline-block', width: '120px' }}>Valor de Cuota:</span>
                   <strong style={{ color: '#1e3a8a', fontSize: '16px' }}>
-                    {valorPresupuesto && !isNaN(parseFloat(valorPresupuesto)) ? `$${parseFloat(valorPresupuesto).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : (valorPresupuesto || 'Sin completar')}
+                    {valorPresupuesto && parsearImporte(valorPresupuesto) > 0 ? `$${parsearImporte(valorPresupuesto).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : (valorPresupuesto || 'Sin completar')}
                   </strong>
                 </div>
 
@@ -441,7 +483,7 @@ export default function Presupuesto({ onVolver }) {
                         <span>{conceptoPago1}</span>
                         {montoPago1 && (
                           <strong style={{ marginLeft: 'auto' }}>
-                            {isNaN(parseFloat(montoPago1)) ? montoPago1 : `$${parseFloat(montoPago1).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                            {parsearImporte(montoPago1) > 0 ? `$${parsearImporte(montoPago1).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : montoPago1}
                           </strong>
                         )}
                       </div>
@@ -452,7 +494,7 @@ export default function Presupuesto({ onVolver }) {
                         <span>{conceptoPago2}</span>
                         {montoPago2 && (
                           <strong style={{ marginLeft: 'auto' }}>
-                            {isNaN(parseFloat(montoPago2)) ? montoPago2 : `$${parseFloat(montoPago2).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                            {parsearImporte(montoPago2) > 0 ? `$${parsearImporte(montoPago2).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : montoPago2}
                           </strong>
                         )}
                       </div>
@@ -463,7 +505,7 @@ export default function Presupuesto({ onVolver }) {
                         <span>{conceptoPago3}</span>
                         {montoPago3 && (
                           <strong style={{ marginLeft: 'auto' }}>
-                            {isNaN(parseFloat(montoPago3)) ? montoPago3 : `$${parseFloat(montoPago3).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                            {parsearImporte(montoPago3) > 0 ? `$${parsearImporte(montoPago3).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : montoPago3}
                           </strong>
                         )}
                       </div>
@@ -474,7 +516,7 @@ export default function Presupuesto({ onVolver }) {
                         <span>{conceptoPago4}</span>
                         {montoPago4 && (
                           <strong style={{ marginLeft: 'auto' }}>
-                            {isNaN(parseFloat(montoPago4)) ? montoPago4 : `$${parseFloat(montoPago4).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                            {parsearImporte(montoPago4) > 0 ? `$${parsearImporte(montoPago4).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : montoPago4}
                           </strong>
                         )}
                       </div>
