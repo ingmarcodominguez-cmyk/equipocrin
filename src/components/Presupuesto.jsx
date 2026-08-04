@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { jsPDF } from 'jspdf'
+import html2canvas from 'html2canvas'
 
 const parsearImporte = (val) => {
   if (val === null || val === undefined || val === '') return 0;
@@ -51,6 +53,8 @@ export default function Presupuesto({ onVolver }) {
   const [conceptoPago4, setConceptoPago4] = useState('');
   const [montoPago4, setMontoPago4] = useState('');
   const [incluirFirma, setIncluirFirma] = useState(false);
+  const [idPacienteSeleccionado, setIdPacienteSeleccionado] = useState(null);
+  const [subiendoPdf, setSubiendoPdf] = useState(false);
 
   // Cargar lista de pacientes por si se desea autocompletar uno existente
   useEffect(() => {
@@ -78,6 +82,7 @@ export default function Presupuesto({ onVolver }) {
     if (!pId) {
       setNombrePaciente('');
       setDniPaciente('');
+      setIdPacienteSeleccionado(null);
       return;
     }
 
@@ -85,6 +90,7 @@ export default function Presupuesto({ onVolver }) {
     if (paciente) {
       setNombrePaciente(paciente.nombre_apellido || '');
       setDniPaciente(paciente.dni || '');
+      setIdPacienteSeleccionado(paciente.id_paciente);
     }
   };
 
@@ -130,6 +136,100 @@ export default function Presupuesto({ onVolver }) {
     const m3 = parsearImporte(val);
     const rem4 = Math.max(0, total - m1 - m2 - m3);
     setMontoPago4(rem4 > 0 ? String(rem4) : '');
+  };
+
+  const handleGuardarPdf = async () => {
+    if (!nombrePaciente.trim()) {
+      alert("Por favor, ingresá el nombre del paciente antes de guardar.");
+      return;
+    }
+    
+    setSubiendoPdf(true);
+    try {
+      const element = document.getElementById("printable-presupuesto-area");
+      if (!element) throw new Error("No se encontró la vista previa del presupuesto.");
+
+      // Generar canvas
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff"
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+
+      // Dimensiones de A4
+      const pdf = new jsPDF("p", "mm", "a4");
+      const imgWidth = 210; 
+      const pageHeight = 295; 
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      const pdfBlob = pdf.output("blob");
+
+      // Nombres de archivos y rutas
+      const cleanName = nombrePaciente.replace(/\s+/g, '_').toLowerCase();
+      const dateStr = new Date().toISOString().split('T')[0];
+      const randomId = Math.floor(1000 + Math.random() * 9000);
+      const uniqueFileName = `presupuesto_${cleanName}_${dateStr}_${randomId}.pdf`;
+
+      // Definir la ruta en storage
+      const folder = idPacienteSeleccionado ? String(idPacienteSeleccionado) : 'potenciales';
+      const pathInStorage = `${folder}/${uniqueFileName}`;
+
+      // Subir archivo al bucket 'documentos_pacientes'
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('documentos_pacientes')
+        .upload(pathInStorage, pdfBlob, {
+          contentType: 'application/pdf',
+          upsert: true
+        });
+
+      if (uploadError) {
+        throw new Error(`Error al subir a Supabase Storage: ${uploadError.message}`);
+      }
+
+      // Obtener la URL pública del PDF
+      const { data: publicUrlData } = supabase.storage
+        .from('documentos_pacientes')
+        .getPublicUrl(pathInStorage);
+
+      const publicUrl = publicUrlData?.publicUrl;
+
+      // Registrar en la tabla de base de datos 'documentos_pacientes'
+      const { error: dbError } = await supabase
+        .from('documentos_pacientes')
+        .insert({
+          id_paciente_excel: idPacienteSeleccionado ? idPacienteSeleccionado : null,
+          nombre_archivo: `Presupuesto - ${nombrePaciente}`,
+          url_storage: pathInStorage,
+          fecha_subida: new Date().toISOString()
+        });
+
+      if (dbError) {
+        console.warn("No se pudo vincular en la base de datos (por ser un paciente potencial o restricciones), pero el archivo se guardó correctamente en Storage.", dbError);
+        alert(`¡Presupuesto guardado con éxito en la nube!\n\nSe subió a la carpeta de archivos generales.\n\nLink al PDF:\n${publicUrl}`);
+      } else {
+        alert(`¡Presupuesto guardado y vinculado con éxito en Supabase!\n\nA partir de ahora figurará en la sección "Documentos" del paciente.\n\nLink al PDF:\n${publicUrl}`);
+      }
+    } catch (err) {
+      console.error("Error al guardar PDF:", err);
+      alert(`Error al generar o guardar el PDF: ${err.message}`);
+    } finally {
+      setSubiendoPdf(false);
+    }
   };
 
   return (
@@ -388,14 +488,41 @@ export default function Presupuesto({ onVolver }) {
             <strong>🖋️ Incluir Firma Digital de la Coordinación</strong>
           </label>
 
-          <button
-            onClick={() => window.print()}
-            style={{ background: '#7c3aed', color: '#fff', border: 'none', padding: '12px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px', marginTop: '10px', boxShadow: '0 4px 6px rgba(124, 58, 237, 0.25)', transition: 'background 0.2s' }}
-            onMouseOver={(e) => e.target.style.background = '#6d28d9'}
-            onMouseOut={(e) => e.target.style.background = '#7c3aed'}
-          >
-            📥 Imprimir / Guardar como PDF
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
+            <button
+              onClick={() => window.print()}
+              style={{ background: '#7c3aed', color: '#fff', border: 'none', padding: '12px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px', boxShadow: '0 4px 6px rgba(124, 58, 237, 0.25)', transition: 'background 0.2s' }}
+              onMouseOver={(e) => e.target.style.background = '#6d28d9'}
+              onMouseOut={(e) => e.target.style.background = '#7c3aed'}
+            >
+              📥 Imprimir / Guardar como PDF local
+            </button>
+
+            <button
+              onClick={handleGuardarPdf}
+              disabled={subiendoPdf}
+              style={{ 
+                background: subiendoPdf ? '#94a3b8' : '#10b981', 
+                color: '#fff', 
+                border: 'none', 
+                padding: '12px 20px', 
+                borderRadius: '10px', 
+                fontWeight: 'bold', 
+                cursor: subiendoPdf ? 'not-allowed' : 'pointer', 
+                fontSize: '15px', 
+                boxShadow: '0 4px 6px rgba(16, 185, 129, 0.25)', 
+                transition: 'background 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px'
+              }}
+              onMouseOver={(e) => { if (!subiendoPdf) e.target.style.background = '#059669' }}
+              onMouseOut={(e) => { if (!subiendoPdf) e.target.style.background = '#10b981' }}
+            >
+              {subiendoPdf ? '⏳ Generando y Subiendo a Supabase...' : '💾 Guardar en Supabase (Nube)'}
+            </button>
+          </div>
         </div>
 
         {/* Vista Previa del Presupuesto (Derecha) */}
