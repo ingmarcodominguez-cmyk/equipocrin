@@ -14,6 +14,7 @@ import EstadosCuenta from './components/EstadosCuenta.jsx'
 import ReporteAcuerdosMensuales from './components/ReporteAcuerdosMensuales.jsx'
 import AjusteMasivo from './components/AjusteMasivo.jsx'
 import ReporteCobranzas from './components/ReporteCobranzas.jsx'
+import Presupuesto from './components/Presupuesto.jsx'
 
 const normalizarRol = (r) => {
   if (!r) return '';
@@ -1057,6 +1058,12 @@ function App() {
           </div>
         )}
 
+        {crinAccion === 'PRESUPUESTO' && (
+          <div style={{ width: '100%', maxWidth: '1200px' }}>
+            <Presupuesto onVolver={() => setCrinAccion(null)} />
+          </div>
+        )}
+
         {!crinAccion && (
           <div style={{ 
             width: '100%', 
@@ -1528,6 +1535,39 @@ function App() {
             >
               <div style={{ fontSize: '36px', marginBottom: '12px' }}>💰🗓️</div>
               REPORTE COBRANZAS
+            </button>
+
+            {/* Button 14: CREAR PRESUPUESTO */}
+            <button 
+              onClick={() => handleAccionClick('PRESUPUESTO')}
+              style={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '30px 15px', 
+                background: 'linear-gradient(135deg, #f3e8ff 100%, #e9d5ff 0%)', 
+                color: '#7c3aed', 
+                border: '2px solid #d8b4fe', 
+                borderRadius: '16px', 
+                cursor: 'pointer', 
+                fontWeight: '800', 
+                fontSize: '15px', 
+                textAlign: 'center',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                transition: 'transform 0.2s, box-shadow 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'scale(1.03)';
+                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+              }}
+            >
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>📄✍️</div>
+              CREAR PRESUPUESTO
             </button>
           </div>
         </div>
