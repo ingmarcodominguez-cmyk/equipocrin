@@ -41,8 +41,15 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
   const [valorSesion, setValorSesion] = useState('');
   const [obs, setObs] = useState('');
   const [prestadores, setPrestadores] = useState([]);
-  const [prestadorM, setPrestadorM] = useState('');
-  const [prestadorT, setPrestadorT] = useState('');
+  const [prestadorM1, setPrestadorM1] = useState('');
+  const [shareM1, setShareM1] = useState('1');
+  const [prestadorM2, setPrestadorM2] = useState('');
+  const [shareM2, setShareM2] = useState('');
+
+  const [prestadorT1, setPrestadorT1] = useState('');
+  const [shareT1, setShareT1] = useState('1');
+  const [prestadorT2, setPrestadorT2] = useState('');
+  const [shareT2, setShareT2] = useState('');
   const [guardandoAsist, setGuardandoAsist] = useState(false);
 
   // Estados para Modal/Formulario de ABM Auxiliar
@@ -71,41 +78,100 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
   };
 
   const parsearPrestadoresObs = (obsText) => {
-    let pM = '';
-    let pT = '';
+    let pM1 = '';
+    let sM1 = '1';
+    let pM2 = '';
+    let sM2 = '';
+    
+    let pT1 = '';
+    let sT1 = '1';
+    let pT2 = '';
+    let sT2 = '';
+    
     let limpiaObs = obsText || '';
     
     if (limpiaObs) {
       const matchM = limpiaObs.match(/\[P_M:\s*([^\]]+)\]/);
       if (matchM) {
-        pM = matchM[1];
+        const parts = matchM[1].split(',').map(p => p.trim());
+        if (parts[0]) {
+          const [name, share] = parts[0].split('|');
+          pM1 = name || '';
+          sM1 = share || '1';
+        }
+        if (parts[1]) {
+          const [name, share] = parts[1].split('|');
+          pM2 = name || '';
+          sM2 = share || '1';
+        }
         limpiaObs = limpiaObs.replace(matchM[0], '');
       }
       
       const matchT = limpiaObs.match(/\[P_T:\s*([^\]]+)\]/);
       if (matchT) {
-        pT = matchT[1];
+        const parts = matchT[1].split(',').map(p => p.trim());
+        if (parts[0]) {
+          const [name, share] = parts[0].split('|');
+          pT1 = name || '';
+          sT1 = share || '1';
+        }
+        if (parts[1]) {
+          const [name, share] = parts[1].split('|');
+          pT2 = name || '';
+          sT2 = share || '1';
+        }
         limpiaObs = limpiaObs.replace(matchT[0], '');
       }
       
       limpiaObs = limpiaObs.trim();
     }
     
-    return { prestadorM: pM, prestadorT: pT, limpiaObs };
+    return {
+      prestadorM1: pM1, shareM1: sM1, prestadorM2: pM2, shareM2: sM2,
+      prestadorT1: pT1, shareT1: sT1, prestadorT2: pT2, shareT2: sT2,
+      limpiaObs
+    };
   };
 
-  const componerObsConPrestadores = (pM, pT, observacionesTexto) => {
+  const componerObsConPrestadores = (pM1, sM1, pM2, sM2, pT1, sT1, pT2, sT2, observacionesTexto) => {
     let resultado = '';
-    if (pM) {
-      resultado += `[P_M: ${pM}]`;
+    
+    if (pM1) {
+      let tag = `[P_M: ${pM1}|${sM1 || '1'}`;
+      if (pM2) {
+        tag += `, ${pM2}|${sM2 || '1'}`;
+      }
+      tag += ']';
+      resultado += tag;
     }
-    if (pT) {
-      resultado += `[P_T: ${pT}]`;
+    
+    if (pT1) {
+      let tag = `[P_T: ${pT1}|${sT1 || '1'}`;
+      if (pT2) {
+        tag += `, ${pT2}|${sT2 || '1'}`;
+      }
+      tag += ']';
+      resultado += tag;
     }
+    
     if (observacionesTexto && observacionesTexto.trim()) {
       resultado += ` ${observacionesTexto.trim()}`;
     }
+    
     return resultado.trim();
+  };
+
+  const formatearPrestadoresDisplay = (p1, s1, p2, s2) => {
+    if (!p1) return null;
+    if (!p2) return `👤 Aux: ${p1}`;
+    
+    const num1 = parseFloat(s1) || 1;
+    const num2 = parseFloat(s2) || 1;
+    const total = num1 + num2;
+    const pct1 = Math.round((num1 / total) * 100);
+    const pct2 = 100 - pct1;
+    
+    return `👤 Aux: ${p1} (${pct1}%) / ${p2} (${pct2}%)`;
   };
 
   // Inicializar fecha
@@ -243,10 +309,18 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
       setValorHora(registroExistente.valor_hora ? String(registroExistente.valor_hora) : '');
       setValorSesion(registroExistente.valor_sesion ? String(registroExistente.valor_sesion) : '');
       
-      const { prestadorM: pM, prestadorT: pT, limpiaObs: lObs } = parsearPrestadoresObs(registroExistente.obs);
-      setPrestadorM(pM);
-      setPrestadorT(pT);
-      setObs(lObs);
+      const parsed = parsearPrestadoresObs(registroExistente.obs);
+      setPrestadorM1(parsed.prestadorM1);
+      setShareM1(parsed.shareM1 || '1');
+      setPrestadorM2(parsed.prestadorM2);
+      setShareM2(parsed.shareM2);
+      
+      setPrestadorT1(parsed.prestadorT1);
+      setShareT1(parsed.shareT1 || '1');
+      setPrestadorT2(parsed.prestadorT2);
+      setShareT2(parsed.shareT2);
+      
+      setObs(parsed.limpiaObs);
     } else {
       setTipoLiq(auxiliar.tipo_liq || 'HORA');
       setHoraEntradaM('');
@@ -257,8 +331,17 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
       setSesiones('0');
       setValorHora(auxiliar.valor_hora ? String(auxiliar.valor_hora) : '');
       setValorSesion(auxiliar.valor_sesion ? String(auxiliar.valor_sesion) : '');
-      setPrestadorM('');
-      setPrestadorT('');
+      
+      setPrestadorM1('');
+      setShareM1('1');
+      setPrestadorM2('');
+      setShareM2('');
+      
+      setPrestadorT1('');
+      setShareT1('1');
+      setPrestadorT2('');
+      setShareT2('');
+      
       setObs('');
     }
 
@@ -308,7 +391,11 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
         sesiones: tipoLiq === 'SESION' ? parsearDecimal(sesiones) : null,
         valor_hora: valorHora ? parsearDecimal(valorHora) : 0,
         valor_sesion: valorSesion ? parsearDecimal(valorSesion) : 0,
-        obs: componerObsConPrestadores(prestadorM, prestadorT, obs) || null,
+        obs: componerObsConPrestadores(
+          prestadorM1, shareM1, prestadorM2, shareM2,
+          prestadorT1, shareT1, prestadorT2, shareT2,
+          obs
+        ) || null,
         fecha_registro: new Date().toISOString()
       };
 
@@ -609,16 +696,18 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                           </td>
                           
                           {asist ? (() => {
-                            const { prestadorM: rowPM, prestadorT: rowPT, limpiaObs: rowObs } = parsearPrestadoresObs(asist.obs);
+                            const parsed = parsearPrestadoresObs(asist.obs);
+                            const displayM = formatearPrestadoresDisplay(parsed.prestadorM1, parsed.shareM1, parsed.prestadorM2, parsed.shareM2);
+                            const displayT = formatearPrestadoresDisplay(parsed.prestadorT1, parsed.shareT1, parsed.prestadorT2, parsed.shareT2);
                             return (
                               <>
                                 <td style={{ padding: '12px 10px', color: '#334155' }}>
                                   🌅 {asist.hora_entrada_m ? `${asist.hora_entrada_m.substring(0, 5)} a ${asist.hora_salida_m ? asist.hora_salida_m.substring(0, 5) : '?'}` : '-'}
-                                  {rowPM && <div style={{ fontSize: '11px', color: '#6b21a8', fontWeight: 'bold', marginTop: '2px' }}>👤 Auxilia a: {rowPM}</div>}
+                                  {displayM && <div style={{ fontSize: '11px', color: '#6b21a8', fontWeight: 'bold', marginTop: '2px' }}>{displayM}</div>}
                                 </td>
                                 <td style={{ padding: '12px 10px', color: '#334155' }}>
                                   🌆 {asist.hora_entrada_t ? `${asist.hora_entrada_t.substring(0, 5)} a ${asist.hora_salida_t ? asist.hora_salida_t.substring(0, 5) : '?'}` : '-'}
-                                  {rowPT && <div style={{ fontSize: '11px', color: '#6b21a8', fontWeight: 'bold', marginTop: '2px' }}>👤 Auxilia a: {rowPT}</div>}
+                                  {displayT && <div style={{ fontSize: '11px', color: '#6b21a8', fontWeight: 'bold', marginTop: '2px' }}>{displayT}</div>}
                                 </td>
                                 <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 'bold', color: '#0f172a' }}>
                                   {asist.tipo_liq === 'HORA' ? `⏱️ ${asist.horas_trabajadas || 0} hs` : `📑 ${asist.sesiones || 0} ses`}
@@ -626,8 +715,8 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                                 <td style={{ padding: '12px 10px', fontWeight: '600', color: '#15803d' }}>
                                   {asist.tipo_liq === 'HORA' ? `$${asist.valor_hora}/hs` : `$${asist.valor_sesion}/ses`}
                                 </td>
-                                <td style={{ padding: '12px 10px', color: '#64748b', fontStyle: rowObs ? 'normal' : 'italic' }}>
-                                  {rowObs || '-'}
+                                <td style={{ padding: '12px 10px', color: '#64748b', fontStyle: parsed.limpiaObs ? 'normal' : 'italic' }}>
+                                  {parsed.limpiaObs || '-'}
                                 </td>
                               </>
                             );
@@ -783,7 +872,9 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                       const cantidad = reg.tipo_liq === 'HORA' ? parsearDecimal(reg.horas_trabajadas) || 0 : parsearDecimal(reg.sesiones) || 0;
                       const totalDevengado = tarifa * cantidad;
 
-                    const { prestadorM: rowPM, prestadorT: rowPT, limpiaObs: rowObs } = parsearPrestadoresObs(reg.obs);
+                    const parsed = parsearPrestadoresObs(reg.obs);
+                    const displayM = formatearPrestadoresDisplay(parsed.prestadorM1, parsed.shareM1, parsed.prestadorM2, parsed.shareM2);
+                    const displayT = formatearPrestadoresDisplay(parsed.prestadorT1, parsed.shareT1, parsed.prestadorT2, parsed.shareT2);
                     return (
                       <tr key={reg.id_registro} style={{ borderBottom: '1px solid #e2e8f0' }}>
                         <td style={{ padding: '12px 10px', whiteSpace: 'nowrap', fontWeight: '500', color: '#475569' }}>
@@ -799,11 +890,11 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                         </td>
                         <td style={{ padding: '12px 10px', color: '#475569' }}>
                           {reg.hora_entrada_m ? `${reg.hora_entrada_m.substring(0, 5)} a ${reg.hora_salida_m ? reg.hora_salida_m.substring(0, 5) : '?'}` : '-'}
-                          {rowPM && <div style={{ fontSize: '11px', color: '#6b21a8', fontWeight: 'bold', marginTop: '2px' }}>👤 Aux: {rowPM}</div>}
+                          {displayM && <div style={{ fontSize: '11px', color: '#6b21a8', fontWeight: 'bold', marginTop: '2px' }}>{displayM}</div>}
                         </td>
                         <td style={{ padding: '12px 10px', color: '#475569' }}>
                           {reg.hora_entrada_t ? `${reg.hora_entrada_t.substring(0, 5)} a ${reg.hora_salida_t ? reg.hora_salida_t.substring(0, 5) : '?'}` : '-'}
-                          {rowPT && <div style={{ fontSize: '11px', color: '#6b21a8', fontWeight: 'bold', marginTop: '2px' }}>👤 Aux: {rowPT}</div>}
+                          {displayT && <div style={{ fontSize: '11px', color: '#6b21a8', fontWeight: 'bold', marginTop: '2px' }}>{displayT}</div>}
                         </td>
                         <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: '600' }}>
                           {reg.tipo_liq === 'HORA' ? `${reg.horas_trabajadas || 0} hs` : `${reg.sesiones || 0} ses`}
@@ -815,7 +906,7 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                           ${totalDevengado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                         </td>
                         <td style={{ padding: '12px 10px', color: '#64748b' }}>
-                          {rowObs || '-'}
+                          {parsed.limpiaObs || '-'}
                         </td>
                       </tr>
                     );
@@ -870,18 +961,57 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                     <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Salida Mañana</label>
                     <input type="time" value={horaSalidaM} onChange={(e) => setHoraSalidaM(e.target.value)} style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
                   </div>
-                  <div style={{ gridColumn: 'span 2' }}>
-                    <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Prestador Auxiliado (Mañana)</label>
-                    <select
-                      value={prestadorM}
-                      onChange={(e) => setPrestadorM(e.target.value)}
-                      style={{ width: '100%', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', background: '#fff' }}
-                    >
-                      <option value="">-- Seleccionar Prestador --</option>
-                      {prestadores.map(p => (
-                        <option key={p.id} value={p.nombre}>{p.nombre}</option>
-                      ))}
-                    </select>
+                  <div style={{ gridColumn: 'span 2', marginTop: '5px', display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '8px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Prestador Auxiliado 1 (Mañana)</label>
+                      <select
+                        value={prestadorM1}
+                        onChange={(e) => setPrestadorM1(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', background: '#fff' }}
+                      >
+                        <option value="">-- Ninguno --</option>
+                        {prestadores.map(p => (
+                          <option key={p.id} value={p.nombre}>{p.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Prop. 1</label>
+                      <input
+                        type="number"
+                        placeholder="1"
+                        value={shareM1}
+                        onChange={(e) => setShareM1(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', textAlign: 'center' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ gridColumn: 'span 2', marginTop: '2px', display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '8px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Prestador Auxiliado 2 (Mañana - Opcional)</label>
+                      <select
+                        value={prestadorM2}
+                        onChange={(e) => setPrestadorM2(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', background: '#fff' }}
+                      >
+                        <option value="">-- Ninguno --</option>
+                        {prestadores.map(p => (
+                          <option key={p.id} value={p.nombre}>{p.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Prop. 2</label>
+                      <input
+                        type="number"
+                        placeholder="1"
+                        value={shareM2}
+                        disabled={!prestadorM2}
+                        onChange={(e) => setShareM2(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', textAlign: 'center', background: !prestadorM2 ? '#f1f5f9' : '#fff' }}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -895,18 +1025,58 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                     <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Salida Tarde</label>
                     <input type="time" value={horaSalidaT} onChange={(e) => setHoraSalidaT(e.target.value)} style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
                   </div>
-                  <div style={{ gridColumn: 'span 2' }}>
-                    <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Prestador Auxiliado (Tarde)</label>
-                    <select
-                      value={prestadorT}
-                      onChange={(e) => setPrestadorT(e.target.value)}
-                      style={{ width: '100%', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', background: '#fff' }}
-                    >
-                      <option value="">-- Seleccionar Prestador --</option>
-                      {prestadores.map(p => (
-                        <option key={p.id} value={p.nombre}>{p.nombre}</option>
-                      ))}
-                    </select>
+                  
+                  <div style={{ gridColumn: 'span 2', marginTop: '5px', display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '8px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Prestador Auxiliado 1 (Tarde)</label>
+                      <select
+                        value={prestadorT1}
+                        onChange={(e) => setPrestadorT1(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', background: '#fff' }}
+                      >
+                        <option value="">-- Ninguno --</option>
+                        {prestadores.map(p => (
+                          <option key={p.id} value={p.nombre}>{p.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Prop. 1</label>
+                      <input
+                        type="number"
+                        placeholder="1"
+                        value={shareT1}
+                        onChange={(e) => setShareT1(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', textAlign: 'center' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ gridColumn: 'span 2', marginTop: '2px', display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '8px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Prestador Auxiliado 2 (Tarde - Opcional)</label>
+                      <select
+                        value={prestadorT2}
+                        onChange={(e) => setPrestadorT2(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', background: '#fff' }}
+                      >
+                        <option value="">-- Ninguno --</option>
+                        {prestadores.map(p => (
+                          <option key={p.id} value={p.nombre}>{p.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Prop. 2</label>
+                      <input
+                        type="number"
+                        placeholder="1"
+                        value={shareT2}
+                        disabled={!prestadorT2}
+                        onChange={(e) => setShareT2(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', textAlign: 'center', background: !prestadorT2 ? '#f1f5f9' : '#fff' }}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -933,18 +1103,58 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                     <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Valor Tarifa Sesión ($)</label>
                     <input type="number" value={valorSesion} onChange={(e) => setValorSesion(e.target.value)} placeholder="0.00" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
                   </div>
-                  <div style={{ gridColumn: 'span 2', marginTop: '10px' }}>
-                    <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Prestador Auxiliado</label>
-                    <select
-                      value={prestadorM}
-                      onChange={(e) => setPrestadorM(e.target.value)}
-                      style={{ width: '100%', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', background: '#fff' }}
-                    >
-                      <option value="">-- Seleccionar Prestador --</option>
-                      {prestadores.map(p => (
-                        <option key={p.id} value={p.nombre}>{p.nombre}</option>
-                      ))}
-                    </select>
+                  
+                  <div style={{ gridColumn: 'span 2', marginTop: '10px', display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '8px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Prestador Auxiliado 1</label>
+                      <select
+                        value={prestadorM1}
+                        onChange={(e) => setPrestadorM1(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', background: '#fff' }}
+                      >
+                        <option value="">-- Ninguno --</option>
+                        {prestadores.map(p => (
+                          <option key={p.id} value={p.nombre}>{p.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Prop. 1</label>
+                      <input
+                        type="number"
+                        placeholder="1"
+                        value={shareM1}
+                        onChange={(e) => setShareM1(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', textAlign: 'center' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ gridColumn: 'span 2', marginTop: '5px', display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '8px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Prestador Auxiliado 2 (Opcional)</label>
+                      <select
+                        value={prestadorM2}
+                        onChange={(e) => setPrestadorM2(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', background: '#fff' }}
+                      >
+                        <option value="">-- Ninguno --</option>
+                        {prestadores.map(p => (
+                          <option key={p.id} value={p.nombre}>{p.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>Prop. 2</label>
+                      <input
+                        type="number"
+                        placeholder="1"
+                        value={shareM2}
+                        disabled={!prestadorM2}
+                        onChange={(e) => setShareM2(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', textAlign: 'center', background: !prestadorM2 ? '#f1f5f9' : '#fff' }}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
