@@ -64,6 +64,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
   const [periodosDisponibles, setPeriodosDisponibles] = useState([]);
   const [periodoSeleccionadoResumen, setPeriodoSeleccionadoResumen] = useState('');
   const [resumenMensual, setResumenMensual] = useState([]);
+  const [descuentosPrestadores, setDescuentosPrestadores] = useState([]);
   const [cargandoResumen, setCargandoResumen] = useState(false);
 
   useEffect(() => {
@@ -116,6 +117,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
     if (!periodo) return;
     setCargandoResumen(true);
     try {
+      // 1. Cargar movimientos de ese período para el total por auxiliar
       const { data: movsData, error: errM } = await supabase
         .from('movauxiliares_motor')
         .select('id_auxiliar, debe, concepto')
@@ -142,8 +144,179 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
       }).filter(x => x.totalLiquidado > 0);
 
       setResumenMensual(resumenList);
+
+      // 2. Cargar asistencias de ese período para calcular el descuento de cada prestador
+      const [mes, anio] = periodo.split('/');
+      const primerDia = `${anio}-${mes}-01`;
+      const ultimoDiaVal = new Date(parseInt(anio), parseInt(mes), 0).getDate();
+      const ultimoDia = `${anio}-${mes}-${String(ultimoDiaVal).padStart(2, '0')}`;
+
+      const { data: asistencias, error: errAsist } = await supabase
+        .from('asistencia_auxiliares_motor')
+        .select('*')
+        .gte('fecha', primerDia)
+        .lte('fecha', ultimoDia);
+
+      if (errAsist) throw errAsist;
+
+      // Utilidades locales de parseo
+      const parsearPrestadoresObs = (obsText) => {
+        let pM1 = '';
+        let sM1 = '1';
+        let pM2 = '';
+        let sM2 = '';
+        let pT1 = '';
+        let sT1 = '1';
+        let pT2 = '';
+        let sT2 = '';
+        let limpiaObs = obsText || '';
+        if (limpiaObs) {
+          const matchM = limpiaObs.match(/\[P_M:\s*([^\]]+)\]/);
+          if (matchM) {
+            const parts = matchM[1].split(',').map(p => p.trim());
+            if (parts[0]) {
+              const [name, share] = parts[0].split('|');
+              pM1 = name || '';
+              sM1 = share || '1';
+            }
+            if (parts[1]) {
+              const [name, share] = parts[1].split('|');
+              pM2 = name || '';
+              sM2 = share || '1';
+            }
+          }
+          const matchT = limpiaObs.match(/\[P_T:\s*([^\]]+)\]/);
+          if (matchT) {
+            const parts = matchT[1].split(',').map(p => p.trim());
+            if (parts[0]) {
+              const [name, share] = parts[0].split('|');
+              pT1 = name || '';
+              sT1 = share || '1';
+            }
+            if (parts[1]) {
+              const [name, share] = parts[1].split('|');
+              pT2 = name || '';
+              sT2 = share || '1';
+            }
+          }
+        }
+        return {
+          prestadorM1: pM1, shareM1: sM1, prestadorM2: pM2, shareM2: sM2,
+          prestadorT1: pT1, shareT1: sT1, prestadorT2: pT2, shareT2: sT2
+        };
+      };
+
+      const calcularMins = (ent, sal) => {
+        if (!ent || !sal) return 0;
+        const [hEnt, mEnt] = ent.split(':').map(Number);
+        const [hSal, mSal] = sal.split(':').map(Number);
+        if (isNaN(hEnt) || isNaN(hSal)) return 0;
+        return Math.max(0, (hSal * 60 + mSal) - (hEnt * 60 + mEnt));
+      };
+
+      const deudas = {}; // key: prestadorName, value: { total: 0, desglose: { [auxiliarName]: 0 } }
+
+      const acumularDeuda = (prestador, auxiliarNombre, monto) => {
+        const nombreLimpio = (prestador || 'VIVIANA JIMENEZ').trim().toUpperCase();
+        if (!deudas[nombreLimpio]) {
+          deudas[nombreLimpio] = { total: 0, desglose: {} };
+        }
+        deudas[nombreLimpio].total += monto;
+        if (!deudas[nombreLimpio].desglose[auxiliarNombre]) {
+          deudas[nombreLimpio].desglose[auxiliarNombre] = 0;
+        }
+        deudas[nombreLimpio].desglose[auxiliarNombre] += monto;
+      };
+
+      (asistencias || []).forEach(asist => {
+        const auxiliarNombre = (asist.nombre || 'AUXILIAR').trim().toUpperCase();
+        const tarifa = asist.tipo_liq === 'HORA' ? parsearDecimal(asist.valor_hora) || 0 : parsearDecimal(asist.valor_sesion) || 0;
+        const cantidad = asist.tipo_liq === 'HORA' ? parsearDecimal(asist.horas_trabajadas) || 0 : parsearDecimal(asist.sesiones) || 0;
+        const costoFila = tarifa * cantidad;
+
+        if (costoFila <= 0) return;
+
+        const parsed = parsearPrestadoresObs(asist.obs);
+
+        if (asist.tipo_liq === 'HORA') {
+          const diffM = calcularMins(asist.hora_entrada_m, asist.hora_salida_m);
+          const diffT = calcularMins(asist.hora_entrada_t, asist.hora_salida_t);
+          const totalDiff = diffM + diffT;
+
+          let costoM = 0;
+          let costoT = 0;
+
+          if (totalDiff > 0) {
+            costoM = (diffM / totalDiff) * costoFila;
+            costoT = (diffT / totalDiff) * costoFila;
+          } else {
+            // Si no hay horarios detallados, vemos cuál turno tiene entradas cargadas
+            if (asist.hora_entrada_m || asist.hora_salida_m) {
+              costoM = costoFila;
+            } else if (asist.hora_entrada_t || asist.hora_salida_t) {
+              costoT = costoFila;
+            } else {
+              costoM = costoFila; // Por defecto mañana
+            }
+          }
+
+          // Distribuir mañana
+          if (costoM > 0) {
+            if (parsed.prestadorM1) {
+              const s1 = parseFloat(parsed.shareM1) || 1;
+              const s2 = parseFloat(parsed.shareM2) || 0;
+              if (parsed.prestadorM2 && s2 > 0) {
+                acumularDeuda(parsed.prestadorM1, auxiliarNombre, costoM * (s1 / (s1 + s2)));
+                acumularDeuda(parsed.prestadorM2, auxiliarNombre, costoM * (s2 / (s1 + s2)));
+              } else {
+                acumularDeuda(parsed.prestadorM1, auxiliarNombre, costoM);
+              }
+            } else {
+              acumularDeuda('VIVIANA JIMENEZ', auxiliarNombre, costoM);
+            }
+          }
+
+          // Distribuir tarde
+          if (costoT > 0) {
+            if (parsed.prestadorT1) {
+              const s1 = parseFloat(parsed.shareT1) || 1;
+              const s2 = parseFloat(parsed.shareT2) || 0;
+              if (parsed.prestadorT2 && s2 > 0) {
+                acumularDeuda(parsed.prestadorT1, auxiliarNombre, costoT * (s1 / (s1 + s2)));
+                acumularDeuda(parsed.prestadorT2, auxiliarNombre, costoT * (s2 / (s1 + s2)));
+              } else {
+                acumularDeuda(parsed.prestadorT1, auxiliarNombre, costoT);
+              }
+            } else {
+              acumularDeuda('VIVIANA JIMENEZ', auxiliarNombre, costoT);
+            }
+          }
+        } else {
+          // Tipo SESION
+          if (parsed.prestadorM1) {
+            const s1 = parseFloat(parsed.shareM1) || 1;
+            const s2 = parseFloat(parsed.shareM2) || 0;
+            if (parsed.prestadorM2 && s2 > 0) {
+              acumularDeuda(parsed.prestadorM1, auxiliarNombre, costoFila * (s1 / (s1 + s2)));
+              acumularDeuda(parsed.prestadorM2, auxiliarNombre, costoFila * (s2 / (s1 + s2)));
+            } else {
+              acumularDeuda(parsed.prestadorM1, auxiliarNombre, costoFila);
+            }
+          } else {
+            acumularDeuda('VIVIANA JIMENEZ', auxiliarNombre, costoFila);
+          }
+        }
+      });
+
+      const descuentosList = Object.keys(deudas).map(name => ({
+        nombre: name,
+        total: deudas[name].total,
+        desglose: deudas[name].desglose
+      })).sort((a, b) => b.total - a.total);
+
+      setDescuentosPrestadores(descuentosList);
     } catch (err) {
-      console.error("Error al calcular resumen mensual:", err);
+      console.error("Error al calcular resumen mensual y descuentos prestadores:", err);
     } finally {
       setCargandoResumen(false);
     }
@@ -525,6 +698,61 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Descuentos por Prestador */}
+      <div style={{ marginBottom: '25px', background: '#fff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+        <h3 style={{ margin: '0 0 15px 0', color: '#0f172a', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          📋 Descuentos por Prestador (Costo Auxiliares)
+        </h3>
+        
+        {cargandoResumen ? (
+          <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Calculando descuentos...</p>
+        ) : descuentosPrestadores.length === 0 ? (
+          <p style={{ margin: 0, fontSize: '13px', color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
+            No se registran horas trabajadas ni asignaciones de prestadores para el período seleccionado.
+          </p>
+        ) : (
+          <div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1' }}>
+                    <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Prestador</th>
+                    <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Desglose por Auxiliar</th>
+                    <th style={{ padding: '10px', color: '#475569', fontWeight: '600', textAlign: 'right' }}>Total a Descontar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {descuentosPrestadores.map(row => (
+                    <tr key={row.nombre} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                      <td style={{ padding: '10px', fontWeight: 'bold', color: '#1e293b' }}>👤 {row.nombre}</td>
+                      <td style={{ padding: '10px', color: '#64748b', fontSize: '12.5px' }}>
+                        {Object.keys(row.desglose).map(aux => (
+                          <span key={aux} style={{ display: 'inline-block', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', marginRight: '6px', marginBottom: '2px' }}>
+                            {aux}: ${row.desglose[aux].toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                          </span>
+                        ))}
+                      </td>
+                      <td style={{ padding: '10px', fontWeight: 'bold', color: '#b91c1c', textAlign: 'right' }}>
+                        -${row.total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1', fontWeight: 'bold' }}>
+                    <td colSpan="2" style={{ padding: '12px 10px', color: '#0f172a' }}>TOTAL GENERAL A DESCONTAR</td>
+                    <td style={{ padding: '12px 10px', color: '#b91c1c', fontSize: '15px', fontWeight: '800', textAlign: 'right' }}>
+                      -${descuentosPrestadores.reduce((sum, r) => sum + r.total, 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p style={{ margin: '12px 0 0 0', fontSize: '11px', color: '#64748b', fontStyle: 'italic' }}>
+              💡 Nota: Cualquier día trabajado que no tenga una distribución de prestador explícita se asigna automáticamente a <b>VIVIANA JIMENEZ</b> de forma predeterminada.
+            </p>
           </div>
         )}
       </div>
