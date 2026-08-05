@@ -60,8 +60,15 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
 
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' });
 
+  // Estados para Resumen Mensual Consolidado
+  const [periodosDisponibles, setPeriodosDisponibles] = useState([]);
+  const [periodoSeleccionadoResumen, setPeriodoSeleccionadoResumen] = useState('');
+  const [resumenMensual, setResumenMensual] = useState([]);
+  const [cargandoResumen, setCargandoResumen] = useState(false);
+
   useEffect(() => {
     cargarAuxiliares();
+    cargarPeriodosDisponibles();
   }, []);
 
   useEffect(() => {
@@ -69,6 +76,78 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
       cargarMovimientos(auxiliarSeleccionado.id_auxiliar);
     }
   }, [auxiliarSeleccionado]);
+
+  useEffect(() => {
+    if (periodoSeleccionadoResumen && auxiliares.length > 0) {
+      cargarResumenMensual(periodoSeleccionadoResumen);
+    }
+  }, [periodoSeleccionadoResumen, auxiliares]);
+
+  const cargarPeriodosDisponibles = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('movauxiliares_motor')
+        .select('periodo')
+        .not('periodo', 'is', null);
+
+      if (error) throw error;
+
+      const unicos = [...new Set((data || [])
+        .map(x => x.periodo)
+        .filter(p => p && p.trim() !== ''))];
+      
+      unicos.sort((a, b) => {
+        const [mesA, anioA] = a.split('/').map(Number);
+        const [mesB, anioB] = b.split('/').map(Number);
+        if (anioA !== anioB) return anioB - anioA;
+        return mesB - mesA;
+      });
+
+      setPeriodosDisponibles(unicos);
+      if (unicos.length > 0 && !periodoSeleccionadoResumen) {
+        setPeriodoSeleccionadoResumen(unicos[0]);
+      }
+    } catch (err) {
+      console.error("Error al cargar períodos de liquidación auxiliares:", err);
+    }
+  };
+
+  const cargarResumenMensual = async (periodo) => {
+    if (!periodo) return;
+    setCargandoResumen(true);
+    try {
+      const { data: movsData, error: errM } = await supabase
+        .from('movauxiliares_motor')
+        .select('id_auxiliar, debe, concepto')
+        .eq('periodo', periodo);
+
+      if (errM) throw errM;
+
+      const sumas = {};
+      (movsData || []).forEach(m => {
+        const id = m.id_auxiliar;
+        const debe = parsearDecimal(m.debe) || 0;
+        if (!sumas[id]) sumas[id] = 0;
+        sumas[id] += debe;
+      });
+
+      const resumenList = auxiliares.map(aux => {
+        const total = sumas[aux.id_auxiliar] || 0;
+        return {
+          id_auxiliar: aux.id_auxiliar,
+          nombre: aux.nombre,
+          tipo_liq: aux.tipo_liq,
+          totalLiquidado: total
+        };
+      }).filter(x => x.totalLiquidado > 0);
+
+      setResumenMensual(resumenList);
+    } catch (err) {
+      console.error("Error al calcular resumen mensual:", err);
+    } finally {
+      setCargandoResumen(false);
+    }
+  };
 
   // Buscar auxiliares y saldos consolidados
   const cargarAuxiliares = async () => {
@@ -309,6 +388,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
       mostrarAlerta("Transacción contable registrada con éxito.", "exito");
       setModalAbierto(null);
       await cargarAuxiliares();
+      await cargarPeriodosDisponibles();
       await cargarMovimientos(auxiliarSeleccionado.id_auxiliar);
     } catch (error) {
       console.error("Error al registrar movimiento contable:", error);
@@ -382,6 +462,70 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
               </option>
             ))}
           </select>
+        )}
+      </div>
+
+      {/* Resumen Mensual Consolidado */}
+      <div style={{ marginBottom: '25px', background: '#fff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <h3 style={{ margin: 0, color: '#0f172a', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            📊 Resumen Mensual por Auxiliar
+          </h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>Seleccionar Mes:</span>
+            <select
+              value={periodoSeleccionadoResumen}
+              onChange={(e) => setPeriodoSeleccionadoResumen(e.target.value)}
+              style={{ padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13.5px', background: '#fff', fontWeight: 'bold', color: '#0f172a' }}
+            >
+              {periodosDisponibles.length === 0 ? (
+                <option value="">Sin períodos</option>
+              ) : (
+                periodosDisponibles.map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))
+              )}
+            </select>
+          </div>
+        </div>
+
+        {cargandoResumen ? (
+          <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Cargando resumen del mes...</p>
+        ) : resumenMensual.length === 0 ? (
+          <p style={{ margin: 0, fontSize: '13px', color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
+            No se registran liquidaciones para el período seleccionado.
+          </p>
+        ) : (
+          <div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1' }}>
+                    <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Auxiliar</th>
+                    <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Tipo Liq.</th>
+                    <th style={{ padding: '10px', color: '#475569', fontWeight: '600', textAlign: 'right' }}>Total Liquidado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resumenMensual.map(row => (
+                    <tr key={row.id_auxiliar} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                      <td style={{ padding: '10px', fontWeight: '600', color: '#1e293b' }}>{row.nombre}</td>
+                      <td style={{ padding: '10px', color: '#64748b' }}>{row.tipo_liq}</td>
+                      <td style={{ padding: '10px', fontWeight: 'bold', color: '#0f172a', textAlign: 'right' }}>
+                        ${row.totalLiquidado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1', fontWeight: 'bold' }}>
+                    <td colSpan="2" style={{ padding: '12px 10px', color: '#0f172a' }}>TOTAL GENERAL A PAGAR</td>
+                    <td style={{ padding: '12px 10px', color: '#2563eb', fontSize: '15px', fontWeight: '800', textAlign: 'right' }}>
+                      ${resumenMensual.reduce((sum, r) => sum + r.totalLiquidado, 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
       </div>
 
