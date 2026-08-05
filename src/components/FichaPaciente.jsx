@@ -45,6 +45,9 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' });
   
   const [vistaActiva, setVistaActiva] = useState('menu');
+  const [sesionesFijas, setSesionesFijas] = useState([]);
+  const [usuariosList, setUsuariosList] = useState([]);
+  const [cargandoAgenda, setCargandoAgenda] = useState(false);
 
   // Estados para Registro de Pago
   const [modalPagoAbierto, setModalPagoAbierto] = useState(false);
@@ -134,6 +137,7 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
             if (errorMovimientos) throw errorMovimientos;
 
             await cargarObservaciones(encontrado.id_paciente);
+            await cargarAgendaPaciente(encontrado);
 
             const acuerdosConPrestacion = (acuerdosData || []).map(acuerdo => {
               const prestacionEncontrada = prestaciones.find(
@@ -206,6 +210,55 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
     // Si no tiene puntos ni comas, es un número entero limpio
     const num = Number(str);
     return isNaN(num) ? 0 : num;
+  };
+
+  const cargarAgendaPaciente = async (paciente) => {
+    if (!paciente) return;
+    setCargandoAgenda(true);
+    try {
+      if (usuariosList.length === 0) {
+        const { data: uData } = await supabase.from('users').select('id, nombre');
+        if (uData) setUsuariosList(uData);
+      }
+
+      let uuidPaciente = null;
+      const { data: pData } = await supabase
+        .from('pacientes')
+        .select('id')
+        .eq('id_paciente_excel', paciente.id_paciente)
+        .maybeSingle();
+
+      if (pData) {
+        uuidPaciente = pData.id;
+      } else if (paciente.dni) {
+        const { data: pDataDni } = await supabase
+          .from('pacientes')
+          .select('id')
+          .eq('dni', paciente.dni)
+          .maybeSingle();
+        if (pDataDni) uuidPaciente = pDataDni.id;
+      }
+
+      if (uuidPaciente) {
+        const { data: sData } = await supabase
+          .from('sesiones_fijas')
+          .select('*')
+          .eq('paciente_id', uuidPaciente)
+          .eq('estado', 'ACTIVO');
+        setSesionesFijas(sData || []);
+      } else {
+        const { data: sDataName } = await supabase
+          .from('sesiones_fijas')
+          .select('*')
+          .eq('paciente_nombre', paciente.nombre_apellido)
+          .eq('estado', 'ACTIVO');
+        setSesionesFijas(sDataName || []);
+      }
+    } catch (err) {
+      console.error("Error al cargar la agenda fija del paciente:", err);
+    } finally {
+      setCargandoAgenda(false);
+    }
   };
 
   const cargarObservaciones = async (idPaciente) => {
@@ -380,6 +433,7 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
 
       // Cargar observaciones
       await cargarObservaciones(pacienteEncontrado.id_paciente);
+      await cargarAgendaPaciente(pacienteEncontrado);
 
       const acuerdosConPrestacion = (acuerdosData || []).map(acuerdo => {
         const prestacionEncontrada = prestaciones.find(
@@ -1579,6 +1633,16 @@ const confirmarRegistroPago = async () => {
                 <h4 style={{ margin: '0 0 6px 0', color: '#16a34a', fontSize: '15px' }}>Nuevo Acuerdo</h4>
                 <p style={{ margin: 0, fontSize: '12px', color: '#15803d' }}>Registrar directamente un nuevo acuerdo y plan de cobro.</p>
               </div>
+              <div 
+                onClick={() => setVistaActiva('agenda_fija')}
+                style={{ border: '2px solid #cbd5e1', borderRadius: '10px', padding: '20px', textAlign: 'center', cursor: 'pointer', background: '#fff', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '8px' }}>📅</div>
+                <h4 style={{ margin: '0 0 6px 0', color: '#6b21a8', fontSize: '15px' }}>Agenda Fija</h4>
+                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Días, horarios y prestadores semanales asignados.</p>
+              </div>
 
             </div>
           )}
@@ -2118,6 +2182,105 @@ const confirmarRegistroPago = async () => {
                       ))}
                     </div>
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {vistaActiva === 'agenda_fija' && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '2px solid #e2e8f0', paddingBottom: '8px' }}>
+                <h4 style={{ color: '#1e293b', margin: 0 }}>📅 Agenda Fija Semanal</h4>
+                <button
+                  onClick={() => setVistaActiva('menu')}
+                  style={{ background: '#e2e8f0', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#334155' }}
+                >
+                  ← Volver al Menú de la Ficha
+                </button>
+              </div>
+
+              {cargandoAgenda ? (
+                <p style={{ color: '#64748b' }}>Cargando agenda fija...</p>
+              ) : sesionesFijas.length === 0 ? (
+                <p style={{ color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '20px', borderRadius: '8px', textAlign: 'center' }}>
+                  No se registran turnos fijos cargados para este paciente en la agenda.
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  
+                  {/* Vista Visual Semanal */}
+                  <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+                    <h5 style={{ margin: '0 0 15px 0', color: '#0f172a', fontSize: '14px', fontWeight: 'bold' }}>📅 Distribución Semanal</h5>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', minWidth: '500px', overflowX: 'auto' }}>
+                      {['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'].map(dia => {
+                        const turnosDia = sesionesFijas
+                          .filter(s => s.dia_semana === dia)
+                          .sort((a, b) => a.hora.localeCompare(b.hora));
+                        return (
+                          <div key={dia} style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px', minHeight: '150px', border: '1px solid #f1f5f9' }}>
+                            <div style={{ borderBottom: '2px solid #a855f7', paddingBottom: '6px', marginBottom: '10px', fontWeight: 'bold', fontSize: '13px', color: '#6b21a8', textAlign: 'center' }}>
+                              {dia}
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {turnosDia.length === 0 ? (
+                                <span style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic', textAlign: 'center', marginTop: '10px', display: 'block' }}>Sin turnos</span>
+                              ) : (
+                                turnosDia.map(t => {
+                                  const prof = usuariosList.find(u => String(u.id) === String(t.profesional_id));
+                                  return (
+                                    <div key={t.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '6px', fontSize: '11.5px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                                      <strong style={{ color: '#a855f7', display: 'block' }}>⏰ {t.hora}</strong>
+                                      <span style={{ color: '#475569', fontWeight: '500' }}>👤 {prof?.nombre || 'Sin prof'}</span>
+                                      {t.tipo_prestacion && (
+                                        <span style={{ display: 'block', fontSize: '10px', color: '#64748b', fontStyle: 'italic' }}>({t.tipo_prestacion})</span>
+                                      )}
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Detalle en Tabla */}
+                  <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', overflowX: 'auto', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+                    <h5 style={{ margin: '0 0 15px 0', color: '#0f172a', fontSize: '14px', fontWeight: 'bold' }}>📋 Detalle de Turnos</h5>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1' }}>
+                          <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Día</th>
+                          <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Hora</th>
+                          <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Prestador / Profesional</th>
+                          <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Observaciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sesionesFijas
+                          .sort((a, b) => {
+                            const ordenDias = { 'Lunes': 1, 'Martes': 2, 'Miércoles': 3, 'Jueves': 4, 'Viernes': 5 };
+                            const diaA = ordenDias[a.dia_semana] || 9;
+                            const diaB = ordenDias[b.dia_semana] || 9;
+                            if (diaA !== diaB) return diaA - diaB;
+                            return a.hora.localeCompare(b.hora);
+                          })
+                          .map(t => {
+                            const prof = usuariosList.find(u => String(u.id) === String(t.profesional_id));
+                            return (
+                              <tr key={t.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                <td style={{ padding: '10px', fontWeight: 'bold', color: '#6b21a8' }}>{t.dia_semana}</td>
+                                <td style={{ padding: '10px', fontWeight: '500' }}>{t.hora} hs</td>
+                                <td style={{ padding: '10px', color: '#334155' }}>{prof?.nombre || 'No asignado'}</td>
+                                <td style={{ padding: '10px', color: '#64748b', fontStyle: 'italic' }}>{t.observaciones || '-'}</td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+
                 </div>
               )}
             </div>
