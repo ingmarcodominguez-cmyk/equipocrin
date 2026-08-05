@@ -45,8 +45,6 @@ export default function PresupuestoPublico({ id }) {
   }, [id]);
 
   const handleAceptar = async () => {
-    if (!window.confirm('¿Está seguro de que desea ACEPTAR este presupuesto de tratamiento?')) return;
-    
     setProcesandoAccion(true);
     try {
       let nuevoNombre = documento.nombre_archivo || '';
@@ -62,7 +60,6 @@ export default function PresupuestoPublico({ id }) {
 
       setStatus('ACEPTADO');
       setDocumento(prev => ({ ...prev, nombre_archivo: nuevoNombre }));
-      alert('¡Presupuesto aceptado con éxito! Se ha informado al equipo de administración de CRIN.');
     } catch (err) {
       console.error('Error al aceptar presupuesto:', err);
       alert('Ocurrió un error al procesar la aceptación: ' + err.message);
