@@ -791,10 +791,22 @@ function App() {
                   onChange={(e) => setFechaSimuladaInput(e.target.value)}
                   style={{ flex: 1, padding: '6px', borderRadius: '5px', background: '#222', color: '#fff', border: '1px solid #444', fontSize: '13px' }}
                 />
-                <button 
-                  onClick={() => {
+                 <button 
+                  onClick={async () => {
                     localStorage.setItem('crin_fecha_trabajo_simulada', fechaSimuladaInput);
-                    alert(`¡Fecha de trabajo fijada a: ${fechaSimuladaInput}!`);
+                    setCargando(true);
+                    setMensajeCarga('Aplicando fecha simulada y calculando recargos...');
+                    try {
+                      const d = new Date(fechaSimuladaInput + 'T00:00:00');
+                      await generarCuotasMensualesDB(false);
+                      if (typeof ejecutarMotorRecargosDB === 'function') {
+                        await ejecutarMotorRecargosDB(d);
+                      }
+                      window.location.reload();
+                    } catch (err) {
+                      console.error("Error al fijar fecha y ejecutar mora:", err);
+                      window.location.reload();
+                    }
                   }}
                   style={{ padding: '6px 12px', background: '#00f2ff', color: '#000', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}
                 >
