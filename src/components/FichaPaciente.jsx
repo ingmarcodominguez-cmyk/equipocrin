@@ -610,7 +610,14 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
       cargarPrestadores();
       
       // Inicializar campos de pago por defecto
-      setFechaPago(localStorage.getItem('crin_fecha_trabajo_simulada') || new Date().toISOString().split('T')[0]);
+      const getTodayLocal = () => {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+      setFechaPago(localStorage.getItem('crin_fecha_trabajo_simulada') || getTodayLocal());
       setFormaPago('Efectivo');
       setBilleteraNombre('MERCADOPAGO');
       setBancoNombre('GALICIA');
@@ -2414,6 +2421,26 @@ const confirmarRegistroPago = async () => {
                     onChange={(e) => setFechaPago(e.target.value)}
                     style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px' }}
                   />
+                  {localStorage.getItem('crin_fecha_trabajo_simulada') && (
+                    <span style={{ fontSize: '11px', color: '#d97706', display: 'block', marginTop: '4px', fontWeight: 'bold' }}>
+                      ⚠️ Estás usando la fecha simulada del sistema ({fechaPago.split('-').reverse().join('/')}).{' '}
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          localStorage.removeItem('crin_fecha_trabajo_simulada');
+                          const today = new Date();
+                          const year = today.getFullYear();
+                          const month = String(today.getMonth() + 1).padStart(2, '0');
+                          const day = String(today.getDate()).padStart(2, '0');
+                          setFechaPago(`${year}-${month}-${day}`);
+                          window.location.reload();
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', textDecoration: 'underline', padding: 0, fontSize: '11px', fontWeight: 'bold' }}
+                      >
+                        (Restablecer fecha real)
+                      </button>
+                    </span>
+                  )}
                 </div>
 
                 <div style={{ marginBottom: '15px' }}>
