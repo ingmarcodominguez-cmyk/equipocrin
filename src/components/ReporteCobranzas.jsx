@@ -3,9 +3,9 @@ import { supabase } from '../lib/supabase.js';
 
 export default function ReporteCobranzas({ onVolver, usuario }) {
   // Dates default to today
-  const simulatedToday = localStorage.getItem('crin_fecha_trabajo_simulada') || new Date().toISOString().split('T')[0];
-  const [fechaInicio, setFechaInicio] = useState(simulatedToday);
-  const [fechaFin, setFechaFin] = useState(simulatedToday);
+  const getToday = () => localStorage.getItem('crin_fecha_trabajo_simulada') || new Date().toISOString().split('T')[0];
+  const [fechaInicio, setFechaInicio] = useState(getToday());
+  const [fechaFin, setFechaFin] = useState(getToday());
   const [cargando, setCargando] = useState(false);
   const [pagos, setPagos] = useState([]);
   const [pacientesMap, setPacientesMap] = useState({});
@@ -63,7 +63,10 @@ export default function ReporteCobranzas({ onVolver, usuario }) {
       }
     }
     cargarPacientes();
-    consultarPagos(simulatedToday, simulatedToday);
+    const todayVal = getToday();
+    setFechaInicio(todayVal);
+    setFechaFin(todayVal);
+    consultarPagos(todayVal, todayVal);
   }, []);
 
   const consultarPagos = async (start, end) => {
@@ -96,9 +99,10 @@ export default function ReporteCobranzas({ onVolver, usuario }) {
   };
 
   const establecerHoy = () => {
-    setFechaInicio(simulatedToday);
-    setFechaFin(simulatedToday);
-    consultarPagos(simulatedToday, simulatedToday);
+    const todayVal = getToday();
+    setFechaInicio(todayVal);
+    setFechaFin(todayVal);
+    consultarPagos(todayVal, todayVal);
   };
 
   const clasificarMedio = (medio) => {
@@ -158,7 +162,7 @@ export default function ReporteCobranzas({ onVolver, usuario }) {
     document.body.removeChild(link);
   };
 
-  const esHoy = fechaInicio === simulatedToday && fechaFin === simulatedToday;
+  const esHoy = fechaInicio === getToday() && fechaFin === getToday();
 
   return (
     <div style={{ background: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b' }}>

@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase';
 
 export default function CajaDiaria({ onVolver, usuario }) {
   const getLocalDateString = () => {
+    const fSimulada = localStorage.getItem('crin_fecha_trabajo_simulada');
+    if (fSimulada) return fSimulada;
     const today = new Date();
     const year = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, '0');
@@ -11,7 +13,9 @@ export default function CajaDiaria({ onVolver, usuario }) {
   };
 
   const getTomorrowLocalDateString = () => {
-    const tomorrow = new Date();
+    const fSimulada = localStorage.getItem('crin_fecha_trabajo_simulada');
+    const today = fSimulada ? new Date(fSimulada + 'T00:00:00') : new Date();
+    const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     const year = tomorrow.getFullYear();
     const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
