@@ -374,7 +374,11 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
       const fecha = mov.fecha_movimiento || mov.fecha_vencimiento || 'S/D';
       const prestacion = (mov.nombre_prestacion || '').replace(/;/g, ' ');
       const subtipo = (mov.subtipo || '').replace(/;/g, ' ');
-      const concepto = (mov.concepto || '').replace(/;/g, ' ');
+      let concepto = (mov.concepto || '').replace(/;/g, ' ');
+      const sub = (mov.subtipo || '').toUpperCase();
+      if (sub === 'RECARGO_MORA' || concepto.toUpperCase().includes('RECARGO') || sub.startsWith('RECARGO')) {
+        concepto += ` - ID Deuda: #${mov.id_deuda}`;
+      }
       
       const debeStr = valDebe !== 0 ? valDebe.toFixed(2).replace('.', ',') : '';
       const haberStr = valHaber !== 0 ? valHaber.toFixed(2).replace('.', ',') : '';
@@ -1923,7 +1927,14 @@ const confirmarRegistroPago = async () => {
                                   </span>
                                 </td>
                                 <td style={{ padding: '10px', fontWeight: 'bold', color: '#334155' }}>
-                                  {mov.concepto || 'S/D'}
+                                  {(() => {
+                                    const conc = mov.concepto || 'S/D';
+                                    const sub = (mov.subtipo || '').toUpperCase();
+                                    if (sub === 'RECARGO_MORA' || conc.toUpperCase().includes('RECARGO') || sub.startsWith('RECARGO')) {
+                                      return `${conc} - ID Deuda: #${mov.id_deuda}`;
+                                    }
+                                    return conc;
+                                  })()}
                                 </td>
                                 <td style={{ padding: '10px', textAlign: 'right', fontWeight: '600', color: valDebe > 0 ? '#dc2626' : '#64748b' }}>
                                   {valDebe > 0 ? `$${valDebe.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
