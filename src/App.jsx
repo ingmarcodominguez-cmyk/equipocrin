@@ -74,6 +74,24 @@ function App() {
     return () => listener.subscription.unsubscribe()
   }, [])
 
+  // Ejecución automática en segundo plano al iniciar sesión para ADMINISTRACIÓN o DIRECCIÓN
+  useEffect(() => {
+    if (userData && Object.keys(userData).length > 0) {
+      const rolNorm = normalizarRol(userData.rol);
+      if (rolNorm === 'ADMINISTRACION' || rolNorm === 'DIRECCION') {
+        console.log(`[Motor de Recargos Autónomo] Ejecutando verificación de mora en segundo plano...`);
+        const fechaActualTrabajo = obtenerFechaTrabajo();
+        generarCuotasMensualesDB(false).then(() => {
+          if (typeof ejecutarMotorRecargosDB === 'function') {
+            ejecutarMotorRecargosDB(fechaActualTrabajo);
+          }
+        }).catch(err => {
+          console.error("[Motor Autónomo] Error en ejecución automática:", err);
+        });
+      }
+    }
+  }, [userData]);
+
   async function cargarPerfil(userId) {
     setCargando(true)
     setMensajeCarga('Cargando perfil de usuario...')
