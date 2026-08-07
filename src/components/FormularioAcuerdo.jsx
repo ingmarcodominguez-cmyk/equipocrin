@@ -183,10 +183,36 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
 
     setGuardando(true)
 
+    let fechaAcuerdoFinal = form.fecha_acuerdo;
+    let esMensualDiferido = false;
+
+    if (esMensual) {
+      const [anioStr, mesStr, diaStr] = form.fecha_acuerdo.split('-').map(Number);
+      if (diaStr >= 25) {
+        esMensualDiferido = true;
+        // Obtener el primer día del mes siguiente
+        const fechaSig = new Date(anioStr, mesStr, 1);
+        const aSig = fechaSig.getFullYear();
+        const mSig = String(fechaSig.getMonth() + 1).padStart(2, '0');
+        fechaAcuerdoFinal = `${aSig}-${mSig}-01`;
+      } else if (diaStr >= 20 && diaStr <= 24) {
+        const quiereDiferir = window.confirm(
+          "¿Desea cargar este acuerdo con fecha 1 del mes siguiente?\n\nDe lo contrario, el paciente debe abonar los días faltantes del presente mes!!"
+        );
+        if (quiereDiferir) {
+          esMensualDiferido = true;
+          const fechaSig = new Date(anioStr, mesStr, 1);
+          const aSig = fechaSig.getFullYear();
+          const mSig = String(fechaSig.getMonth() + 1).padStart(2, '0');
+          fechaAcuerdoFinal = `${aSig}-${mSig}-01`;
+        }
+      }
+    }
+
     const datosGuardar = {
       id_paciente: parseInt(form.id_paciente, 10),
       id_prestacion: parseInt(form.id_prestacion, 10),
-      fecha_acuerdo: form.fecha_acuerdo,
+      fecha_acuerdo: fechaAcuerdoFinal,
       tipo_acuerdo: form.tipo_acuerdo,
       monto_cuota_base: String(form.monto_cuota_base), 
       importe_actual: String(form.monto_cuota_base), 
@@ -244,28 +270,12 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
         // REGLA CLAVE: 
         // - Si es UNICO: fecha_vencimiento es null (sin fecha de vencimiento).
         // - Si es MENSUAL (Cuota Inicial): se calcula por el sistema de tercios (10, 20 o fin de mes).
-        // ADVERTENCIA GENERAL: Acuerdos mensuales con fecha >= 25 se difieren al día 1 del mes siguiente.
-        let fechaAcuerdoCalculada = form.fecha_acuerdo;
-        let esMensualDiferido = false;
-
-        if (esMensual) {
-          const [anioStr, mesStr, diaStr] = form.fecha_acuerdo.split('-').map(Number);
-          if (diaStr >= 25) {
-            esMensualDiferido = true;
-            // Obtener el primer día del mes siguiente
-            const fechaSig = new Date(anioStr, mesStr, 1);
-            const aSig = fechaSig.getFullYear();
-            const mSig = String(fechaSig.getMonth() + 1).padStart(2, '0');
-            fechaAcuerdoCalculada = `${aSig}-${mSig}-01`;
-          }
-        }
-
         let fechaVencimientoCalculada = null;
         if (esMensual) {
-          fechaVencimientoCalculada = calcularVencimientoCuotaInicial(fechaAcuerdoCalculada);
+          fechaVencimientoCalculada = calcularVencimientoCuotaInicial(fechaAcuerdoFinal);
         }
 
-        const [anio, mes] = fechaAcuerdoCalculada.split('-');
+        const [anio, mes] = fechaAcuerdoFinal.split('-');
         const cicloMoraCalculado = parseInt(`${anio}${mes}`, 10);
 
         const subtipoMovimiento = esMensual ? 'cuota_mensual' : 'acuerdo_unico';
@@ -276,9 +286,9 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
           id_paciente: parseInt(form.id_paciente, 10),
           id_acuerdo: parseInt(idAcuerdoRegistrado, 10),
           id_deuda: siguienteIdDeuda,
-          fecha_cuota_origen: fechaAcuerdoCalculada,
+          fecha_cuota_origen: fechaAcuerdoFinal,
           fecha_vencimiento: fechaVencimientoCalculada, // NULL si es único, calculado por tercio si es cuota inicial mensual
-          fecha_movimiento: esMensualDiferido ? fechaAcuerdoCalculada : new Date().toISOString().split('T')[0],
+          fecha_movimiento: esMensualDiferido ? fechaAcuerdoFinal : new Date().toISOString().split('T')[0],
           ciclo_mora: cicloMoraCalculado,
           escalon_mora: '0',
           tipo_movimiento: 'cuota',
