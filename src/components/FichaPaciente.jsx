@@ -21,6 +21,18 @@ const deducirSesiones = (valores) => {
   return valores.map(v => (v > 0.01 ? Math.round(v / minVal) : 0));
 };
 
+const formatearFechaDDMMAAAA = (fechaStr) => {
+  if (!fechaStr || fechaStr === 'S/D') return 'S/D';
+  if (fechaStr.includes('/')) return fechaStr;
+  const cleanStr = fechaStr.split('T')[0].trim();
+  const parts = cleanStr.split('-');
+  if (parts.length === 3) {
+    const [year, month, day] = parts;
+    return `${day}/${month}/${year}`;
+  }
+  return fechaStr;
+};
+
 export default function FichaPaciente({ onVolver, usuario, pacientePreseleccionado }) {
   const [listaPacientes, setListaPacientes] = useState([]);
 
@@ -1844,7 +1856,7 @@ const confirmarRegistroPago = async () => {
                               {deuda.concepto}
                             </td>
                             <td style={{ padding: '10px', color: '#475569', whiteSpace: 'nowrap' }}>
-                              {deuda.fecha_vencimiento}
+                              {formatearFechaDDMMAAAA(deuda.fecha_vencimiento)}
                             </td>
                             <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: deuda.saldoReal > 0 ? '#dc2626' : '#16a34a', fontSize: '14px' }}>
                               ${deuda.saldoReal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1923,7 +1935,7 @@ const confirmarRegistroPago = async () => {
                             return (
                               <tr key={mov.id_movimiento || index} style={{ borderBottom: '1px solid #e2e8f0' }}>
                                 <td style={{ padding: '10px', color: '#475569', whiteSpace: 'nowrap' }}>
-                                  {mov.fecha_movimiento || mov.fecha_vencimiento || 'S/D'}
+                                  {formatearFechaDDMMAAAA(mov.fecha_movimiento || mov.fecha_vencimiento)}
                                 </td>
                                 <td style={{ padding: '10px', fontWeight: '500', color: '#2563eb' }}>
                                   {mov.nombre_prestacion}
