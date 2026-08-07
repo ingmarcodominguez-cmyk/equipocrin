@@ -1517,10 +1517,75 @@ const confirmarRegistroPago = async () => {
     } catch (error) {
       console.error("Error al revertir pago:", error);
       alert("Error al revertir pago: " + error.message);
-    } finally {
-      setCargando(false);
-    }
-  };
+      } finally {
+        setCargando(false);
+      }
+    };
+
+    const manejarEliminacionAjuste = async (mov) => {
+      const esNC = String(mov.subtipo || '').toLowerCase() === 'nota_credito';
+      const tipoTexto = esNC ? 'Nota de Crédito' : 'Nota de Débito';
+      const importeStr = esNC ? mov.haber : mov.debe;
+
+      if (!window.confirm(`¿Está seguro de que desea eliminar esta ${tipoTexto} por $${parseFloat(importeStr).toLocaleString('es-AR')}?\nEsta acción eliminará el registro de forma permanente en la cuenta corriente del paciente y en el módulo de ajustes.`)) {
+        return;
+      }
+
+      setCargando(true);
+      setMensaje({ texto: `Eliminando ${tipoTexto}...`, tipo: 'info' });
+
+      try {
+        // 1. Eliminar el movimiento seleccionado y cualquier otro movimiento del mismo lote de ajuste
+        const { error: errDelMov } = await supabase
+          .from('movimientoscuenta_motor')
+          .delete()
+          .eq('id_paciente', mov.id_paciente)
+          .eq('fecha_movimiento', mov.fecha_movimiento)
+          .eq('tipo_movimiento', mov.tipo_movimiento)
+          .eq('subtipo', mov.subtipo)
+          .eq('concepto', mov.concepto);
+
+        if (errDelMov) throw errDelMov;
+
+        // 2. Determinar concepto original para eliminar la cabecera en la tabla de ajustes_motor
+        const prefijo = esNC ? 'N.Crédito: ' : 'N.Débito: ';
+        let conceptoOriginal = mov.concepto || '';
+        if (conceptoOriginal.startsWith(prefijo)) {
+          conceptoOriginal = conceptoOriginal.substring(prefijo.length);
+        } else if (conceptoOriginal.startsWith('N.Crédito:')) {
+          conceptoOriginal = conceptoOriginal.substring('N.Crédito:'.length);
+        } else if (conceptoOriginal.startsWith('N.Débito:')) {
+          conceptoOriginal = conceptoOriginal.substring('N.Débito:'.length);
+        }
+
+        conceptoOriginal = conceptoOriginal.trim();
+
+        // Buscamos eliminar en la tabla ajustes_motor
+        const { error: errDelAjuste } = await supabase
+          .from('ajustes_motor')
+          .delete()
+          .eq('id_paciente', mov.id_paciente)
+          .eq('fecha_ajuste', mov.fecha_movimiento)
+          .eq('tipo_ajuste', mov.subtipo)
+          .or(`concepto.eq."${conceptoOriginal}",concepto.eq."${esNC ? 'Nota de Crédito' : 'Nota de Débito'}"`);
+
+        if (errDelAjuste) {
+          console.warn("No se pudo eliminar de ajustes_motor:", errDelAjuste.message);
+        }
+
+        setMensaje({ texto: `${tipoTexto} eliminada correctamente de todos los registros.`, tipo: 'exito' });
+        setTimeout(() => setMensaje({ texto: '', tipo: '' }), 4000);
+        
+        // Recargar la ficha
+        seleccionarPacientePorId({ target: { value: pacienteSeleccionado.id_paciente } });
+
+      } catch (error) {
+        console.error("Error al eliminar ajuste:", error);
+        alert("Error al eliminar ajuste: " + error.message);
+      } finally {
+        setCargando(false);
+      }
+    };
 
   const obtenerColorEstado = (estado) => {
     const est = (estado || '').toLowerCase();
@@ -1986,6 +2051,17 @@ const confirmarRegistroPago = async () => {
                                         Revertir
                                       </button>
                                     )}
+                                    {String(mov.tipo_movimiento || '').toLowerCase() === 'ajuste' && 
+                                      (String(mov.subtipo || '').toLowerCase() === 'nota_credito' || String(mov.subtipo || '').toLowerCase() === 'nota_debito') && (
+                                       <button
+                                         onClick={() => manejarEliminacionAjuste(mov)}
+                                         style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold', transition: 'background 0.2s' }}
+                                         onMouseOver={(e) => e.target.style.background = '#991b1b'}
+                                         onMouseOut={(e) => e.target.style.background = '#dc2626'}
+                                       >
+                                         Eliminar
+                                       </button>
+                                     )}
                                   </div>
                                 </td>
                               </tr>
