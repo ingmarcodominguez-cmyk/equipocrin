@@ -16,6 +16,7 @@ import AjusteMasivo from './components/AjusteMasivo.jsx'
 import ReporteCobranzas from './components/ReporteCobranzas.jsx'
 import Presupuesto from './components/Presupuesto.jsx'
 import PresupuestoPublico from './components/PresupuestoPublico.jsx'
+import PlanillaGastos from './components/PlanillaGastos.jsx'
 
 const normalizarRol = (r) => {
   if (!r) return '';
@@ -1109,6 +1110,12 @@ function App() {
           </div>
         )}
 
+        {crinAccion === 'PLANILLA_EXPENSAS' && (
+          <div style={{ width: '100%', maxWidth: '1200px' }}>
+            <PlanillaGastos onVolver={() => setCrinAccion(null)} usuario={userData?.nombre || session?.user?.email || 'Usuario'} />
+          </div>
+        )}
+
         {!crinAccion && (
           <div style={{ 
             width: '100%', 
@@ -1613,6 +1620,39 @@ function App() {
             >
               <div style={{ fontSize: '36px', marginBottom: '12px' }}>📄✍️</div>
               CREAR PRESUPUESTO
+            </button>
+
+            {/* Button 15: PLANILLA EXPENSAS */}
+            <button 
+              onClick={() => handleAccionClick('PLANILLA_EXPENSAS')}
+              style={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '30px 15px', 
+                background: 'linear-gradient(135deg, #f0fdfa 100%, #ccfbf1 0%)', 
+                color: '#0f766e', 
+                border: '2px solid #99f6e4', 
+                borderRadius: '16px', 
+                cursor: 'pointer', 
+                fontWeight: '800', 
+                fontSize: '15px', 
+                textAlign: 'center',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                transition: 'transform 0.2s, box-shadow 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'scale(1.03)';
+                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+              }}
+            >
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>🏢💸</div>
+              PLANILLA EXPENSAS
             </button>
           </div>
         </div>
