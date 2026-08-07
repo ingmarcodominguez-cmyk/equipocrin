@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from './lib/supabase.js'
 import Layout from './components/Layout.jsx'
 import FormularioPaciente from './components/FormularioPaciente.jsx'
@@ -27,6 +27,7 @@ const normalizarRol = (r) => {
 };
 
 function App() {
+  const loadedUserIdRef = useRef(null)
   const [session, setSession] = useState(null)
   const [userData, setUserData] = useState(null)
   const [email, setEmail] = useState('')
@@ -93,6 +94,9 @@ function App() {
   }, [userData]);
 
   async function cargarPerfil(userId) {
+    if (loadedUserIdRef.current === userId) {
+      return;
+    }
     setCargando(true)
     setMensajeCarga('Cargando perfil de usuario...')
     try {
@@ -104,6 +108,7 @@ function App() {
         console.log("Perfil del usuario cargado:", perfil);
         const uData = perfil || {};
         setUserData(uData);
+        loadedUserIdRef.current = userId;
         
         // Auto-seleccionar modo 'app' para usuarios no administradores
         const rolNorm = normalizarRol(uData.rol);
@@ -656,6 +661,7 @@ function App() {
   }
 
   async function logout() {
+    loadedUserIdRef.current = null;
     await supabase.auth.signOut()
     setModoSeleccionado(null)
     setCrinAccion(null)
