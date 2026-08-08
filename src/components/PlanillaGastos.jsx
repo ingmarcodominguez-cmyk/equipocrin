@@ -36,7 +36,7 @@ export default function PlanillaGastos({ onVolver, usuario }) {
   });
 
   // Estado para la simulación de división
-  const [cantProfesionales, setCantProfesionales] = useState('5');
+  const [cantProfesionales, setCantProfesionales] = useState('8');
 
   // Conceptos predefinidos
   const conceptosPredefinidos = [
