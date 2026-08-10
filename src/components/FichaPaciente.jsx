@@ -86,6 +86,10 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
   // Estados para Nota de Crédito / Débito (Ajustes)
   const [modalAjusteAbierto, setModalAjusteAbierto] = useState(false);
   const [tipoAjusteSeleccionado, setTipoAjusteSeleccionado] = useState('nota_credito');
+
+  // Estados para Modal de Historial de ID Deuda
+  const [historialDeudaModal, setHistorialDeudaModal] = useState(null);
+  const [cargandoHistorialDeuda, setCargandoHistorialDeuda] = useState(false);
   const [deudaAjusteId, setDeudaAjusteId] = useState('');
   const [importeAjuste, setImporteAjuste] = useState('');
   const [fechaAjuste, setFechaAjuste] = useState('');
@@ -1587,6 +1591,34 @@ const confirmarRegistroPago = async () => {
       }
     };
 
+    const consultarHistorialDeuda = async (idDeuda) => {
+      setCargandoHistorialDeuda(true);
+      try {
+        const { data: movimientos, error: errorMov } = await supabase
+          .from('movimientoscuenta_motor')
+          .select('*')
+          .eq('id_deuda', idDeuda)
+          .order('id_movimiento', { ascending: true });
+
+        if (errorMov) throw errorMov;
+
+        if (!movimientos || movimientos.length === 0) {
+          alert("No se encontraron movimientos para el ID Deuda " + idDeuda);
+          return;
+        }
+
+        setHistorialDeudaModal({
+          idDeuda,
+          movimientos
+        });
+      } catch (err) {
+        console.error("Error al consultar historial:", err);
+        alert("Error al cargar el historial: " + err.message);
+      } finally {
+        setCargandoHistorialDeuda(false);
+      }
+    };
+
   const obtenerColorEstado = (estado) => {
     const est = (estado || '').toLowerCase();
     if (est.includes('activo')) return { bg: '#dcfce7', color: '#166534' };
@@ -1891,6 +1923,42 @@ const confirmarRegistroPago = async () => {
                 </p>
               ) : (
                 <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
+                    <span style={{ fontSize: '13px', color: '#0f766e', fontWeight: 'bold' }}>
+                      💡 Hacé clic sobre el número de ID Deuda (ej: #959) para ver su historial completo.
+                    </span>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Buscar ID Deuda:</label>
+                      <input 
+                        type="text" 
+                        placeholder="Ej: 33..."
+                        id="criterioBusquedaDeudaFicha"
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Enter') {
+                            const val = e.target.value.trim();
+                            if (val) {
+                              await consultarHistorialDeuda(parseInt(val, 10));
+                              e.target.value = '';
+                            }
+                          }
+                        }}
+                        style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', width: '90px', fontSize: '13px', outline: 'none' }}
+                      />
+                      <button 
+                        onClick={async () => {
+                          const el = document.getElementById('criterioBusquedaDeudaFicha');
+                          const val = el ? el.value.trim() : '';
+                          if (val) {
+                            await consultarHistorialDeuda(parseInt(val, 10));
+                            el.value = '';
+                          }
+                        }}
+                        style={{ background: '#0f766e', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                      >
+                        Consultar
+                      </button>
+                    </div>
+                  </div>
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', fontSize: '13px', textAlign: 'left' }}>
                       <thead>
@@ -1906,7 +1974,17 @@ const confirmarRegistroPago = async () => {
                       <tbody>
                         {deudasAgrupadas.map((deuda) => (
                           <tr key={deuda.id_deuda} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                            <td style={{ padding: '10px', fontWeight: 'bold', color: '#0f172a' }}>
+                            <td 
+                              onClick={() => consultarHistorialDeuda(deuda.id_deuda)}
+                              style={{ 
+                                padding: '10px', 
+                                fontWeight: 'bold', 
+                                color: '#0f766e', 
+                                cursor: 'pointer',
+                                textDecoration: 'underline'
+                              }}
+                              title="Ver historial completo de esta deuda"
+                            >
                               #{deuda.id_deuda}
                             </td>
                             <td style={{ padding: '10px', fontWeight: '500', color: '#2563eb' }}>
@@ -3086,6 +3164,141 @@ const confirmarRegistroPago = async () => {
         </div>
       )}
 
+        </div>
+      )}
+
+      {/* MODAL DE HISTORIAL DE DEUDA POR ID */}
+      {historialDeudaModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999999 }}>
+          <div style={{ background: '#fff', borderRadius: '20px', width: '90%', maxWidth: '850px', padding: '25px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #0f766e', paddingBottom: '12px', marginBottom: '15px' }}>
+              <h3 style={{ margin: 0, color: '#0f766e', fontSize: '18px', fontWeight: '800' }}>
+                📊 Historial del ID Deuda: #{historialDeudaModal.idDeuda}
+              </h3>
+              <button 
+                onClick={() => setHistorialDeudaModal(null)} 
+                style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
+              >
+                Cerrar
+              </button>
+            </div>
+
+            {/* Resumen del Balance de este ID Deuda */}
+            {(() => {
+              let totalDebe = 0;
+              let totalHaber = 0;
+              historialDeudaModal.movimientos.forEach(m => {
+                const parseVal = (val) => {
+                  if (val === null || val === undefined || val === '') return 0;
+                  if (typeof val === 'number') return val;
+                  const valStr = String(val).trim();
+                  if (valStr.includes(',')) {
+                    const clean = valStr.replace(/\./g, '').replace(',', '.');
+                    const res = parseFloat(clean);
+                    return isNaN(res) ? 0 : res;
+                  }
+                  const res = parseFloat(valStr);
+                  return isNaN(res) ? 0 : res;
+                };
+                totalDebe += parseVal(m.debe);
+                totalHaber += parseVal(m.haber);
+              });
+              const saldoPendiente = totalDebe - totalHaber;
+
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '18px' }}>
+                  <div style={{ background: '#f8fafc', padding: '10px 15px', borderRadius: '10px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold' }}>TOTAL DEBE</span>
+                    <h4 style={{ margin: '4px 0 0 0', color: '#dc2626', fontSize: '16px', fontWeight: '800' }}>
+                      ${totalDebe.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </h4>
+                  </div>
+                  <div style={{ background: '#f8fafc', padding: '10px 15px', borderRadius: '10px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold' }}>TOTAL HABER</span>
+                    <h4 style={{ margin: '4px 0 0 0', color: '#16a34a', fontSize: '16px', fontWeight: '800' }}>
+                      ${totalHaber.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </h4>
+                  </div>
+                  <div style={{ background: saldoPendiente > 0.01 ? '#fef2f2' : '#f0fdf4', padding: '10px 15px', borderRadius: '10px', border: '1px solid', borderColor: saldoPendiente > 0.01 ? '#fecaca' : '#bbf7d0', textAlign: 'center' }}>
+                    <span style={{ fontSize: '11px', color: saldoPendiente > 0.01 ? '#b91c1c' : '#15803d', fontWeight: 'bold' }}>SALDO PENDIENTE</span>
+                    <h4 style={{ margin: '4px 0 0 0', color: saldoPendiente > 0.01 ? '#dc2626' : '#16a34a', fontSize: '16px', fontWeight: '800' }}>
+                      ${saldoPendiente.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </h4>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Listado de movimientos */}
+            <div style={{ overflowY: 'auto', maxHeight: '350px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 10 }}>
+                    <th style={{ padding: '10px', color: '#475569', fontWeight: 'bold' }}>Fecha</th>
+                    <th style={{ padding: '10px', color: '#475569', fontWeight: 'bold' }}>Tipo</th>
+                    <th style={{ padding: '10px', color: '#475569', fontWeight: 'bold' }}>Concepto</th>
+                    <th style={{ padding: '10px', color: '#475569', fontWeight: 'bold', textAlign: 'right' }}>Debe (+)</th>
+                    <th style={{ padding: '10px', color: '#475569', fontWeight: 'bold', textAlign: 'right' }}>Haber (-)</th>
+                    <th style={{ padding: '10px', color: '#475569', fontWeight: 'bold' }}>Usuario</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historialDeudaModal.movimientos.map((m, index) => {
+                    const parseVal = (val) => {
+                      if (val === null || val === undefined || val === '') return 0;
+                      if (typeof val === 'number') return val;
+                      const valStr = String(val).trim();
+                      if (valStr.includes(',')) {
+                        const clean = valStr.replace(/\./g, '').replace(',', '.');
+                        const res = parseFloat(clean);
+                        return isNaN(res) ? 0 : res;
+                      }
+                      const res = parseFloat(valStr);
+                      return isNaN(res) ? 0 : res;
+                    };
+                    const debe = parseVal(m.debe);
+                    const haber = parseVal(m.haber);
+
+                    return (
+                      <tr key={m.id_movimiento || index} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '10px', color: '#334155', fontWeight: '500' }}>
+                          {(() => {
+                            if (!m.fecha_movimiento) return 'S/D';
+                            const parts = m.fecha_movimiento.split('T')[0].split('-');
+                            return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : m.fecha_movimiento;
+                          })()}
+                        </td>
+                        <td style={{ padding: '10px' }}>
+                          <span style={{ 
+                            padding: '2px 6px', 
+                            borderRadius: '4px', 
+                            fontSize: '10px', 
+                            fontWeight: 'bold',
+                            background: m.tipo_movimiento?.toUpperCase() === 'CUOTA' ? '#e0f2fe' : m.tipo_movimiento?.toUpperCase() === 'PAGO' ? '#dcfce7' : '#fef3c7',
+                            color: m.tipo_movimiento?.toUpperCase() === 'CUOTA' ? '#0369a1' : m.tipo_movimiento?.toUpperCase() === 'PAGO' ? '#15803d' : '#b45309'
+                          }}>
+                            {m.tipo_movimiento || m.subtipo || 'S/D'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px', color: '#475569' }}>
+                          {m.concepto || 'S/D'}
+                        </td>
+                        <td style={{ padding: '10px', textAlign: 'right', fontWeight: '600', color: debe > 0 ? '#dc2626' : '#94a3b8' }}>
+                          {debe > 0 ? `$${debe.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
+                        </td>
+                        <td style={{ padding: '10px', textAlign: 'right', fontWeight: '600', color: haber > 0 ? '#16a34a' : '#94a3b8' }}>
+                          {haber > 0 ? `$${haber.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
+                        </td>
+                        <td style={{ padding: '10px', color: '#64748b' }}>
+                          {m.usuario || 'Sistema'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
