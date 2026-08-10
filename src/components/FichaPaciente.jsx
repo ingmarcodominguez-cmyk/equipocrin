@@ -87,6 +87,12 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
   const [modalAjusteAbierto, setModalAjusteAbierto] = useState(false);
   const [tipoAjusteSeleccionado, setTipoAjusteSeleccionado] = useState('nota_credito');
 
+  // Estados para Pago Combinado / Split
+  const [usarPagoCombinado, setUsarPagoCombinado] = useState(false);
+  const [pagoEfectivo, setPagoEfectivo] = useState('');
+  const [pagoBilletera, setPagoBilletera] = useState('');
+  const [pagoBanco, setPagoBanco] = useState('');
+
   // Estados para Modal de Historial de ID Deuda
   const [historialDeudaModal, setHistorialDeudaModal] = useState(null);
   const [cargandoHistorialDeuda, setCargandoHistorialDeuda] = useState(false);
@@ -642,6 +648,10 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
       setEntregadoPor(pacienteSeleccionado?.nombre_apellido || '');
       setImportePago('');
       setDeudaSeleccionadaId('');
+      setUsarPagoCombinado(false);
+      setPagoEfectivo('');
+      setPagoBilletera('');
+      setPagoBanco('');
     }
   }, [modalPagoAbierto, pacienteSeleccionado, usuario]);
 
@@ -665,16 +675,36 @@ const confirmarRegistroPago = async () => {
       return;
     }
     
-    // 4. Validar Detalles según la Forma de Pago
-    if (formaPago === 'QR (Mercado Pago)') {
-      if (!billeteraNombre || billeteraNombre.trim() === '') {
-        alert("Por favor seleccione la billetera virtual.");
+    // 4. Validar Detalles según la Forma de Pago (Simple o Combinada)
+    if (usarPagoCombinado) {
+      const valEf = parseFloat(pagoEfectivo) || 0;
+      const valBi = parseFloat(pagoBilletera) || 0;
+      const valBa = parseFloat(pagoBanco) || 0;
+      const sumaMetodos = Math.round((valEf + valBi + valBa) * 100) / 100;
+      
+      if (Math.abs(sumaMetodos - importeNum) > 0.01) {
+        alert(`La suma de los medios de pago ($${sumaMetodos.toLocaleString('es-AR')}) no coincide con el importe total a pagar ($${importeNum.toLocaleString('es-AR')}).`);
         return;
       }
-    } else if (formaPago === 'Transferencia / Depósito') {
-      if (!bancoNombre || bancoNombre.trim() === '') {
-        alert("Por favor seleccione el banco receptor.");
+      if (valBi > 0 && (!billeteraNombre || billeteraNombre.trim() === '')) {
+        alert("Por favor seleccione la billetera virtual para el cobro por QR.");
         return;
+      }
+      if (valBa > 0 && (!bancoNombre || bancoNombre.trim() === '')) {
+        alert("Por favor seleccione el banco receptor para la transferencia.");
+        return;
+      }
+    } else {
+      if (formaPago === 'QR (Mercado Pago)') {
+        if (!billeteraNombre || billeteraNombre.trim() === '') {
+          alert("Por favor seleccione la billetera virtual.");
+          return;
+        }
+      } else if (formaPago === 'Transferencia / Depósito') {
+        if (!bancoNombre || bancoNombre.trim() === '') {
+          alert("Por favor seleccione el banco receptor.");
+          return;
+        }
       }
     }
     
@@ -844,56 +874,113 @@ const confirmarRegistroPago = async () => {
         
       if (errInsertMovs) throw errInsertMovs;
       
-      if (formaPago === 'Efectivo') {
-        const registroCaja = {
-          fecha: fechaPago,
-          usuario: usuario || 'Sistema',
-          recibido_por: null,
-          entregado_por: null,
-          turno: null,
-          id_turno: null,
-          tipo: 'INGRESO',
-          concepto: `Cobranza paciente: ${pacienteSeleccionado.nombre_apellido}`,
-          medio_pago: 'EFECTIVO',
-          importe: importeNum.toString(),
-          saldo: '0.00',
-          id_pago: nextIdPago,
-          observaciones: `Imputado a deuda ID: ${deudaSeleccionadaId}`,
-          cierre_turno: false
-        };
-        
-        const { error: errCaja } = await supabase.from('caja_motor').insert([registroCaja]);
-        if (errCaja) throw errCaja;
-        
-      } else if (formaPago === 'QR (Mercado Pago)') {
-        const registroBilletera = {
-          fecha: fechaPago,
-          usuario: usuario || 'Sistema',
-          billetera: billeteraNombre.toUpperCase(),
-          tipo: 'INGRESO',
-          concepto: `Cobranza paciente QR: ${pacienteSeleccionado.nombre_apellido}`,
-          importe: importeNum,
-          saldo: importeNum,
-          id_pago: nextIdPago
-        };
-        
-        const { error: errBill } = await supabase.from('billeteras_motor').insert([registroBilletera]);
-        if (errBill) throw errBill;
-        
-      } else if (formaPago === 'Transferencia / Depósito') {
-        const registroBanco = {
-          fecha: fechaPago,
-          usuario: usuario || 'Sistema',
-          banco: bancoNombre.toUpperCase(),
-          tipo: 'INGRESO',
-          concepto: `Cobranza paciente Transf: ${pacienteSeleccionado.nombre_apellido}`,
-          importe: importeNum,
-          saldo: importeNum,
-          id_pago: nextIdPago
-        };
-        
-        const { error: errBanco } = await supabase.from('bancos_motor').insert([registroBanco]);
-        if (errBanco) throw errBanco;
+      if (usarPagoCombinado) {
+        const valEf = parseFloat(pagoEfectivo) || 0;
+        const valBi = parseFloat(pagoBilletera) || 0;
+        const valBa = parseFloat(pagoBanco) || 0;
+
+        if (valEf > 0) {
+          const registroCaja = {
+            fecha: fechaPago,
+            usuario: usuario || 'Sistema',
+            recibido_por: null,
+            entregado_por: null,
+            turno: null,
+            id_turno: null,
+            tipo: 'INGRESO',
+            concepto: `Cobranza paciente (Efectivo/Comb): ${pacienteSeleccionado.nombre_apellido}`,
+            medio_pago: 'EFECTIVO',
+            importe: valEf.toString(),
+            saldo: '0.00',
+            id_pago: nextIdPago,
+            observaciones: `Imputado a deuda ID: ${deudaSeleccionadaId} | Parte de Pago Combinado`,
+            cierre_turno: false
+          };
+          const { error: errCaja } = await supabase.from('caja_motor').insert([registroCaja]);
+          if (errCaja) throw errCaja;
+        }
+
+        if (valBi > 0) {
+          const registroBilletera = {
+            fecha: fechaPago,
+            usuario: usuario || 'Sistema',
+            billetera: billeteraNombre.toUpperCase(),
+            tipo: 'INGRESO',
+            concepto: `Cobranza paciente QR (Comb): ${pacienteSeleccionado.nombre_apellido}`,
+            importe: valBi,
+            saldo: valBi,
+            id_pago: nextIdPago
+          };
+          const { error: errBill } = await supabase.from('billeteras_motor').insert([registroBilletera]);
+          if (errBill) throw errBill;
+        }
+
+        if (valBa > 0) {
+          const registroBanco = {
+            fecha: fechaPago,
+            usuario: usuario || 'Sistema',
+            banco: bancoNombre.toUpperCase(),
+            tipo: 'INGRESO',
+            concepto: `Cobranza paciente Transf (Comb): ${pacienteSeleccionado.nombre_apellido}`,
+            importe: valBa,
+            saldo: valBa,
+            id_pago: nextIdPago
+          };
+          const { error: errBanco } = await supabase.from('bancos_motor').insert([registroBanco]);
+          if (errBanco) throw errBanco;
+        }
+      } else {
+        if (formaPago === 'Efectivo') {
+          const registroCaja = {
+            fecha: fechaPago,
+            usuario: usuario || 'Sistema',
+            recibido_por: null,
+            entregado_por: null,
+            turno: null,
+            id_turno: null,
+            tipo: 'INGRESO',
+            concepto: `Cobranza paciente: ${pacienteSeleccionado.nombre_apellido}`,
+            medio_pago: 'EFECTIVO',
+            importe: importeNum.toString(),
+            saldo: '0.00',
+            id_pago: nextIdPago,
+            observaciones: `Imputado a deuda ID: ${deudaSeleccionadaId}`,
+            cierre_turno: false
+          };
+          
+          const { error: errCaja } = await supabase.from('caja_motor').insert([registroCaja]);
+          if (errCaja) throw errCaja;
+          
+        } else if (formaPago === 'QR (Mercado Pago)') {
+          const registroBilletera = {
+            fecha: fechaPago,
+            usuario: usuario || 'Sistema',
+            billetera: billeteraNombre.toUpperCase(),
+            tipo: 'INGRESO',
+            concepto: `Cobranza paciente QR: ${pacienteSeleccionado.nombre_apellido}`,
+            importe: importeNum,
+            saldo: importeNum,
+            id_pago: nextIdPago
+          };
+          
+          const { error: errBill } = await supabase.from('billeteras_motor').insert([registroBilletera]);
+          if (errBill) throw errBill;
+          
+        } else if (formaPago === 'Transferencia / Depósito') {
+          const registroBanco = {
+            fecha: fechaPago,
+            usuario: usuario || 'Sistema',
+            banco: bancoNombre.toUpperCase(),
+            tipo: 'INGRESO',
+            concepto: `Cobranza paciente Transf: ${pacienteSeleccionado.nombre_apellido}`,
+            importe: importeNum,
+            saldo: importeNum,
+            id_pago: nextIdPago
+          };
+          
+          const { error: errBanco } = await supabase.from('bancos_motor').insert([registroBanco]);
+          if (errBanco) throw errBanco;
+        }
       }
       
       const totalSesiones = Object.values(sesionesPrestadores).reduce((acc, curr) => acc + (parseInt(curr) || 0), 0);
@@ -938,14 +1025,20 @@ const confirmarRegistroPago = async () => {
         if (errInsertPrestadores) throw errInsertPrestadores;
       }
       
+      const valEf = parseFloat(pagoEfectivo) || 0;
+      const valBi = parseFloat(pagoBilletera) || 0;
+      const valBa = parseFloat(pagoBanco) || 0;
+
       const nuevoRegistroPago = {
         id_pago: nextIdPago,
         id_cuota: null,
         id_paciente: pacienteSeleccionado.id_paciente.toString(),
         fecha_pago: fechaPago,
         importe: importeNum.toString().replace('.', ','),
-        observacion: `Imputado a deuda ID: ${deudaSeleccionadaId}`,
-        forma_pago: formaPago.toUpperCase(),
+        observacion: usarPagoCombinado 
+          ? `Cobro combinado | ID Deuda: ${deudaSeleccionadaId} | Ef: $${valEf}, MP: $${valBi}, Transf: $${valBa}`
+          : `Imputado a deuda ID: ${deudaSeleccionadaId}`,
+        forma_pago: usarPagoCombinado ? 'COMBINADO' : formaPago.toUpperCase(),
         usuario: usuario || 'Sistema',
         fecha_registro: new Date().toISOString(),
         id_acuerdo: deudaSeleccionadaObj ? deudaSeleccionadaObj.id_acuerdo : null,
@@ -2508,7 +2601,7 @@ const confirmarRegistroPago = async () => {
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: formaPago === 'Efectivo' ? '1fr' : '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: (usarPagoCombinado || formaPago === 'Efectivo') ? '1fr' : '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
               
               {/* Columna Izquierda: Detalles del Pago */}
               <div>
@@ -2609,24 +2702,149 @@ const confirmarRegistroPago = async () => {
                   )}
                 </div>
 
-                <div style={{ marginBottom: '15px' }}>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
-                    Forma de Pago *
+                <div style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input 
+                    type="checkbox" 
+                    id="checkboxPagoCombinado"
+                    checked={usarPagoCombinado} 
+                    onChange={(e) => {
+                      setUsarPagoCombinado(e.target.checked);
+                      if (e.target.checked) {
+                        setPagoEfectivo('');
+                        setPagoBilletera('');
+                        setPagoBanco('');
+                      }
+                    }}
+                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                  <label htmlFor="checkboxPagoCombinado" style={{ fontSize: '13px', fontWeight: 'bold', color: '#0f766e', cursor: 'pointer' }}>
+                    🔀 Combinar múltiples medios de pago
                   </label>
-                  <select
-                    value={formaPago}
-                    onChange={(e) => setFormaPago(e.target.value)}
-                    style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', background: '#f8fafc', color: '#0f172a' }}
-                  >
-                    <option value="Efectivo">Efectivo (Va a Caja)</option>
-                    <option value="QR (Mercado Pago)">QR / Mercado Pago (Va a Billetera)</option>
-                    <option value="Transferencia / Depósito">Transferencia / Depósito (Va a Banco)</option>
-                  </select>
                 </div>
+
+                {!usarPagoCombinado && (
+                  <div style={{ marginBottom: '15px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
+                      Forma de Pago *
+                    </label>
+                    <select
+                      value={formaPago}
+                      onChange={(e) => setFormaPago(e.target.value)}
+                      style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', background: '#f8fafc', color: '#0f172a' }}
+                    >
+                      <option value="Efectivo">Efectivo (Va a Caja)</option>
+                      <option value="QR (Mercado Pago)">QR / Mercado Pago (Va a Billetera)</option>
+                      <option value="Transferencia / Depósito">Transferencia / Depósito (Va a Banco)</option>
+                    </select>
+                  </div>
+                )}
               </div>
 
-              {/* Columna Derecha: Campos Condicionales según Medio de Pago (solo si no es Efectivo) */}
-              {formaPago !== 'Efectivo' && (
+              {/* Seccion Combinada */}
+              {usarPagoCombinado && (
+                <div style={{ background: '#f0fdfa', border: '1px solid #99f6e4', padding: '15px', borderRadius: '10px', width: '100%', boxSizing: 'border-box' }}>
+                  <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 'bold', color: '#0f766e' }}>
+                    🔀 Desglose del Pago Combinado
+                  </h4>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '15px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>
+                        Monto en Efectivo ($):
+                      </label>
+                      <input 
+                        type="number"
+                        placeholder="0"
+                        value={pagoEfectivo}
+                        onChange={(e) => setPagoEfectivo(e.target.value)}
+                        style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>
+                        Monto en QR / Mercado Pago ($):
+                      </label>
+                      <input 
+                        type="number"
+                        placeholder="0"
+                        value={pagoBilletera}
+                        onChange={(e) => setPagoBilletera(e.target.value)}
+                        style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', boxSizing: 'border-box', marginBottom: '5px' }}
+                      />
+                      {parseFloat(pagoBilletera) > 0 && (
+                        <select
+                          value={billeteraNombre}
+                          onChange={(e) => setBilleteraNombre(e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px' }}
+                        >
+                          <option value="MERCADOPAGO">MERCADOPAGO</option>
+                          <option value="MODO">MODO</option>
+                          <option value="UALA">UALA</option>
+                          <option value="OTRA">OTRA</option>
+                        </select>
+                      )}
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>
+                        Monto en Transferencia ($):
+                      </label>
+                      <input 
+                        type="number"
+                        placeholder="0"
+                        value={pagoBanco}
+                        onChange={(e) => setPagoBanco(e.target.value)}
+                        style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', boxSizing: 'border-box', marginBottom: '5px' }}
+                      />
+                      {parseFloat(pagoBanco) > 0 && (
+                        <select
+                          value={bancoNombre}
+                          onChange={(e) => setBancoNombre(e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px' }}
+                        >
+                          <option value="GALICIA">BANCO GALICIA</option>
+                          <option value="SANTANDER">BANCO SANTANDER</option>
+                          <option value="MACRO">BANCO MACRO</option>
+                          <option value="BELO">BELO / DIGITAL</option>
+                          <option value="OTRO">OTRO BANCO</option>
+                        </select>
+                      )}
+                    </div>
+                  </div>
+
+                  {(() => {
+                    const valEf = parseFloat(pagoEfectivo) || 0;
+                    const valBi = parseFloat(pagoBilletera) || 0;
+                    const valBa = parseFloat(pagoBanco) || 0;
+                    const totalIngresado = valEf + valBi + valBa;
+                    const totalRequerido = parseFloat(importePago) || 0;
+                    const coinciden = Math.abs(totalIngresado - totalRequerido) < 0.01;
+
+                    return (
+                      <div style={{ borderTop: '1px solid #99f6e4', paddingTop: '10px', marginTop: '10px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <span>Suma Ingresada: <strong>${totalIngresado.toLocaleString('es-AR')}</strong></span>
+                          <span style={{ margin: '0 8px' }}>|</span>
+                          <span>Total Requerido: <strong>${totalRequerido.toLocaleString('es-AR')}</strong></span>
+                        </div>
+                        <div>
+                          {coinciden ? (
+                            <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓ Coincide</span>
+                          ) : (
+                            <span style={{ color: '#dc2626', fontWeight: 'bold' }}>
+                              ❌ Resta: ${(totalRequerido - totalIngresado).toLocaleString('es-AR')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* Columna Derecha: Campos Condicionales según Medio de Pago (solo si no es Efectivo y no es Combinado) */}
+              {!usarPagoCombinado && formaPago !== 'Efectivo' && (
                 <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                   <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 'bold', color: '#334155' }}>
                     ⚙️ Detalles del Destino Financiero
