@@ -1224,10 +1224,16 @@ function App() {
               let totalHaber = 0;
               deudaConsultadaData.movimientos.forEach(m => {
                 const parseVal = (val) => {
-                  if (!val) return 0;
-                  const clean = String(val).replace(/\./g, '').replace(',', '.').trim();
-                  const num = parseFloat(clean);
-                  return isNaN(num) ? 0 : num;
+                  if (val === null || val === undefined || val === '') return 0;
+                  if (typeof val === 'number') return val;
+                  const valStr = String(val).trim();
+                  if (valStr.includes(',')) {
+                    const clean = valStr.replace(/\./g, '').replace(',', '.');
+                    const res = parseFloat(clean);
+                    return isNaN(res) ? 0 : res;
+                  }
+                  const res = parseFloat(valStr);
+                  return isNaN(res) ? 0 : res;
                 };
                 totalDebe += parseVal(m.debe);
                 totalHaber += parseVal(m.haber);
@@ -1273,10 +1279,16 @@ function App() {
                 <tbody>
                   {deudaConsultadaData.movimientos.map((m, index) => {
                     const parseVal = (val) => {
-                      if (!val) return 0;
-                      const clean = String(val).replace(/\./g, '').replace(',', '.').trim();
-                      const num = parseFloat(clean);
-                      return isNaN(num) ? 0 : num;
+                      if (val === null || val === undefined || val === '') return 0;
+                      if (typeof val === 'number') return val;
+                      const valStr = String(val).trim();
+                      if (valStr.includes(',')) {
+                        const clean = valStr.replace(/\./g, '').replace(',', '.');
+                        const res = parseFloat(clean);
+                        return isNaN(res) ? 0 : res;
+                      }
+                      const res = parseFloat(valStr);
+                      return isNaN(res) ? 0 : res;
                     };
                     const debe = parseVal(m.debe);
                     const haber = parseVal(m.haber);
