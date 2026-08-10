@@ -55,6 +55,11 @@ function App() {
   const [pacienteBuscado, setPacienteBuscado] = useState(null)
   const [buscandoId, setBuscandoId] = useState(false)
 
+  // Estados para buscador de ID Deuda
+  const [criterioBusquedaDeudaId, setCriterioBusquedaDeudaId] = useState('')
+  const [buscandoDeuda, setBuscandoDeuda] = useState(false)
+  const [deudaConsultadaData, setDeudaConsultadaData] = useState(null)
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
@@ -737,6 +742,85 @@ function App() {
     }
   }
 
+  async function handleBuscarDeudaPorId() {
+    const inputVal = criterioBusquedaDeudaId.trim();
+    if (!inputVal) {
+      alert("Por favor, ingresá un ID de Deuda.");
+      return;
+    }
+
+    const idDeudaNum = parseInt(inputVal, 10);
+    if (isNaN(idDeudaNum)) {
+      alert("El ID de Deuda debe ser un número válido.");
+      return;
+    }
+
+    setBuscandoDeuda(true);
+    try {
+      // 1. Buscar todos los movimientos en movimientoscuenta_motor con ese id_deuda
+      const { data: movimientos, error: errorMov } = await supabase
+        .from('movimientoscuenta_motor')
+        .select('*')
+        .eq('id_deuda', idDeudaNum)
+        .order('id_movimiento', { ascending: true });
+
+      if (errorMov) throw errorMov;
+
+      if (!movimientos || movimientos.length === 0) {
+        alert("No se encontró ningún movimiento asociado al ID Deuda " + idDeudaNum);
+        setBuscandoDeuda(false);
+        return;
+      }
+
+      // 2. Obtener los datos del paciente (de cualquiera de los movimientos)
+      const idPaciente = movimientos[0].id_paciente;
+      const { data: paciente, error: errorPac } = await supabase
+        .from('pacientes_motor')
+        .select('*')
+        .eq('id_paciente', idPaciente)
+        .maybeSingle();
+
+      if (errorPac) throw errorPac;
+
+      // 3. Obtener datos del acuerdo
+      const idAcuerdo = movimientos[0].id_acuerdo;
+      let prestacionNombre = 'S/D';
+      if (idAcuerdo) {
+        const { data: acuerdo, error: errorAc } = await supabase
+          .from('acuerdos_motor')
+          .select('id_prestacion')
+          .eq('id_acuerdo', idAcuerdo)
+          .maybeSingle();
+
+        if (!errorAc && acuerdo && acuerdo.id_prestacion) {
+          const { data: prestacion } = await supabase
+            .from('prestaciones_motor')
+            .select('nombre_prestacion')
+            .eq('id_prestacion', acuerdo.id_prestacion)
+            .maybeSingle();
+          
+          if (prestacion) {
+            prestacionNombre = prestacion.nombre_prestacion;
+          }
+        }
+      }
+
+      setDeudaConsultadaData({
+        idDeuda: idDeudaNum,
+        paciente: paciente || { nombre_apellido: 'Desconocido' },
+        prestacionNombre,
+        movimientos
+      });
+      setCrinAccion('CONSULTA_DEUDA');
+      setCriterioBusquedaDeudaId('');
+    } catch (err) {
+      console.error("Error al buscar ID Deuda:", err);
+      alert("Ocurrió un error: " + err.message);
+    } finally {
+      setBuscandoDeuda(false);
+    }
+  }
+
   // Detectar si es una vista pública de presupuesto
   const searchParams = new URLSearchParams(window.location.search);
   const publicPresupuestoId = searchParams.get('presupuesto');
@@ -1116,6 +1200,129 @@ function App() {
           </div>
         )}
 
+        {crinAccion === 'CONSULTA_DEUDA' && deudaConsultadaData && (
+          <div style={{ width: '100%', maxWidth: '950px', background: '#ffffff', padding: '30px', borderRadius: '20px', border: '1px solid #e2e8f0', boxShadow: '0 10px 25px rgba(0,0,0,0.08)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #0f766e', paddingBottom: '15px', marginBottom: '20px' }}>
+              <div>
+                <h3 style={{ margin: 0, color: '#0f766e', fontSize: '22px', fontWeight: '800' }}>
+                  📊 Historial del ID Deuda: #{deudaConsultadaData.idDeuda}
+                </h3>
+                <p style={{ margin: '5px 0 0 0', color: '#4a5568', fontSize: '15px' }}>
+                  Paciente: <strong>{deudaConsultadaData.paciente.nombre_apellido}</strong> (DNI: {deudaConsultadaData.paciente.dni || 'S/D'}) | Prestación: <strong>{deudaConsultadaData.prestacionNombre}</strong>
+                </p>
+              </div>
+              <button 
+                onClick={() => setCrinAccion(null)} 
+                style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '10px 18px', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                Cerrar
+              </button>
+            </div>
+
+            {(() => {
+              let totalDebe = 0;
+              let totalHaber = 0;
+              deudaConsultadaData.movimientos.forEach(m => {
+                const parseVal = (val) => {
+                  if (!val) return 0;
+                  const clean = String(val).replace(/\./g, '').replace(',', '.').trim();
+                  const num = parseFloat(clean);
+                  return isNaN(num) ? 0 : num;
+                };
+                totalDebe += parseVal(m.debe);
+                totalHaber += parseVal(m.haber);
+              });
+              const saldoPendiente = totalDebe - totalHaber;
+
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '25px' }}>
+                  <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold' }}>TOTAL DEBE (DEBITADO)</span>
+                    <h2 style={{ margin: '5px 0 0 0', color: '#dc2626', fontSize: '20px', fontWeight: '800' }}>
+                      ${totalDebe.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </h2>
+                  </div>
+                  <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold' }}>TOTAL HABER (ABONADO)</span>
+                    <h2 style={{ margin: '5px 0 0 0', color: '#16a34a', fontSize: '20px', fontWeight: '800' }}>
+                      ${totalHaber.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </h2>
+                  </div>
+                  <div style={{ background: saldoPendiente > 0.01 ? '#fef2f2' : '#f0fdf4', padding: '15px', borderRadius: '12px', border: '1px solid', borderColor: saldoPendiente > 0.01 ? '#fecaca' : '#bbf7d0', textAlign: 'center' }}>
+                    <span style={{ fontSize: '12px', color: saldoPendiente > 0.01 ? '#b91c1c' : '#15803d', fontWeight: 'bold' }}>SALDO PENDIENTE</span>
+                    <h2 style={{ margin: '5px 0 0 0', color: saldoPendiente > 0.01 ? '#dc2626' : '#16a34a', fontSize: '20px', fontWeight: '800' }}>
+                      ${saldoPendiente.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </h2>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div style={{ overflowX: 'auto', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                    <th style={{ padding: '12px 10px', fontSize: '13px', color: '#475569', fontWeight: 'bold' }}>Fecha</th>
+                    <th style={{ padding: '12px 10px', fontSize: '13px', color: '#475569', fontWeight: 'bold' }}>Tipo</th>
+                    <th style={{ padding: '12px 10px', fontSize: '13px', color: '#475569', fontWeight: 'bold' }}>Concepto</th>
+                    <th style={{ padding: '12px 10px', fontSize: '13px', color: '#475569', fontWeight: 'bold', textAlign: 'right' }}>Debe (+)</th>
+                    <th style={{ padding: '12px 10px', fontSize: '13px', color: '#475569', fontWeight: 'bold', textAlign: 'right' }}>Haber (-)</th>
+                    <th style={{ padding: '12px 10px', fontSize: '13px', color: '#475569', fontWeight: 'bold' }}>Usuario</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deudaConsultadaData.movimientos.map((m, index) => {
+                    const parseVal = (val) => {
+                      if (!val) return 0;
+                      const clean = String(val).replace(/\./g, '').replace(',', '.').trim();
+                      const num = parseFloat(clean);
+                      return isNaN(num) ? 0 : num;
+                    };
+                    const debe = parseVal(m.debe);
+                    const haber = parseVal(m.haber);
+
+                    return (
+                      <tr key={m.id_movimiento || index} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '12px 10px', fontSize: '13px', color: '#334155', fontWeight: '500' }}>
+                          {(() => {
+                            if (!m.fecha_movimiento) return 'S/D';
+                            const parts = m.fecha_movimiento.split('T')[0].split('-');
+                            return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : m.fecha_movimiento;
+                          })()}
+                        </td>
+                        <td style={{ padding: '12px 10px' }}>
+                          <span style={{ 
+                            padding: '2px 8px', 
+                            borderRadius: '4px', 
+                            fontSize: '11px', 
+                            fontWeight: 'bold',
+                            background: m.tipo_movimiento?.toUpperCase() === 'CUOTA' ? '#e0f2fe' : m.tipo_movimiento?.toUpperCase() === 'PAGO' ? '#dcfce7' : '#fef3c7',
+                            color: m.tipo_movimiento?.toUpperCase() === 'CUOTA' ? '#0369a1' : m.tipo_movimiento?.toUpperCase() === 'PAGO' ? '#15803d' : '#b45309'
+                          }}>
+                            {m.tipo_movimiento || m.subtipo || 'S/D'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 10px', fontSize: '13px', color: '#475569' }}>
+                          {m.concepto || 'S/D'}
+                        </td>
+                        <td style={{ padding: '12px 10px', fontSize: '13px', textAlign: 'right', fontWeight: '600', color: debe > 0 ? '#dc2626' : '#94a3b8' }}>
+                          {debe > 0 ? `$${debe.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
+                        </td>
+                        <td style={{ padding: '12px 10px', fontSize: '13px', textAlign: 'right', fontWeight: '600', color: haber > 0 ? '#16a34a' : '#94a3b8' }}>
+                          {haber > 0 ? `$${haber.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
+                        </td>
+                        <td style={{ padding: '12px 10px', fontSize: '12px', color: '#64748b' }}>
+                          {m.usuario || 'Sistema'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {!crinAccion && (
           <div style={{ 
             width: '100%', 
@@ -1181,6 +1388,64 @@ function App() {
                   onMouseOut={(e) => e.target.style.background = '#1e3a8a'}
                 >
                   {buscandoId ? 'Buscando...' : 'Buscar'}
+                </button>
+              </div>
+            </div>
+
+            {/* Buscador de ID Deuda Histórico */}
+            <div style={{ 
+              alignSelf: 'center',
+              width: '100%', 
+              maxWidth: '650px', 
+              background: '#ffffff', 
+              padding: '20px', 
+              borderRadius: '20px', 
+              boxShadow: '0 8px 16px rgba(0,0,0,0.04)', 
+              border: '1px solid #e2e8f0',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              boxSizing: 'border-box'
+            }}>
+              <h3 style={{ margin: 0, fontSize: '15px', color: '#0f766e', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                🔍 Consultar Historial Completo de un ID Deuda
+              </h3>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <input 
+                  type="text" 
+                  placeholder="Ingresá el ID de Deuda (ej: '33', '154', '1119')..." 
+                  value={criterioBusquedaDeudaId}
+                  onChange={(e) => setCriterioBusquedaDeudaId(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleBuscarDeudaPorId();
+                  }}
+                  style={{ 
+                    flex: 1, 
+                    padding: '12px 16px', 
+                    borderRadius: '12px', 
+                    border: '1px solid #cbd5e1', 
+                    fontSize: '14px', 
+                    outline: 'none'
+                  }}
+                />
+                <button 
+                  onClick={handleBuscarDeudaPorId}
+                  disabled={buscandoDeuda}
+                  style={{ 
+                    background: '#0f766e', 
+                    color: '#fff', 
+                    border: 'none', 
+                    padding: '0 24px', 
+                    borderRadius: '12px', 
+                    fontWeight: 'bold', 
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    transition: 'background 0.2s'
+                  }}
+                  onMouseOver={(e) => e.target.style.background = '#0d9488'}
+                  onMouseOut={(e) => e.target.style.background = '#0f766e'}
+                >
+                  {buscandoDeuda ? 'Buscando...' : 'Consultar'}
                 </button>
               </div>
             </div>
