@@ -474,6 +474,108 @@ function App() {
       if (errorMaxMov) throw errorMaxMov;
       let maxIdMovimiento = (maxMovData && maxMovData[0]?.id_movimiento) ? parseInt(maxMovData[0].id_movimiento, 10) : 0;
 
+      // 1b. Cruzar saldos a favor automáticamente antes de calcular moras
+      const deudasPorPaciente = {};
+      for (const idDeuda in deudasMap) {
+        const d = deudasMap[idDeuda];
+        const idPac = d.id_paciente;
+        if (!idPac) continue;
+        if (!deudasPorPaciente[idPac]) {
+          deudasPorPaciente[idPac] = [];
+        }
+        
+        let debeAcum = 0;
+        let haberAcum = 0;
+        d.movimientos.forEach(m => {
+          debeAcum += parsePlano(m.debe);
+          haberAcum += parsePlano(m.haber);
+        });
+        
+        deudasPorPaciente[idPac].push({
+          id_deuda: d.id_deuda,
+          id_acuerdo: d.id_acuerdo || d.movimientos.find(m => m.id_acuerdo)?.id_acuerdo || 0,
+          saldoReal: debeAcum - haberAcum,
+          deudaObj: d
+        });
+      }
+
+      const nuevosAjustesBulk = [];
+      const fechaStr = formatearFechaLocal(fechaTrabajo);
+
+      for (const idPac in deudasPorPaciente) {
+        const listaDeudas = deudasPorPaciente[idPac];
+        const creditos = listaDeudas.filter(d => d.saldoReal < -0.01).map(d => ({ ...d, saldoRestante: Math.abs(d.saldoReal) }));
+        const debitos = listaDeudas.filter(d => d.saldoReal > 0.01).map(d => ({ ...d, saldoRestante: d.saldoReal }));
+
+        if (creditos.length === 0 || debitos.length === 0) continue;
+
+        for (const cred of creditos) {
+          for (const deb of debitos) {
+            if (cred.saldoRestante <= 0) break;
+            if (deb.saldoRestante <= 0) continue;
+
+            const montoAImputar = Math.min(cred.saldoRestante, deb.saldoRestante);
+            if (montoAImputar > 0) {
+              maxIdMovimiento++;
+              const movDebito = {
+                id_movimiento: maxIdMovimiento,
+                id_paciente: parseInt(idPac, 10),
+                id_acuerdo: cred.id_acuerdo,
+                id_deuda: cred.id_deuda,
+                fecha_movimiento: fechaStr,
+                fecha_cuota_origen: fechaStr,
+                fecha_vencimiento: fechaStr,
+                tipo_movimiento: 'ajuste',
+                subtipo: 'nota_debito',
+                concepto: `N.Débito: Imputación automática de saldo a favor a Deuda #${deb.id_deuda}`,
+                debe: montoAImputar.toFixed(2),
+                haber: '0',
+                saldo: '0.00',
+                usuario: 'Sistema (Cruce Automático)'
+              };
+
+              maxIdMovimiento++;
+              const movCredito = {
+                id_movimiento: maxIdMovimiento,
+                id_paciente: parseInt(idPac, 10),
+                id_acuerdo: deb.id_acuerdo,
+                id_deuda: deb.id_deuda,
+                fecha_movimiento: fechaStr,
+                fecha_cuota_origen: fechaStr,
+                fecha_vencimiento: fechaStr,
+                tipo_movimiento: 'ajuste',
+                subtipo: 'nota_credito',
+                concepto: `N.Crédito: Imputación automática de saldo a favor desde Deuda #${cred.id_deuda}`,
+                debe: '0',
+                haber: montoAImputar.toFixed(2),
+                saldo: '0.00',
+                usuario: 'Sistema (Cruce Automático)'
+              };
+
+              nuevosAjustesBulk.push(movDebito, movCredito);
+
+              cred.deudaObj.movimientos.push(movDebito);
+              deb.deudaObj.movimientos.push(movCredito);
+
+              cred.saldoRestante -= montoAImputar;
+              deb.saldoRestante -= montoAImputar;
+            }
+          }
+        }
+      }
+
+      if (nuevosAjustesBulk.length > 0) {
+        const { error: errorInsertAjustes } = await supabase
+          .from('movimientoscuenta_motor')
+          .insert(nuevosAjustesBulk);
+
+        if (errorInsertAjustes) {
+          console.error("Error al insertar cruces de saldo automáticos:", errorInsertAjustes.message);
+        } else {
+          console.log(`[Cruce de Saldos Autónomo] Se aplicaron ${nuevosAjustesBulk.length} movimientos de cruce con éxito.`);
+        }
+      }
+
       const nuevosRecargosBulk = [];
 
       for (const idDeuda in deudasMap) {
