@@ -741,9 +741,27 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
       {/* Descuentos por Prestador */}
       {subVista === 'descuentos' && (
         <div style={{ marginBottom: '25px', background: '#fff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-          <h3 style={{ margin: '0 0 15px 0', color: '#0f172a', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            📋 Descuentos por Prestador (Costo Auxiliares)
-          </h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <h3 style={{ margin: 0, color: '#0f172a', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              📋 Descuentos por Prestador (Costo Auxiliares)
+            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>Seleccionar Mes:</span>
+              <select
+                value={periodoSeleccionadoResumen}
+                onChange={(e) => setPeriodoSeleccionadoResumen(e.target.value)}
+                style={{ padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13.5px', background: '#fff', fontWeight: 'bold', color: '#0f172a' }}
+              >
+                {periodosDisponibles.length === 0 ? (
+                  <option value="">Sin períodos</option>
+                ) : (
+                  periodosDisponibles.map(p => (
+                    <option key={p} value={p}>{p}</option>
+                  ))
+                )}
+              </select>
+            </div>
+          </div>
           
           {cargandoResumen ? (
             <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Calculando descuentos...</p>
