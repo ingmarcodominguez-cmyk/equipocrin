@@ -141,49 +141,7 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
         const pId = pacientePreseleccionado.id_paciente;
         const encontrado = listaPacientes.find(p => String(p.id_paciente) === String(pId));
         if (encontrado) {
-          setPacienteSeleccionado(encontrado);
-          setVistaActiva('menu');
-          setCargando(true);
-          setMensaje({ texto: '', tipo: '' });
-
-          try {
-            const [
-              { data: acuerdosData, error: errorAcuerdos },
-              { data: movimientosData, error: errorMovimientos }
-            ] = await Promise.all([
-              supabase.from('acuerdos_motor').select('*').eq('id_paciente', encontrado.id_paciente),
-              supabase.from('movimientoscuenta_motor').select('*').eq('id_paciente', encontrado.id_paciente)
-            ]);
-
-            if (errorAcuerdos) throw errorAcuerdos;
-            if (errorMovimientos) throw errorMovimientos;
-
-            await cargarObservaciones(encontrado.id_paciente);
-            await cargarAgendaPaciente(encontrado);
-
-            const acuerdosConPrestacion = (acuerdosData || []).map(acuerdo => {
-              const prestacionEncontrada = prestaciones.find(
-                p => String(p.id_prestacion).trim() === String(acuerdo.id_prestacion).trim()
-              );
-              return {
-                ...acuerdo,
-                prestacion: prestacionEncontrada ? prestacionEncontrada.nombre_prestacion : 'S/D'
-              };
-            });
-            setAcuerdos(acuerdosConPrestacion);
-
-            const ordenados = (movimientosData || []).sort((a, b) => {
-              const dateA = a.fecha_movimiento || '';
-              const dateB = b.fecha_movimiento || '';
-              return dateA.localeCompare(dateB);
-            });
-            setMovimientosDetallados(ordenados);
-          } catch (error) {
-            console.error('Error al precargar paciente:', error);
-            setMensaje({ texto: 'Error al precargar el paciente: ' + error.message, tipo: 'error' });
-          } finally {
-            setCargando(false);
-          }
+          await seleccionarPacientePorId(pId);
         }
       }
     }
@@ -428,8 +386,8 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
     document.body.removeChild(link);
   };
 
-  const seleccionarPacientePorId = async (e) => {
-    const pacienteIdStr = e.target.value;
+  async function seleccionarPacientePorId(e) {
+    const pacienteIdStr = e && e.target ? e.target.value : e;
     if (!pacienteIdStr) {
       setPacienteSeleccionado(null);
       setAcuerdos([]);
