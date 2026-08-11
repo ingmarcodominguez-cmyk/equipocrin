@@ -407,6 +407,7 @@ function App() {
       return isNaN(res) ? 0 : res;
     };
 
+    console.log("[Motor de Recargos Debug] Iniciando ejecutarMotorRecargosDB. Fecha trabajo:", fechaTrabajo);
     try {
       let movimientos = [];
       let epoch = 0;
@@ -433,6 +434,7 @@ function App() {
         }
       }
 
+      console.log("[Motor de Recargos Debug] Total movimientos cargados:", movimientos.length);
       if (movimientos.length === 0) return;
 
       // 1. Traer todos los acuerdos para mapear admite_recargo
@@ -480,23 +482,35 @@ function App() {
         const deuda = deudasMap[idDeuda];
 
         const cuotaBase = deuda.movimientos.find(m => (m.subtipo || '').toUpperCase() === 'CUOTA_MENSUAL');
+        if (idDeuda === '1120') {
+          console.log("[Motor de Recargos Debug] Deuda 1120 encontrada. Cuota base:", cuotaBase);
+        }
         if (!cuotaBase) continue;
 
         // Verificar si la cuenta/acuerdo admite recargo
         const idAcuerdo = deuda.id_acuerdo || cuotaBase.id_acuerdo;
         if (idAcuerdo) {
           const admite = mapaAdmiteRecargo[idAcuerdo];
+          if (idDeuda === '1120') {
+            console.log("[Motor de Recargos Debug] Deuda 1120 - Admite recargo:", admite);
+          }
           if (admite && String(admite).toUpperCase() === 'NO') {
             continue;
           }
         }
 
+        if (idDeuda === '1120') {
+          console.log("[Motor de Recargos Debug] Deuda 1120 - Fecha vencimiento:", deuda.fecha_vencimiento);
+        }
         if (!deuda.fecha_vencimiento) continue;
         const [anioVenc, mesVenc, diaVenc] = deuda.fecha_vencimiento.split('-').map(Number);
         const fechaVencObj = new Date(anioVenc, mesVenc - 1, diaVenc);
 
         const diffTiempo = fechaTrabajo.getTime() - fechaVencObj.getTime();
         const diasAtrasoTotal = Math.floor(diffTiempo / (1000 * 60 * 60 * 24));
+        if (idDeuda === '1120') {
+          console.log("[Motor de Recargos Debug] Deuda 1120 - diffTiempo:", diffTiempo, "diasAtrasoTotal:", diasAtrasoTotal);
+        }
 
         if (diasAtrasoTotal <= 0) continue;
 
@@ -523,6 +537,9 @@ function App() {
           .filter(e => !isNaN(e) && e > 0);
 
         const maxEscalon = escalonesAplicados.length > 0 ? Math.max(...escalonesAplicados) : 0;
+        if (idDeuda === '1120') {
+          console.log("[Motor de Recargos Debug] Deuda 1120 - maxEscalon:", maxEscalon, "escalonesAplicados:", escalonesAplicados);
+        }
 
         let fechaUltimoRecargo = null;
         const movimientosRecargos = deuda.movimientos.filter(m => {
@@ -571,6 +588,9 @@ function App() {
             }
           }
         }
+        if (idDeuda === '1120') {
+          console.log("[Motor de Recargos Debug] Deuda 1120 - countNew:", countNew, "startNro:", startNro);
+        }
 
         if (countNew <= 0) continue;
 
@@ -588,7 +608,7 @@ function App() {
 
           if (saldoAcumuladoActual <= 0) break;
 
-          let baseCalculo = (nroRecargo === 1) ? importeCuotaBase : saldoAcumuladoActual;
+          let baseCalculo = saldoAcumuladoActual;
           const montoRecargo = Math.round((baseCalculo * porcentaje) * 100) / 100;
           maxIdMovimiento++;
 
