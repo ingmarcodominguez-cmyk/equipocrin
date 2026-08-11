@@ -226,7 +226,7 @@ export default function SimuladorMotorMora() {
 
           if (saldoAcumuladoActual <= 0) break;
 
-          let baseCalculo = (nroRecargo === 1) ? importeCuotaBase : saldoAcumuladoActual;
+          let baseCalculo = saldoAcumuladoActual;
           const montoRecargo = Math.round((baseCalculo * porcentaje) * 100) / 100;
 
           logs.push(`   ⚡ Simulando RECARGO ${nroRecargo} (${porcentaje * 100}% sobre base $${baseCalculo}): $${montoRecargo}`);
