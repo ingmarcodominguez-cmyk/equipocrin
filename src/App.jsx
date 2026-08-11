@@ -465,10 +465,14 @@ function App() {
         deudasMap[m.id_deuda].movimientos.push(m);
       });
 
-      let maxIdMovimiento = movimientos.reduce((max, m) => {
-        const idNum = parseInt(m.id_movimiento, 10);
-        return !isNaN(idNum) && idNum > max ? idNum : max;
-      }, 0);
+      const { data: maxMovData, error: errorMaxMov } = await supabase
+        .from('movimientoscuenta_motor')
+        .select('id_movimiento')
+        .order('id_movimiento', { ascending: false })
+        .limit(1);
+
+      if (errorMaxMov) throw errorMaxMov;
+      let maxIdMovimiento = (maxMovData && maxMovData[0]?.id_movimiento) ? parseInt(maxMovData[0].id_movimiento, 10) : 0;
 
       const nuevosRecargosBulk = [];
 
