@@ -545,23 +545,25 @@ function App() {
         let countNew = 0;
 
         if (maxEscalon === 0) {
-          if (diasAtrasoTotal >= 10) {
+          if (diasAtrasoTotal >= 1) {
             startNro = 1;
-            countNew = 1 + Math.floor((diasAtrasoTotal - 10) / 10);
+            const expectedTotal = 1 + Math.floor((diasAtrasoTotal - 1) / 10);
+            countNew = Math.min(5, expectedTotal);
           }
-        } else {
+        } else if (maxEscalon < 5) {
           if (fechaUltimoRecargo) {
             const dateUltimo = new Date(fechaUltimoRecargo + 'T00:00:00');
             const diasDesdeUltimo = Math.floor((fechaTrabajo.getTime() - dateUltimo.getTime()) / (1000 * 60 * 60 * 24));
             if (diasDesdeUltimo >= 10) {
               startNro = maxEscalon + 1;
-              countNew = Math.floor(diasDesdeUltimo / 10);
+              countNew = Math.min(5 - maxEscalon, Math.floor(diasDesdeUltimo / 10));
             }
           } else {
             startNro = maxEscalon + 1;
-            const expectedTotal = 1 + Math.floor((diasAtrasoTotal - 10) / 10);
-            if (expectedTotal > maxEscalon) {
-              countNew = expectedTotal - maxEscalon;
+            const expectedTotal = 1 + Math.floor((diasAtrasoTotal - 1) / 10);
+            const expectedTotalCapped = Math.min(5, expectedTotal);
+            if (expectedTotalCapped > maxEscalon) {
+              countNew = expectedTotalCapped - maxEscalon;
             }
           }
         }

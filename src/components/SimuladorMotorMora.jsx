@@ -185,11 +185,12 @@ export default function SimuladorMotorMora() {
         let diasDesdeUltimo = 0;
 
         if (maxEscalon === 0) {
-          if (diasAtraso >= 10) {
+          if (diasAtraso >= 1) {
             startNro = 1;
-            countNew = 1 + Math.floor((diasAtraso - 10) / 10);
+            const expectedTotal = 1 + Math.floor((diasAtraso - 1) / 10);
+            countNew = Math.min(5, expectedTotal);
           }
-        } else {
+        } else if (maxEscalon < 5) {
           if (fechaUltimoRecargo) {
             const dateUltimo = new Date(fechaUltimoRecargo + 'T00:00:00');
             diasDesdeUltimo = Math.floor((fechaTrabajo.getTime() - dateUltimo.getTime()) / (1000 * 60 * 60 * 24));
@@ -197,13 +198,14 @@ export default function SimuladorMotorMora() {
             setLogResultados([...logs]);
             if (diasDesdeUltimo >= 10) {
               startNro = maxEscalon + 1;
-              countNew = Math.floor(diasDesdeUltimo / 10);
+              countNew = Math.min(5 - maxEscalon, Math.floor(diasDesdeUltimo / 10));
             }
           } else {
             startNro = maxEscalon + 1;
-            const expectedTotal = 1 + Math.floor((diasAtraso - 10) / 10);
-            if (expectedTotal > maxEscalon) {
-              countNew = expectedTotal - maxEscalon;
+            const expectedTotal = 1 + Math.floor((diasAtraso - 1) / 10);
+            const expectedTotalCapped = Math.min(5, expectedTotal);
+            if (expectedTotalCapped > maxEscalon) {
+              countNew = expectedTotalCapped - maxEscalon;
             }
           }
         }
