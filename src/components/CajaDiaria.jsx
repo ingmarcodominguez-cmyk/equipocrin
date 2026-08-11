@@ -165,6 +165,140 @@ export default function CajaDiaria({ onVolver, usuario }) {
     }
   };
 
+  const imprimirResumenCaja = (fecha, turno, listMovimientos, saldoContado, montoRendido, entregado, recibido, diferencia, motivoDif, saldoRestante) => {
+    const printWindow = window.open('', '_blank', 'width=900,height=700');
+    if (!printWindow) {
+      alert("No se pudo abrir la ventana de impresión. Por favor, habilite los pop-ups para este sitio.");
+      return;
+    }
+
+    let totalIngresos = 0;
+    let totalEgresos = 0;
+    let saldoInicial = 0;
+
+    listMovimientos.forEach(m => {
+      const tipo = (m.tipo || '').toUpperCase();
+      const imp = parseFloat(m.importe) || 0;
+      if (tipo === 'INGRESO') totalIngresos += imp;
+      else if (tipo === 'EGRESO') totalEgresos += imp;
+      else if (m.concepto && m.concepto.toUpperCase().includes('APERTURA')) saldoInicial = imp;
+      else if (tipo === 'APERTURA') saldoInicial = imp;
+    });
+
+    const rowsHtml = listMovimientos.map(m => {
+      const tipo = (m.tipo || '').toUpperCase();
+      const imp = parseFloat(m.importe) || 0;
+      const debe = (tipo === 'INGRESO' || tipo === 'APERTURA') ? `$${imp.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-';
+      const haber = (tipo === 'EGRESO' || tipo === 'CIERRE') ? `$${imp.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-';
+      return `
+        <tr style="border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 10px; text-align: left; color: #475569;">${m.fecha ? new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR') : '-'}</td>
+          <td style="padding: 10px; text-align: left; font-weight: 600; color: #1e293b;">${m.concepto || '-'}</td>
+          <td style="padding: 10px; text-align: left; color: #64748b; font-size: 12px; text-transform: uppercase;">${m.medio_pago || 'EFECTIVO'}</td>
+          <td style="padding: 10px; text-align: right; font-weight: bold; color: ${tipo === 'INGRESO' || tipo === 'APERTURA' ? '#16a34a' : '#475569'}">${debe}</td>
+          <td style="padding: 10px; text-align: right; font-weight: bold; color: ${tipo === 'EGRESO' || tipo === 'CIERRE' ? '#dc2626' : '#475569'}">${haber}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const htmlContent = `
+      <html>
+        <head>
+          <title>Resumen de Caja Diaria - ${fecha} - Turno ${turno}</title>
+          <style>
+            body { font-family: 'Segoe UI', -apple-system, system-ui, sans-serif; color: #1e293b; margin: 40px; background: #fff; }
+            h2 { color: #0f172a; margin: 0; fontSize: 22px; font-weight: bold; }
+            .grid-info { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px; }
+            .card-info { background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; }
+            .card-info table { width: 100%; border-collapse: collapse; }
+            .card-info td { padding: 6px 0; font-size: 13.5px; }
+            .card-info td.label { font-weight: 600; color: #475569; }
+            .card-info td.value { text-align: right; font-weight: bold; color: #0f172a; }
+            table.movimientos { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
+            table.movimientos th { background: #f8fafc; padding: 12px 10px; border-bottom: 2px solid #cbd5e1; font-weight: bold; color: #475569; text-align: left; }
+            table.movimientos td { padding: 12px 10px; border-bottom: 1px solid #e2e8f0; }
+            .footer-notes { margin-top: 40px; font-size: 11px; color: #94a3b8; font-style: italic; border-top: 1px solid #e2e8f0; padding-top: 15px; text-align: center; }
+            @media print {
+              body { margin: 15px; }
+              button { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 15px; margin-bottom: 25px;">
+            <div>
+              <h2>📋 Reporte de Cierre y Rendición de Caja</h2>
+              <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Sistema CRIN - Resumen de Control Contable</div>
+            </div>
+            <button onclick="window.print()" style="background: #2563eb; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 13px; transition: background 0.2s;">🖨️ Imprimir Reporte</button>
+          </div>
+
+          <div class="grid-info">
+            <div class="card-info">
+              <h4 style="margin: 0 0 12px 0; color: #1e3a8a; font-size: 14px; border-bottom: 2px solid #bfdbfe; padding-bottom: 4px;">Datos Generales</h4>
+              <table>
+                <tr><td class="label">Fecha de Caja:</td><td class="value">${fecha}</td></tr>
+                <tr><td class="label">Turno:</td><td class="value" style="text-transform: uppercase;">${turno}</td></tr>
+                <tr><td class="label">Entregado Por:</td><td class="value">${entregado}</td></tr>
+                <tr><td class="label">Recibido Por:</td><td class="value">${recibido}</td></tr>
+              </table>
+            </div>
+
+            <div class="card-info">
+              <h4 style="margin: 0 0 12px 0; color: #065f46; font-size: 14px; border-bottom: 2px solid #a7f3d0; padding-bottom: 4px;">Valores Contados y Rendición</h4>
+              <table>
+                <tr><td class="label">Saldo Inicial del Turno:</td><td class="value">$${saldoInicial.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td></tr>
+                <tr><td class="label">Total Ingresos Turno:</td><td class="value" style="color: #16a34a;">+$${totalIngresos.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td></tr>
+                <tr><td class="label">Total Egresos Turno:</td><td class="value" style="color: #dc2626;">-$${totalEgresos.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td></tr>
+                <tr style="border-top: 2px solid #cbd5e1; padding-top: 6px;"><td class="label" style="font-size: 14.5px; color: #0f172a; font-weight: bold;">Saldo Físico Contado:</td><td class="value" style="font-size: 14.5px; color: #2563eb; font-weight: 800;">$${saldoContado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td></tr>
+                <tr><td class="label" style="color: #0f766e;">Monto Rendido a Dirección:</td><td class="value" style="color: #0f766e;">-$${montoRendido.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td></tr>
+                <tr style="border-top: 2px dashed #cbd5e1; padding-top: 4px;"><td class="label" style="font-weight: 800; color: #0f172a; font-size: 14.5px;">Saldo Restante (Caja Siguiente):</td><td class="value" style="font-weight: 800; color: #0f172a; font-size: 14.5px;">$${saldoRestante.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td></tr>
+                ${diferencia !== 0 ? `
+                  <tr style="color: ${diferencia < 0 ? '#b91c1c' : '#15803d'}; font-weight: bold;">
+                    <td class="label" style="color: inherit;">Ajuste Diferencia (${diferencia < 0 ? 'Faltante' : 'Sobrante'}):</td>
+                    <td class="value" style="color: inherit;">${diferencia < 0 ? '-' : '+'}$${Math.abs(diferencia).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+                  </tr>
+                  ${motivoDif ? `<tr><td colspan="2" style="font-size: 12px; color: #b91c1c; font-style: italic; padding-top: 4px;">Motivo Diferencia: ${motivoDif}</td></tr>` : ''}
+                ` : ''}
+              </table>
+            </div>
+          </div>
+
+          <h3 style="margin: 25px 0 10px 0; color: #0f172a; font-size: 15px; border-bottom: 2px solid #cbd5e1; padding-bottom: 6px;">📜 Detalle de Movimientos del Turno</h3>
+          <table class="movimientos">
+            <thead>
+              <tr style="background: #f8fafc; border-bottom: 2px solid #cbd5e1;">
+                <th style="width: 120px;">Fecha</th>
+                <th>Concepto</th>
+                <th style="width: 120px;">Medio de Pago</th>
+                <th style="width: 130px; text-align: right;">Ingreso (Debe)</th>
+                <th style="width: 130px; text-align: right;">Egreso (Haber)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+
+          <div class="footer-notes">
+            Reporte de caja emitido por el usuario ${entregado || 'Sistema'} el ${new Date().toLocaleString('es-AR')}.
+          </div>
+
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 300);
+            }
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
   // Procesar cierre de caja completo con rendición y apertura
   const confirmarCierreCaja = async () => {
     const saldoRealNum = parseFloat(saldoRealCierre);
@@ -281,11 +415,25 @@ export default function CajaDiaria({ onVolver, usuario }) {
         cierre_turno: false,
         saldo_turno: saldoRestante.toString()
       };
-
       const { error: errApertura } = await supabase.from('caja_motor').insert([registroAperturaSiguiente]);
       if (errApertura) throw errApertura;
 
       alert("Cierre de caja y apertura de siguiente turno procesados con éxito.");
+
+      const movimientosDeHoy = movimientos.filter(m => m.fecha === fechaHoy);
+      imprimirResumenCaja(
+        fechaHoy,
+        turnoCierre,
+        movimientosDeHoy,
+        saldoRealNum,
+        montoRendidoNum,
+        entregadoPorCierre,
+        recibidoPorCierre,
+        diferencia,
+        motivoDifCierre,
+        saldoRestante
+      );
+
       setModalAbierto(null);
       await cargarCaja();
     } catch (err) {
@@ -412,6 +560,44 @@ export default function CajaDiaria({ onVolver, usuario }) {
             style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(79, 70, 229, 0.1)' }}
           >
             🔒 Cerrar Caja / Rendir
+          </button>
+          <button
+            onClick={() => {
+              const cierreRow = movimientosFiltrados.find(m => m.tipo === 'CIERRE');
+              const saldoInicialVal = movimientosFiltrados
+                .filter(m => m.tipo === 'APERTURA')
+                .reduce((sum, m) => sum + (parseFloat(m.importe) || 0), 0);
+              const totalIngresosVal = movimientosFiltrados
+                .filter(m => m.tipo === 'INGRESO')
+                .reduce((sum, m) => sum + (parseFloat(m.importe) || 0), 0);
+              const totalEgresosVal = movimientosFiltrados
+                .filter(m => m.tipo === 'EGRESO')
+                .reduce((sum, m) => sum + (parseFloat(m.importe) || 0), 0);
+
+              const saldoContadoVal = cierreRow ? (parseFloat(cierreRow.saldo_turno) || 0) : (saldoInicialVal + totalIngresosVal - totalEgresosVal);
+              const montoRendidoVal = cierreRow ? (parseFloat(cierreRow.importe) || 0) : 0;
+              const entregadoVal = cierreRow ? (cierreRow.entregado_por || usuario || 'Sistema') : (usuario || 'Sistema');
+              const recibidoVal = cierreRow ? (cierreRow.recibido_por || 'DIRECCIÓN') : 'DIRECCIÓN';
+              const diferenciaVal = 0;
+              const motivoDifVal = '';
+              const saldoRestanteVal = saldoContadoVal - montoRendidoVal;
+
+              imprimirResumenCaja(
+                filtroFecha,
+                cierreRow ? (cierreRow.turno || 'COMPLETO') : 'ACTUAL',
+                movimientosFiltrados,
+                saldoContadoVal,
+                montoRendidoVal,
+                entregadoVal,
+                recibidoVal,
+                diferenciaVal,
+                motivoDifVal,
+                saldoRestanteVal
+              );
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#06b6d4', color: '#ffffff', border: 'none', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(6, 182, 212, 0.1)' }}
+          >
+            🖨️ Imprimir Caja
           </button>
         </div>
 
