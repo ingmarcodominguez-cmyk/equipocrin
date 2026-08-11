@@ -59,6 +59,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
   const [preliqTotal, setPreliqTotal] = useState(0);
 
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' });
+  const [subVista, setSubVista] = useState('principal'); // 'principal', 'resumen', 'descuentos'
 
   // Estados para Resumen Mensual Consolidado
   const [periodosDisponibles, setPeriodosDisponibles] = useState([]);
@@ -587,14 +588,45 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
           </h2>
           <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>Consultá saldos, liquidá asistencias mensuales y cargá pagos o ajustes contables.</p>
         </div>
-        <button
-          onClick={onVolver}
-          style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#475569', transition: 'background 0.2s' }}
-          onMouseOver={(e) => e.target.style.background = '#e2e8f0'}
-          onMouseOut={(e) => e.target.style.background = '#f1f5f9'}
-        >
-          ← Volver al Menú
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          {subVista === 'principal' ? (
+            <>
+              <button
+                onClick={() => setSubVista('resumen')}
+                style={{ background: '#3b82f6', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#fff', transition: 'background 0.2s' }}
+                onMouseOver={(e) => e.target.style.background = '#2563eb'}
+                onMouseOut={(e) => e.target.style.background = '#3b82f6'}
+              >
+                📊 Resumen Mensual
+              </button>
+              <button
+                onClick={() => setSubVista('descuentos')}
+                style={{ background: '#0ea5e9', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#fff', transition: 'background 0.2s' }}
+                onMouseOver={(e) => e.target.style.background = '#0284c7'}
+                onMouseOut={(e) => e.target.style.background = '#0ea5e9'}
+              >
+                📋 Descuentos por Prestador
+              </button>
+              <button
+                onClick={onVolver}
+                style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#475569', transition: 'background 0.2s' }}
+                onMouseOver={(e) => e.target.style.background = '#e2e8f0'}
+                onMouseOut={(e) => e.target.style.background = '#f1f5f9'}
+              >
+                ← Volver al Menú
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setSubVista('principal')}
+              style={{ background: '#475569', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#fff', transition: 'background 0.2s' }}
+              onMouseOver={(e) => e.target.style.background = '#334155'}
+              onMouseOut={(e) => e.target.style.background = '#475569'}
+            >
+              ← Volver a la Planilla
+            </button>
+          )}
+        </div>
       </div>
 
       {mensaje.texto && (
@@ -613,151 +645,157 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
       )}
 
       {/* Selector de Auxiliar */}
-      <div style={{ marginBottom: '25px', background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-        <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#475569', marginBottom: '8px' }}>
-          Seleccione un Auxiliar para ver su Cuenta Corriente:
-        </label>
-        {cargandoAuxiliares ? (
-          <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Cargando auxiliares...</p>
-        ) : (
-          <select
-            value={auxiliarSeleccionado?.id_auxiliar || ''}
-            onChange={(e) => {
-              const p = auxiliares.find(x => String(x.id_auxiliar) === String(e.target.value));
-              setAuxiliarSeleccionado(p || null);
-            }}
-            style={{ width: '100%', padding: '12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '15px', background: '#fff', fontWeight: '600', color: '#0f172a' }}
-          >
-            <option value="">-- Seleccionar Auxiliar --</option>
-            {auxiliares.map(p => (
-              <option key={p.id_auxiliar} value={p.id_auxiliar}>
-                👤 {p.nombre} ({p.tipo_liq}) - Saldo Pendiente: ${p.saldoConsolidado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
+      {subVista === 'principal' && (
+        <div style={{ marginBottom: '25px', background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#475569', marginBottom: '8px' }}>
+            Seleccione un Auxiliar para ver su Cuenta Corriente:
+          </label>
+          {cargandoAuxiliares ? (
+            <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Cargando auxiliares...</p>
+          ) : (
+            <select
+              value={auxiliarSeleccionado?.id_auxiliar || ''}
+              onChange={(e) => {
+                const p = auxiliares.find(x => String(x.id_auxiliar) === String(e.target.value));
+                setAuxiliarSeleccionado(p || null);
+              }}
+              style={{ width: '100%', padding: '12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '15px', background: '#fff', fontWeight: '600', color: '#0f172a' }}
+            >
+              <option value="">-- Seleccionar Auxiliar --</option>
+              {auxiliares.map(p => (
+                <option key={p.id_auxiliar} value={p.id_auxiliar}>
+                  👤 {p.nombre} ({p.tipo_liq}) - Saldo Pendiente: ${p.saldoConsolidado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
 
       {/* Resumen Mensual Consolidado */}
-      <div style={{ marginBottom: '25px', background: '#fff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-          <h3 style={{ margin: 0, color: '#0f172a', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            📊 Resumen Mensual por Auxiliar
-          </h3>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>Seleccionar Mes:</span>
-            <select
-              value={periodoSeleccionadoResumen}
-              onChange={(e) => setPeriodoSeleccionadoResumen(e.target.value)}
-              style={{ padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13.5px', background: '#fff', fontWeight: 'bold', color: '#0f172a' }}
-            >
-              {periodosDisponibles.length === 0 ? (
-                <option value="">Sin períodos</option>
-              ) : (
-                periodosDisponibles.map(p => (
-                  <option key={p} value={p}>{p}</option>
-                ))
-              )}
-            </select>
-          </div>
-        </div>
-
-        {cargandoResumen ? (
-          <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Cargando resumen del mes...</p>
-        ) : resumenMensual.length === 0 ? (
-          <p style={{ margin: 0, fontSize: '13px', color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
-            No se registran liquidaciones para el período seleccionado.
-          </p>
-        ) : (
-          <div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px', textAlign: 'left' }}>
-                <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1' }}>
-                    <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Auxiliar</th>
-                    <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Tipo Liq.</th>
-                    <th style={{ padding: '10px', color: '#475569', fontWeight: '600', textAlign: 'right' }}>Total Liquidado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {resumenMensual.map(row => (
-                    <tr key={row.id_auxiliar} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                      <td style={{ padding: '10px', fontWeight: '600', color: '#1e293b' }}>{row.nombre}</td>
-                      <td style={{ padding: '10px', color: '#64748b' }}>{row.tipo_liq}</td>
-                      <td style={{ padding: '10px', fontWeight: 'bold', color: '#0f172a', textAlign: 'right' }}>
-                        ${row.totalLiquidado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1', fontWeight: 'bold' }}>
-                    <td colSpan="2" style={{ padding: '12px 10px', color: '#0f172a' }}>TOTAL GENERAL A PAGAR</td>
-                    <td style={{ padding: '12px 10px', color: '#2563eb', fontSize: '15px', fontWeight: '800', textAlign: 'right' }}>
-                      ${resumenMensual.reduce((sum, r) => sum + r.totalLiquidado, 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+      {subVista === 'resumen' && (
+        <div style={{ marginBottom: '25px', background: '#fff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <h3 style={{ margin: 0, color: '#0f172a', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              📊 Resumen Mensual por Auxiliar
+            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>Seleccionar Mes:</span>
+              <select
+                value={periodoSeleccionadoResumen}
+                onChange={(e) => setPeriodoSeleccionadoResumen(e.target.value)}
+                style={{ padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13.5px', background: '#fff', fontWeight: 'bold', color: '#0f172a' }}
+              >
+                {periodosDisponibles.length === 0 ? (
+                  <option value="">Sin períodos</option>
+                ) : (
+                  periodosDisponibles.map(p => (
+                    <option key={p} value={p}>{p}</option>
+                  ))
+                )}
+              </select>
             </div>
           </div>
-        )}
-      </div>
+
+          {cargandoResumen ? (
+            <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Cargando resumen del mes...</p>
+          ) : resumenMensual.length === 0 ? (
+            <p style={{ margin: 0, fontSize: '13px', color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
+              No se registran liquidaciones para el período seleccionado.
+            </p>
+          ) : (
+            <div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1' }}>
+                      <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Auxiliar</th>
+                      <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Tipo Liq.</th>
+                      <th style={{ padding: '10px', color: '#475569', fontWeight: '600', textAlign: 'right' }}>Total Liquidado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {resumenMensual.map(row => (
+                      <tr key={row.id_auxiliar} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                        <td style={{ padding: '10px', fontWeight: '600', color: '#1e293b' }}>{row.nombre}</td>
+                        <td style={{ padding: '10px', color: '#64748b' }}>{row.tipo_liq}</td>
+                        <td style={{ padding: '10px', fontWeight: 'bold', color: '#0f172a', textAlign: 'right' }}>
+                          ${row.totalLiquidado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1', fontWeight: 'bold' }}>
+                      <td colSpan="2" style={{ padding: '12px 10px', color: '#0f172a' }}>TOTAL GENERAL A PAGAR</td>
+                      <td style={{ padding: '12px 10px', color: '#2563eb', fontSize: '15px', fontWeight: '800', textAlign: 'right' }}>
+                        ${resumenMensual.reduce((sum, r) => sum + r.totalLiquidado, 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Descuentos por Prestador */}
-      <div style={{ marginBottom: '25px', background: '#fff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-        <h3 style={{ margin: '0 0 15px 0', color: '#0f172a', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          📋 Descuentos por Prestador (Costo Auxiliares)
-        </h3>
-        
-        {cargandoResumen ? (
-          <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Calculando descuentos...</p>
-        ) : descuentosPrestadores.length === 0 ? (
-          <p style={{ margin: 0, fontSize: '13px', color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
-            No se registran horas trabajadas ni asignaciones de prestadores para el período seleccionado.
-          </p>
-        ) : (
-          <div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px', textAlign: 'left' }}>
-                <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1' }}>
-                    <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Prestador</th>
-                    <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Desglose por Auxiliar</th>
-                    <th style={{ padding: '10px', color: '#475569', fontWeight: '600', textAlign: 'right' }}>Total a Descontar</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {descuentosPrestadores.map(row => (
-                    <tr key={row.nombre} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                      <td style={{ padding: '10px', fontWeight: 'bold', color: '#1e293b' }}>👤 {row.nombre}</td>
-                      <td style={{ padding: '10px', color: '#64748b', fontSize: '12.5px' }}>
-                        {Object.keys(row.desglose).map(aux => (
-                          <span key={aux} style={{ display: 'inline-block', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', marginRight: '6px', marginBottom: '2px' }}>
-                            {aux}: ${row.desglose[aux].toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                          </span>
-                        ))}
-                      </td>
-                      <td style={{ padding: '10px', fontWeight: 'bold', color: '#b91c1c', textAlign: 'right' }}>
-                        -${row.total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+      {subVista === 'descuentos' && (
+        <div style={{ marginBottom: '25px', background: '#fff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+          <h3 style={{ margin: '0 0 15px 0', color: '#0f172a', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            📋 Descuentos por Prestador (Costo Auxiliares)
+          </h3>
+          
+          {cargandoResumen ? (
+            <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Calculando descuentos...</p>
+          ) : descuentosPrestadores.length === 0 ? (
+            <p style={{ margin: 0, fontSize: '13px', color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
+              No se registran horas trabajadas ni asignaciones de prestadores para el período seleccionado.
+            </p>
+          ) : (
+            <div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1' }}>
+                      <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Prestador</th>
+                      <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Desglose por Auxiliar</th>
+                      <th style={{ padding: '10px', color: '#475569', fontWeight: '600', textAlign: 'right' }}>Total a Descontar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {descuentosPrestadores.map(row => (
+                      <tr key={row.nombre} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                        <td style={{ padding: '10px', fontWeight: 'bold', color: '#1e293b' }}>👤 {row.nombre}</td>
+                        <td style={{ padding: '10px', color: '#64748b', fontSize: '12.5px' }}>
+                          {Object.keys(row.desglose).map(aux => (
+                            <span key={aux} style={{ display: 'inline-block', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', marginRight: '6px', marginBottom: '2px' }}>
+                              {aux}: ${row.desglose[aux].toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                            </span>
+                          ))}
+                        </td>
+                        <td style={{ padding: '10px', fontWeight: 'bold', color: '#b91c1c', textAlign: 'right' }}>
+                          -${row.total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1', fontWeight: 'bold' }}>
+                      <td colSpan="2" style={{ padding: '12px 10px', color: '#0f172a' }}>TOTAL GENERAL A DESCONTAR</td>
+                      <td style={{ padding: '12px 10px', color: '#b91c1c', fontSize: '15px', fontWeight: '800', textAlign: 'right' }}>
+                        -${descuentosPrestadores.reduce((sum, r) => sum + r.total, 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                       </td>
                     </tr>
-                  ))}
-                  <tr style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1', fontWeight: 'bold' }}>
-                    <td colSpan="2" style={{ padding: '12px 10px', color: '#0f172a' }}>TOTAL GENERAL A DESCONTAR</td>
-                    <td style={{ padding: '12px 10px', color: '#b91c1c', fontSize: '15px', fontWeight: '800', textAlign: 'right' }}>
-                      -${descuentosPrestadores.reduce((sum, r) => sum + r.total, 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              </div>
+              <p style={{ margin: '12px 0 0 0', fontSize: '11px', color: '#64748b', fontStyle: 'italic' }}>
+                💡 Nota: Cualquier día trabajado que no tenga una distribución de prestador explícita se asigna automáticamente a <b>VIVIANA JIMENEZ</b> de forma predeterminada.
+              </p>
             </div>
-            <p style={{ margin: '12px 0 0 0', fontSize: '11px', color: '#64748b', fontStyle: 'italic' }}>
-              💡 Nota: Cualquier día trabajado que no tenga una distribución de prestador explícita se asigna automáticamente a <b>VIVIANA JIMENEZ</b> de forma predeterminada.
-            </p>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
-      {auxiliarSeleccionado && (
+      {subVista === 'principal' && auxiliarSeleccionado && (
         <div>
           {/* Tarjetas de Balance */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '25px' }}>
