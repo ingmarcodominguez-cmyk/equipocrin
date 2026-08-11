@@ -2001,7 +2001,7 @@ const confirmarRegistroPago = async () => {
                           </div>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' }}>
                           <div>
                             <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '5px' }}>
                               Importe Actual ($)
@@ -2026,6 +2026,21 @@ const confirmarRegistroPago = async () => {
                               style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }}
                             />
                             <span style={{ fontSize: '11px', color: '#64748b' }}>Clic fuera para guardar</span>
+                          </div>
+
+                          <div>
+                            <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '5px' }}>
+                              ¿Admite Recargo?
+                            </label>
+                            <select
+                              value={acuerdo.admite_recargo || 'SI'}
+                              onChange={(e) => actualizarAcuerdoEnBD(acuerdo.id_acuerdo, 'admite_recargo', e.target.value)}
+                              style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', background: '#fff', cursor: 'pointer' }}
+                            >
+                              <option value="SI">SI</option>
+                              <option value="NO">NO</option>
+                            </select>
+                            <span style={{ fontSize: '11px', color: '#64748b' }}>Cambio inmediato</span>
                           </div>
                         </div>
                       </div>
