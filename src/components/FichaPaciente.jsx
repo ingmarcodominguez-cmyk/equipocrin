@@ -1393,6 +1393,97 @@ const confirmarRegistroPago = async () => {
     }
   };
 
+  const aplicarCruzeSaldosAFavor = async () => {
+    if (!window.confirm("¿Deseas imputar automáticamente los saldos a favor acumulados contra las deudas pendientes de este paciente?")) {
+      return;
+    }
+    setCargando(true);
+    try {
+      const { data: maxMovData, error: errorMaxMov } = await supabase
+        .from('movimientoscuenta_motor')
+        .select('id_movimiento')
+        .order('id_movimiento', { ascending: false })
+        .limit(1);
+
+      if (errorMaxMov) throw errorMaxMov;
+      let nextIdMovimiento = (maxMovData && maxMovData[0]?.id_movimiento ? parseInt(maxMovData[0].id_movimiento) : 0) + 1;
+
+      const creditos = deudasAgrupadas.filter(d => d.saldoReal < -0.01).map(d => ({ ...d, saldoRestante: Math.abs(d.saldoReal) }));
+      const debitos = deudasAgrupadas.filter(d => d.saldoReal > 0.01).map(d => ({ ...d, saldoRestante: d.saldoReal }));
+
+      const nuevosMovimientos = [];
+      const fechaHoy = localStorage.getItem('crin_fecha_trabajo_simulada') || new Date().toISOString().split('T')[0];
+
+      for (const cred of creditos) {
+        for (const deb of debitos) {
+          if (cred.saldoRestante <= 0) break;
+          if (deb.saldoRestante <= 0) continue;
+
+          const montoAImputar = Math.min(cred.saldoRestante, deb.saldoRestante);
+          if (montoAImputar > 0) {
+            // Nota de Débito en la cuenta del crédito (para saldar el saldo negativo)
+            nuevosMovimientos.push({
+              id_movimiento: nextIdMovimiento++,
+              id_paciente: pacienteSeleccionado.id_paciente,
+              id_acuerdo: cred.id_acuerdo || 0,
+              id_deuda: cred.id_deuda,
+              fecha_movimiento: fechaHoy,
+              fecha_cuota_origen: fechaHoy,
+              fecha_vencimiento: fechaHoy,
+              tipo_movimiento: 'ajuste',
+              subtipo: 'nota_debito',
+              concepto: `N.Débito: Imputación de saldo a favor a Deuda #${deb.id_deuda}`,
+              debe: montoAImputar.toFixed(2),
+              haber: '0',
+              saldo: '0.00',
+              usuario: usuario || 'Sistema'
+            });
+
+            // Nota de Crédito en la cuenta del débito (para saldar la deuda)
+            nuevosMovimientos.push({
+              id_movimiento: nextIdMovimiento++,
+              id_paciente: pacienteSeleccionado.id_paciente,
+              id_acuerdo: deb.id_acuerdo || 0,
+              id_deuda: deb.id_deuda,
+              fecha_movimiento: fechaHoy,
+              fecha_cuota_origen: fechaHoy,
+              fecha_vencimiento: fechaHoy,
+              tipo_movimiento: 'ajuste',
+              subtipo: 'nota_credito',
+              concepto: `N.Crédito: Imputación de saldo a favor desde Deuda #${cred.id_deuda}`,
+              debe: '0',
+              haber: montoAImputar.toFixed(2),
+              saldo: '0.00',
+              usuario: usuario || 'Sistema'
+            });
+
+            cred.saldoRestante -= montoAImputar;
+            deb.saldoRestante -= montoAImputar;
+          }
+        }
+      }
+
+      if (nuevosMovimientos.length > 0) {
+        const { error: errInsert } = await supabase
+          .from('movimientoscuenta_motor')
+          .insert(nuevosMovimientos);
+        
+        if (errInsert) throw errInsert;
+
+        setMensaje({ texto: `Se han imputado con éxito los saldos a favor. Se generaron ${nuevosMovimientos.length} movimientos de ajuste.`, tipo: 'exito' });
+        await seleccionarPacientePorId({ target: { value: pacienteSeleccionado.id_paciente } });
+      } else {
+        alert("No se encontraron saldos a favor compatibles para cruzar.");
+      }
+
+    } catch (err) {
+      console.error("Error al cruzar saldos a favor:", err);
+      alert("Error al cruzar saldos a favor: " + err.message);
+    } finally {
+      setCargando(false);
+    }
+  };
+
   const manejarReversionPago = async (idPago) => {
     if (!window.confirm(`¿Está seguro de que desea revertir el pago con ID Pago #${idPago}? Esto insertará contra-movimientos en la cuenta corriente, caja/medios de pago, y liquidaciones de prestadores.`)) {
       return;
@@ -1977,6 +2068,16 @@ const confirmarRegistroPago = async () => {
                       onMouseOut={(e) => e.target.style.background = '#10b981'}
                     >
                       💵 Registrar Pago
+                    </button>
+                  )}
+                  {deudasAgrupadas.some(d => d.saldoReal < -0.01) && deudasAgrupadas.some(d => d.saldoReal > 0.01) && (
+                    <button
+                      onClick={aplicarCruzeSaldosAFavor}
+                      style={{ background: '#8b5cf6', color: '#fff', border: 'none', padding: '6px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', transition: 'background 0.2s' }}
+                      onMouseOver={(e) => e.target.style.background = '#7c3aed'}
+                      onMouseOut={(e) => e.target.style.background = '#8b5cf6'}
+                    >
+                      ⚡ Imputar Saldos a Favor
                     </button>
                   )}
                   {movimientosDetallados.length > 0 && (
