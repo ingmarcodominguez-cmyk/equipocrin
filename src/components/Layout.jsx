@@ -53,11 +53,14 @@ function Layout({ userData, logout }) {
               <button onClick={() => setVista('documentos')} style={{...btnHubStyle, borderColor: '#fff'}}>📁 DOCUMENTOS</button>
             )}
 
+            {(rol === 'PROFESIONAL' || rol === 'PROFESIONAL_PLUS' || rol === 'DIRECCION') && (
+              <button onClick={() => setVista('movimientos')} style={{...btnHubStyle, borderColor: '#75AADB'}}>
+                {rol === 'DIRECCION' ? '📊 MOV. PRESTADORES' : '📊 MI CUENTA CORRIENTE'}
+              </button>
+            )}
+            
             {esDireccion && (
-              <>
-                <button onClick={() => setVista('movimientos')} style={{...btnHubStyle, borderColor: '#75AADB'}}>📊 MOV. PRESTADORES</button>
-                <button onClick={() => setVista('estados')} style={{...btnHubStyle, borderColor: '#00f2ff'}}>💰 ESTADOS DE CUENTA</button>
-              </>
+              <button onClick={() => setVista('estados')} style={{...btnHubStyle, borderColor: '#00f2ff'}}>💰 ESTADOS DE CUENTA</button>
             )}
           </div>
           <button onClick={logout} style={btnCerrarStyle}>Cerrar Sesión</button>
@@ -73,7 +76,7 @@ function Layout({ userData, logout }) {
             {vista === 'profesionales' && <AgendaFija userData={userData} />}
             {vista === 'pacientes' && <GestionPacientes />}
             {vista === 'estados' && <EstadosCuenta />}
-            {vista === 'movimientos' && <MovimientosPrestadores />}
+            {vista === 'movimientos' && <MovimientosPrestadores userData={userData} />}
             {vista === 'documentos' && <Documentos />}
           </div>
         </div>
