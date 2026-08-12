@@ -963,6 +963,20 @@ const confirmarRegistroPago = async () => {
           importesDistribuidos[firstId] = Math.round((importesDistribuidos[firstId] + diffRedondeo) * 100) / 100;
         }
         
+        let nombreAcuerdoRef = 'Sin Acuerdo';
+        if (deudaSeleccionadaId !== 'FIFO' && deudaSeleccionadaObj?.nombre_prestacion && deudaSeleccionadaObj.nombre_prestacion !== 'Sin Acuerdo') {
+          nombreAcuerdoRef = deudaSeleccionadaObj.nombre_prestacion;
+        } else {
+          const acuerdoMensual = acuerdos?.find(ac => ac.tipo_acuerdo === 'MENSUAL' && ac.estado === 'ACTIVO');
+          if (acuerdoMensual) {
+            nombreAcuerdoRef = acuerdoMensual.nombre_prestacion;
+          } else if (deudaSeleccionadaObj?.nombre_prestacion && deudaSeleccionadaObj.nombre_prestacion !== 'Sin Acuerdo') {
+            nombreAcuerdoRef = deudaSeleccionadaObj.nombre_prestacion;
+          } else if (acuerdos && acuerdos.length > 0) {
+            nombreAcuerdoRef = acuerdos[0].nombre_prestacion;
+          }
+        }
+
         const nuevosMovPrestadores = prestadoresConSesiones.map(p => ({
           id_prestador: p.id_prestador,
           id_paciente: pacienteSeleccionado.id_paciente,
@@ -973,7 +987,7 @@ const confirmarRegistroPago = async () => {
           haber: importesDistribuidos[p.id_prestador].toString(),
           saldo: '0.00',
           usuario: usuario || 'Sistema',
-          acuerdo: deudaSeleccionadaObj?.nombre_prestacion || `Acuerdo ID: ${deudaSeleccionadaObj?.id_acuerdo || 'S/D'}`
+          acuerdo: nombreAcuerdoRef
         }));
         
         const { error: errInsertPrestadores } = await supabase
