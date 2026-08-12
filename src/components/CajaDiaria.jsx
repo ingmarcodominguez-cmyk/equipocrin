@@ -192,11 +192,11 @@ export default function CajaDiaria({ onVolver, usuario }) {
       const haber = (tipo === 'EGRESO' || tipo === 'CIERRE') ? `$${imp.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-';
       return `
         <tr style="border-bottom: 1px solid #e2e8f0;">
-          <td style="padding: 10px; text-align: left; color: #475569;">${m.fecha ? new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR') : '-'}</td>
-          <td style="padding: 10px; text-align: left; font-weight: 600; color: #1e293b;">${m.concepto || '-'}</td>
-          <td style="padding: 10px; text-align: left; color: #64748b; font-size: 12px; text-transform: uppercase;">${m.medio_pago || 'EFECTIVO'}</td>
-          <td style="padding: 10px; text-align: right; font-weight: bold; color: ${tipo === 'INGRESO' || tipo === 'APERTURA' ? '#16a34a' : '#475569'}">${debe}</td>
-          <td style="padding: 10px; text-align: right; font-weight: bold; color: ${tipo === 'EGRESO' || tipo === 'CIERRE' ? '#dc2626' : '#475569'}">${haber}</td>
+          <td style="padding: 5px 8px; text-align: left; color: #475569;">${m.fecha ? new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR') : '-'}</td>
+          <td style="padding: 5px 8px; text-align: left; font-weight: 600; color: #1e293b;">${m.concepto || '-'}</td>
+          <td style="padding: 5px 8px; text-align: left; color: #64748b; font-size: 10px; text-transform: uppercase;">${m.medio_pago || 'EFECTIVO'}</td>
+          <td style="padding: 5px 8px; text-align: right; font-weight: bold; color: ${tipo === 'INGRESO' || tipo === 'APERTURA' ? '#16a34a' : '#475569'}">${debe}</td>
+          <td style="padding: 5px 8px; text-align: right; font-weight: bold; color: ${tipo === 'EGRESO' || tipo === 'CIERRE' ? '#dc2626' : '#475569'}">${haber}</td>
         </tr>
       `;
     }).join('');
@@ -206,36 +206,37 @@ export default function CajaDiaria({ onVolver, usuario }) {
         <head>
           <title>Resumen de Caja Diaria - ${fecha} - Turno ${turno}</title>
           <style>
-            body { font-family: 'Segoe UI', -apple-system, system-ui, sans-serif; color: #1e293b; margin: 40px; background: #fff; }
-            h2 { color: #0f172a; margin: 0; fontSize: 22px; font-weight: bold; }
-            .grid-info { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px; }
-            .card-info { background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; }
+            @page { size: auto; margin: 6mm 8mm; }
+            body { font-family: 'Segoe UI', -apple-system, system-ui, sans-serif; color: #1e293b; margin: 0; padding: 0; background: #fff; font-size: 11px; line-height: 1.3; }
+            h2 { color: #0f172a; margin: 0; font-size: 16px; font-weight: bold; }
+            .grid-info { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+            .card-info { background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px 14px; border-radius: 8px; }
+            .card-info h4 { margin: 0 0 6px 0; font-size: 11.5px; border-bottom: 1.5px solid #cbd5e1; padding-bottom: 3px; }
             .card-info table { width: 100%; border-collapse: collapse; }
-            .card-info td { padding: 6px 0; font-size: 13.5px; }
+            .card-info td { padding: 3px 0; font-size: 11px; }
             .card-info td.label { font-weight: 600; color: #475569; }
             .card-info td.value { text-align: right; font-weight: bold; color: #0f172a; }
-            table.movimientos { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
-            table.movimientos th { background: #f8fafc; padding: 12px 10px; border-bottom: 2px solid #cbd5e1; font-weight: bold; color: #475569; text-align: left; }
-            table.movimientos td { padding: 12px 10px; border-bottom: 1px solid #e2e8f0; }
-            .footer-notes { margin-top: 40px; font-size: 11px; color: #94a3b8; font-style: italic; border-top: 1px solid #e2e8f0; padding-top: 15px; text-align: center; }
+            table.movimientos { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 10px; }
+            table.movimientos th { background: #f8fafc; padding: 6px 8px; border-bottom: 2px solid #cbd5e1; font-weight: bold; color: #475569; text-align: left; }
+            table.movimientos td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; }
+            .footer-notes { margin-top: 15px; font-size: 9.5px; color: #94a3b8; font-style: italic; border-top: 1px solid #e2e8f0; padding-top: 8px; text-align: center; }
             @media print {
-              body { margin: 15px; }
               button { display: none; }
             }
           </style>
         </head>
         <body>
-          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 15px; margin-bottom: 25px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 12px;">
             <div>
               <h2>📋 Reporte de Cierre y Rendición de Caja</h2>
-              <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Sistema CRIN - Resumen de Control Contable</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Sistema CRIN - Resumen de Control Contable</div>
             </div>
-            <button onclick="window.print()" style="background: #2563eb; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 13px; transition: background 0.2s;">🖨️ Imprimir Reporte</button>
+            <button onclick="window.print()" style="background: #2563eb; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 11px;">🖨️ Imprimir Reporte</button>
           </div>
 
           <div class="grid-info">
-            <div class="card-info">
-              <h4 style="margin: 0 0 12px 0; color: #1e3a8a; font-size: 14px; border-bottom: 2px solid #bfdbfe; padding-bottom: 4px;">Datos Generales</h4>
+            <div class="card-info" style="border-color: #bfdbfe; background: #fafcff;">
+              <h4 style="color: #1e3a8a; border-bottom-color: #bfdbfe;">Datos Generales</h4>
               <table>
                 <tr><td class="label">Fecha de Caja:</td><td class="value">${fecha}</td></tr>
                 <tr><td class="label">Turno:</td><td class="value" style="text-transform: uppercase;">${turno}</td></tr>
@@ -244,35 +245,35 @@ export default function CajaDiaria({ onVolver, usuario }) {
               </table>
             </div>
 
-            <div class="card-info">
-              <h4 style="margin: 0 0 12px 0; color: #065f46; font-size: 14px; border-bottom: 2px solid #a7f3d0; padding-bottom: 4px;">Valores Contados y Rendición</h4>
+            <div class="card-info" style="border-color: #a7f3d0; background: #fafdff;">
+              <h4 style="color: #065f46; border-bottom-color: #a7f3d0;">Valores Contados y Rendición</h4>
               <table>
                 <tr><td class="label">Saldo Inicial del Turno:</td><td class="value">$${saldoInicial.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td></tr>
                 <tr><td class="label">Total Ingresos Turno:</td><td class="value" style="color: #16a34a;">+$${totalIngresos.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td></tr>
                 <tr><td class="label">Total Egresos Turno:</td><td class="value" style="color: #dc2626;">-$${totalEgresos.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td></tr>
-                <tr style="border-top: 2px solid #cbd5e1; padding-top: 6px;"><td class="label" style="font-size: 14.5px; color: #0f172a; font-weight: bold;">Saldo Físico Contado:</td><td class="value" style="font-size: 14.5px; color: #2563eb; font-weight: 800;">$${saldoContado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td></tr>
+                <tr style="border-top: 1.5px solid #cbd5e1; padding-top: 4px;"><td class="label" style="font-size: 11px; color: #0f172a; font-weight: bold;">Saldo Físico Contado:</td><td class="value" style="font-size: 11.5px; color: #2563eb; font-weight: 800;">$${saldoContado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td></tr>
                 <tr><td class="label" style="color: #0f766e;">Monto Rendido a Dirección:</td><td class="value" style="color: #0f766e;">-$${montoRendido.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td></tr>
-                <tr style="border-top: 2px dashed #cbd5e1; padding-top: 4px;"><td class="label" style="font-weight: 800; color: #0f172a; font-size: 14.5px;">Saldo Restante (Caja Siguiente):</td><td class="value" style="font-weight: 800; color: #0f172a; font-size: 14.5px;">$${saldoRestante.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td></tr>
+                <tr style="border-top: 1.5px dashed #cbd5e1; padding-top: 3px;"><td class="label" style="font-weight: bold; color: #0f172a; font-size: 11px;">Saldo Restante (Caja Siguiente):</td><td class="value" style="font-weight: bold; color: #0f172a; font-size: 11px;">$${saldoRestante.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td></tr>
                 ${diferencia !== 0 ? `
                   <tr style="color: ${diferencia < 0 ? '#b91c1c' : '#15803d'}; font-weight: bold;">
                     <td class="label" style="color: inherit;">Ajuste Diferencia (${diferencia < 0 ? 'Faltante' : 'Sobrante'}):</td>
                     <td class="value" style="color: inherit;">${diferencia < 0 ? '-' : '+'}$${Math.abs(diferencia).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
                   </tr>
-                  ${motivoDif ? `<tr><td colspan="2" style="font-size: 12px; color: #b91c1c; font-style: italic; padding-top: 4px;">Motivo Diferencia: ${motivoDif}</td></tr>` : ''}
+                  ${motivoDif ? `<tr><td colspan="2" style="font-size: 10px; color: #b91c1c; font-style: italic; padding-top: 2px;">Motivo Diferencia: ${motivoDif}</td></tr>` : ''}
                 ` : ''}
               </table>
             </div>
           </div>
 
-          <h3 style="margin: 25px 0 10px 0; color: #0f172a; font-size: 15px; border-bottom: 2px solid #cbd5e1; padding-bottom: 6px;">📜 Detalle de Movimientos del Turno</h3>
+          <h3 style="margin: 10px 0 4px 0; color: #0f172a; font-size: 12px; border-bottom: 1.5px solid #cbd5e1; padding-bottom: 3px; font-weight: bold;">📜 Detalle de Movimientos del Turno</h3>
           <table class="movimientos">
             <thead>
               <tr style="background: #f8fafc; border-bottom: 2px solid #cbd5e1;">
-                <th style="width: 120px;">Fecha</th>
+                <th style="width: 100px;">Fecha</th>
                 <th>Concepto</th>
-                <th style="width: 120px;">Medio de Pago</th>
-                <th style="width: 130px; text-align: right;">Ingreso (Debe)</th>
-                <th style="width: 130px; text-align: right;">Egreso (Haber)</th>
+                <th style="width: 100px;">Medio de Pago</th>
+                <th style="width: 110px; text-align: right;">Ingreso (Debe)</th>
+                <th style="width: 110px; text-align: right;">Egreso (Haber)</th>
               </tr>
             </thead>
             <tbody>
@@ -288,7 +289,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
             window.onload = function() {
               setTimeout(function() {
                 window.print();
-              }, 300);
+              }, 250);
             }
           </script>
         </body>
