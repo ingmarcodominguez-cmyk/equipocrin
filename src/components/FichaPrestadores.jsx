@@ -85,7 +85,7 @@ export default function FichaPrestadores({ onVolver, usuario }) {
       while (keepFetching) {
         const { data, error } = await supabase
           .from('movprestadores_motor')
-          .select('id_prestador, debe, haber')
+          .select('id_prestador, debe, haber, id_pago')
           .range(from, to);
           
         if (error) throw error;
@@ -99,9 +99,19 @@ export default function FichaPrestadores({ onVolver, usuario }) {
         }
       }
 
+      // Obtener pagos anulados para filtrarlos
+      const { data: pagosAnulados, error: errAnulados } = await supabase
+        .from('pagos_motor')
+        .select('id_pago')
+        .eq('estado', 'ANULADO');
+
+      if (errAnulados) throw errAnulados;
+      const anuladosIds = new Set((pagosAnulados || []).map(p => p.id_pago));
+      const movimientosFiltrados = listaMovs.filter(m => !anuladosIds.has(m.id_pago));
+
       // Mapear saldos
       const saldosMapa = {};
-      (listaMovs || []).forEach(m => {
+      movimientosFiltrados.forEach(m => {
         const id = m.id_prestador;
         const debeVal = parsearDecimal(m.debe);
         const haberVal = parsearDecimal(m.haber);
@@ -141,6 +151,14 @@ export default function FichaPrestadores({ onVolver, usuario }) {
   const cargarMovimientos = async (idPrestador) => {
     setCargandoMovimientos(true);
     try {
+      const { data: pagosAnulados, error: errAnulados } = await supabase
+        .from('pagos_motor')
+        .select('id_pago')
+        .eq('estado', 'ANULADO');
+
+      if (errAnulados) throw errAnulados;
+      const anuladosIds = new Set((pagosAnulados || []).map(p => p.id_pago));
+
       const { data, error } = await supabase
         .from('movprestadores_motor')
         .select('*')
@@ -149,9 +167,11 @@ export default function FichaPrestadores({ onVolver, usuario }) {
 
       if (error) throw error;
 
+      const filtered = (data || []).filter(m => !anuladosIds.has(m.id_pago));
+
       // Calcular saldo acumulado cronológicamente
       let saldoAcumulado = 0;
-      const movimientosConSaldo = (data || []).map(m => {
+      const movimientosConSaldo = filtered.map(m => {
         const debe = parsearDecimal(m.debe);
         const haber = parsearDecimal(m.haber);
         saldoAcumulado += (haber - debe);

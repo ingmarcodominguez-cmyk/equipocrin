@@ -96,7 +96,7 @@ const MovimientosPrestadores = ({ userData }) => {
       while (tieneMas) {
         const { data, error } = await supabase
           .from('movprestadores_motor')
-          .select('id_prestador, debe, haber')
+          .select('id_prestador, debe, haber, id_pago')
           .range(epoch * 1000, (epoch + 1) * 1000 - 1);
 
         if (error) throw error;
@@ -112,8 +112,18 @@ const MovimientosPrestadores = ({ userData }) => {
         }
       }
 
+      // Filtrar movimientos pertenecientes a pagos anulados
+      const { data: pagosAnulados, error: errAnulados } = await supabase
+        .from('pagos_motor')
+        .select('id_pago')
+        .eq('estado', 'ANULADO');
+
+      if (errAnulados) throw errAnulados;
+      const anuladosIds = new Set((pagosAnulados || []).map(p => p.id_pago));
+      const filteredMovements = movements.filter(m => !anuladosIds.has(m.id_pago));
+
       const saldosMap = {};
-      movements.forEach(m => {
+      filteredMovements.forEach(m => {
         const pId = m.id_prestador;
         const debe = parsearDecimal(m.debe);
         const haber = parsearDecimal(m.haber);
@@ -254,6 +264,14 @@ const DetallePrestador = ({ prestador, volver, hideVolver, isMobile, parsearDeci
     async function loadMovs() {
       setCargandoMovs(true);
       try {
+        const { data: pagosAnulados, error: errAnulados } = await supabase
+          .from('pagos_motor')
+          .select('id_pago')
+          .eq('estado', 'ANULADO');
+
+        if (errAnulados) throw errAnulados;
+        const anuladosIds = new Set((pagosAnulados || []).map(p => p.id_pago));
+
         const { data, error } = await supabase
           .from('movprestadores_motor')
           .select('*')
@@ -262,10 +280,11 @@ const DetallePrestador = ({ prestador, volver, hideVolver, isMobile, parsearDeci
 
         if (error) throw error;
 
-        setTodosMovimientos(data || []);
+        const filtered = (data || []).filter(m => !anuladosIds.has(m.id_pago));
+        setTodosMovimientos(filtered);
 
         let saldoAcumulado = 0;
-        const conSaldo = (data || []).map(m => {
+        const conSaldo = filtered.map(m => {
           const debe = parsearDecimal(m.debe);
           const haber = parsearDecimal(m.haber);
           saldoAcumulado += (haber - debe);
