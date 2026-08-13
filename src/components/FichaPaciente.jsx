@@ -582,108 +582,7 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
           });
           setSesionesPrestadores(sesInitial);
           
-          // Buscar sesiones fijas del paciente y auto-completar distribución (solo para acuerdos mensuales activos)
-          const tieneMensualActivo = (acuerdos || []).some(ac => ac.tipo_acuerdo === 'MENSUAL' && ac.estado === 'ACTIVO');
-
-          if (tieneMensualActivo && pacienteSeleccionado?.nombre_apellido) {
-            const { data: pacsAgenda } = await supabase.from('pacientes').select('id, nombre');
-            const normalizedTarget = pacienteSeleccionado.nombre_apellido.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-            const targetWords = normalizedTarget.split(/\s+/).filter(w => w.length >= 2);
-
-            const sortedMatches = (pacsAgenda || [])
-              .map(p => {
-                const norm = (p.nombre || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-                const words = norm.split(/\s+/).filter(w => w.length >= 2);
-                const matches = targetWords.filter(w => words.includes(w));
-                return { p, matchesCount: matches.length, totalWords: words.length };
-              })
-              .filter(item => item.matchesCount >= 2)
-              .sort((a, b) => {
-                if (b.matchesCount !== a.matchesCount) {
-                  return b.matchesCount - a.matchesCount;
-                }
-                const diffA = Math.abs(a.totalWords - targetWords.length);
-                const diffB = Math.abs(b.totalWords - targetWords.length);
-                return diffA - diffB;
-              });
-
-            const matchedPac = sortedMatches[0]?.p;
-
-            if (matchedPac) {
-              const { data: sesiones } = await supabase
-                .from('sesiones_fijas')
-                .select('*')
-                .eq('paciente_id', matchedPac.id);
-
-              if (sesiones && sesiones.length > 0) {
-                const { data: users } = await supabase.from('users').select('*');
-
-                const idViviana = activos.find(p => p.nombre_prestador.toUpperCase().includes('VIVIANA'))?.id_prestador || 1;
-                const PRESTADORES_EXPLICITOS = [
-                  'JIMENEZ ANA',
-                  'LAGARDE MARIA',
-                  'VACA JESSICA',
-                  'PAZ BARRAZA LAURA',
-                  'OLIVERA MARINA',
-                  'VELIZ MATIAS',
-                  'VELIZ PAULA'
-                ].map(n => n.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim());
-
-                const encontrarPrestadorIdLocal = (usuarioNombre, prestadoresList) => {
-                  if (!usuarioNombre) return null;
-                  const normalizedUser = usuarioNombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-                  const userWords = normalizedUser.split(/\s+/).filter(w => w.length >= 2);
-
-                  for (const p of prestadoresList) {
-                    const normalizedPrestador = p.nombre_prestador.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-                    const prestadorWords = normalizedPrestador.split(/\s+/).filter(w => w.length >= 2);
-                    const match = userWords.every(word => prestadorWords.includes(word));
-                    if (match) return p.id_prestador;
-                  }
-                  
-                  for (const p of prestadoresList) {
-                    const normalizedPrestador = p.nombre_prestador.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-                    const prestadorWords = normalizedPrestador.split(/\s+/).filter(w => w.length >= 2);
-                    const matches = userWords.filter(word => prestadorWords.includes(word));
-                    if (matches.length >= 2) {
-                      return p.id_prestador;
-                    }
-                  }
-                  return null;
-                };
-
-                const sesActual = { ...sesInitial };
-
-                sesiones.forEach(s => {
-                  const prof = (users || []).find(u => u.id === s.profesional_id);
-                  if (!prof) {
-                    sesActual[idViviana] = (sesActual[idViviana] || 0) + 1;
-                    return;
-                  }
-
-                  const normProfNombre = prof.nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-                  const esExplicito = PRESTADORES_EXPLICITOS.some(n => {
-                    const pWords = n.split(/\s+/);
-                    const profWords = normProfNombre.split(/\s+/);
-                    return pWords.every(w => profWords.includes(w)) || profWords.every(w => pWords.includes(w));
-                  });
-
-                  if (esExplicito) {
-                    const matchedPrestadorId = encontrarPrestadorIdLocal(prof.nombre, activos);
-                    if (matchedPrestadorId) {
-                      sesActual[matchedPrestadorId] = (sesActual[matchedPrestadorId] || 0) + 1;
-                    } else {
-                      sesActual[idViviana] = (sesActual[idViviana] || 0) + 1;
-                    }
-                  } else {
-                    sesActual[idViviana] = (sesActual[idViviana] || 0) + 1;
-                  }
-                });
-
-                setSesionesPrestadores(sesActual);
-              }
-            }
-          }
+          // Autocompletado diferido al gancho reactivo
         } catch (error) {
           console.error("Error al cargar prestadores:", error);
         } finally {
@@ -715,6 +614,148 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
       setPagoBanco('');
     }
   }, [modalPagoAbierto, pacienteSeleccionado, usuario]);
+
+  const aplicarDistribucionAutomatica = async (idDeuda) => {
+    if (!prestadoresList || prestadoresList.length === 0) return;
+
+    const sesZero = {};
+    prestadoresList.forEach(p => {
+      sesZero[p.id_prestador] = 0;
+    });
+
+    let deberiaAutocompletar = false;
+    if (idDeuda === 'FIFO') {
+      deberiaAutocompletar = (acuerdos || []).some(ac => ac.tipo_acuerdo === 'MENSUAL' && ac.estado === 'ACTIVO');
+    } else if (idDeuda) {
+      const deudaSel = deudasAgrupadas.find(d => String(d.id_deuda) === String(idDeuda));
+      if (deudaSel) {
+        const acuerdoAsociado = acuerdos.find(ac => String(ac.id_acuerdo) === String(deudaSel.id_acuerdo));
+        deberiaAutocompletar = acuerdoAsociado?.tipo_acuerdo === 'MENSUAL';
+      }
+    }
+
+    if (!deberiaAutocompletar) {
+      setSesionesPrestadores(sesZero);
+      return;
+    }
+
+    if (pacienteSeleccionado?.nombre_apellido) {
+      try {
+        const { data: pacsAgenda } = await supabase.from('pacientes').select('id, nombre');
+        const normalizedTarget = pacienteSeleccionado.nombre_apellido.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        const targetWords = normalizedTarget.split(/\s+/).filter(w => w.length >= 2);
+
+        const sortedMatches = (pacsAgenda || [])
+          .map(p => {
+            const norm = (p.nombre || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+            const words = norm.split(/\s+/).filter(w => w.length >= 2);
+            const matches = targetWords.filter(w => words.includes(w));
+            return { p, matchesCount: matches.length, totalWords: words.length };
+          })
+          .filter(item => item.matchesCount >= 2)
+          .sort((a, b) => {
+            if (b.matchesCount !== a.matchesCount) {
+              return b.matchesCount - a.matchesCount;
+            }
+            const diffA = Math.abs(a.totalWords - targetWords.length);
+            const diffB = Math.abs(b.totalWords - targetWords.length);
+            return diffA - diffB;
+          });
+
+        const matchedPac = sortedMatches[0]?.p;
+
+        if (matchedPac) {
+          const { data: sesiones } = await supabase
+            .from('sesiones_fijas')
+            .select('*')
+            .eq('paciente_id', matchedPac.id);
+
+          if (sesiones && sesiones.length > 0) {
+            const { data: users } = await supabase.from('users').select('*');
+
+            const idViviana = prestadoresList.find(p => p.nombre_prestador.toUpperCase().includes('VIVIANA'))?.id_prestador || 1;
+            const PRESTADORES_EXPLICITOS = [
+              'JIMENEZ ANA',
+              'LAGARDE MARIA',
+              'VACA JESSICA',
+              'PAZ BARRAZA LAURA',
+              'OLIVERA MARINA',
+              'VELIZ MATIAS',
+              'VELIZ PAULA'
+            ].map(n => n.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim());
+
+            const encontrarPrestadorIdLocal = (usuarioNombre, pList) => {
+              if (!usuarioNombre) return null;
+              const normalizedUser = usuarioNombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+              const userWords = normalizedUser.split(/\s+/).filter(w => w.length >= 2);
+
+              for (const p of pList) {
+                const normalizedPrestador = p.nombre_prestador.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+                const prestadorWords = normalizedPrestador.split(/\s+/).filter(w => w.length >= 2);
+                const match = userWords.every(word => prestadorWords.includes(word));
+                if (match) return p.id_prestador;
+              }
+              
+              for (const p of pList) {
+                const normalizedPrestador = p.nombre_prestador.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+                const prestadorWords = normalizedPrestador.split(/\s+/).filter(w => w.length >= 2);
+                const matches = userWords.filter(word => prestadorWords.includes(word));
+                if (matches.length >= 2) {
+                  return p.id_prestador;
+                }
+              }
+              return null;
+            };
+
+            const sesActual = { ...sesZero };
+
+            sesiones.forEach(s => {
+              const prof = (users || []).find(u => u.id === s.profesional_id);
+              if (!prof) {
+                sesActual[idViviana] = (sesActual[idViviana] || 0) + 1;
+                return;
+              }
+
+              const normProfNombre = prof.nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+              const esExplicito = PRESTADORES_EXPLICITOS.some(n => {
+                const pWords = n.split(/\s+/);
+                const profWords = normProfNombre.split(/\s+/);
+                return pWords.every(w => profWords.includes(w)) || profWords.every(w => pWords.includes(w));
+              });
+
+              if (esExplicito) {
+                const matchedPrestadorId = encontrarPrestadorIdLocal(prof.nombre, prestadoresList);
+                if (matchedPrestadorId) {
+                  sesActual[matchedPrestadorId] = (sesActual[matchedPrestadorId] || 0) + 1;
+                } else {
+                  sesActual[idViviana] = (sesActual[idViviana] || 0) + 1;
+                }
+              } else {
+                sesActual[idViviana] = (sesActual[idViviana] || 0) + 1;
+              }
+            });
+
+            setSesionesPrestadores(sesActual);
+          } else {
+            setSesionesPrestadores(sesZero);
+          }
+        } else {
+          setSesionesPrestadores(sesZero);
+        }
+      } catch (err) {
+        console.error("Error al aplicar distribución de sesiones:", err);
+        setSesionesPrestadores(sesZero);
+      }
+    } else {
+      setSesionesPrestadores(sesZero);
+    }
+  };
+
+  useEffect(() => {
+    if (modalPagoAbierto && prestadoresList.length > 0) {
+      aplicarDistribucionAutomatica(deudaSeleccionadaId);
+    }
+  }, [deudaSeleccionadaId, modalPagoAbierto, prestadoresList]);
 
 const confirmarRegistroPago = async () => {
     // 1. Validar Importe
