@@ -624,7 +624,7 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
     });
 
     let deberiaAutocompletar = false;
-    if (idDeuda === 'FIFO') {
+    if (idDeuda === '' || idDeuda === 'FIFO') {
       deberiaAutocompletar = (acuerdos || []).some(ac => ac.tipo_acuerdo === 'MENSUAL' && ac.estado === 'ACTIVO');
     } else if (idDeuda) {
       const deudaSel = deudasAgrupadas.find(d => String(d.id_deuda) === String(idDeuda));
