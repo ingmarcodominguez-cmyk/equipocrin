@@ -85,7 +85,7 @@ export default function FichaPrestadores({ onVolver, usuario }) {
       while (keepFetching) {
         const { data, error } = await supabase
           .from('movprestadores_motor')
-          .select('id_prestador, debe, haber, id_pago')
+          .select('id_prestador, debe, haber, id_pago, concepto')
           .range(from, to);
           
         if (error) throw error;
@@ -99,15 +99,15 @@ export default function FichaPrestadores({ onVolver, usuario }) {
         }
       }
 
-      // Obtener pagos anulados para filtrarlos
-      const { data: pagosAnulados, error: errAnulados } = await supabase
-        .from('pagos_motor')
-        .select('id_pago')
-        .eq('estado', 'ANULADO');
-
-      if (errAnulados) throw errAnulados;
-      const anuladosIds = new Set((pagosAnulados || []).map(p => p.id_pago));
-      const movimientosFiltrados = listaMovs.filter(m => !anuladosIds.has(m.id_pago));
+      // Filtrar movimientos pertenecientes a pagos que fueron revertidos
+      const revertedPagoIds = new Set();
+      listaMovs.forEach(m => {
+        const concepto = (m.concepto || '').toUpperCase();
+        if (concepto.startsWith('REVERSO') && m.id_pago) {
+          revertedPagoIds.add(m.id_pago);
+        }
+      });
+      const movimientosFiltrados = listaMovs.filter(m => !m.id_pago || !revertedPagoIds.has(m.id_pago));
 
       // Mapear saldos
       const saldosMapa = {};
@@ -151,14 +151,6 @@ export default function FichaPrestadores({ onVolver, usuario }) {
   const cargarMovimientos = async (idPrestador) => {
     setCargandoMovimientos(true);
     try {
-      const { data: pagosAnulados, error: errAnulados } = await supabase
-        .from('pagos_motor')
-        .select('id_pago')
-        .eq('estado', 'ANULADO');
-
-      if (errAnulados) throw errAnulados;
-      const anuladosIds = new Set((pagosAnulados || []).map(p => p.id_pago));
-
       const { data, error } = await supabase
         .from('movprestadores_motor')
         .select('*')
@@ -167,7 +159,15 @@ export default function FichaPrestadores({ onVolver, usuario }) {
 
       if (error) throw error;
 
-      const filtered = (data || []).filter(m => !anuladosIds.has(m.id_pago));
+      const revertedPagoIds = new Set();
+      (data || []).forEach(m => {
+        const concepto = (m.concepto || '').toUpperCase();
+        if (concepto.startsWith('REVERSO') && m.id_pago) {
+          revertedPagoIds.add(m.id_pago);
+        }
+      });
+
+      const filtered = (data || []).filter(m => !m.id_pago || !revertedPagoIds.has(m.id_pago));
 
       // Calcular saldo acumulado cronológicamente
       let saldoAcumulado = 0;

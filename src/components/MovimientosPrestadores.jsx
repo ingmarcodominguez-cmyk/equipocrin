@@ -96,7 +96,7 @@ const MovimientosPrestadores = ({ userData }) => {
       while (tieneMas) {
         const { data, error } = await supabase
           .from('movprestadores_motor')
-          .select('id_prestador, debe, haber, id_pago')
+          .select('id_prestador, debe, haber, id_pago, concepto')
           .range(epoch * 1000, (epoch + 1) * 1000 - 1);
 
         if (error) throw error;
@@ -112,15 +112,15 @@ const MovimientosPrestadores = ({ userData }) => {
         }
       }
 
-      // Filtrar movimientos pertenecientes a pagos anulados
-      const { data: pagosAnulados, error: errAnulados } = await supabase
-        .from('pagos_motor')
-        .select('id_pago')
-        .eq('estado', 'ANULADO');
-
-      if (errAnulados) throw errAnulados;
-      const anuladosIds = new Set((pagosAnulados || []).map(p => p.id_pago));
-      const filteredMovements = movements.filter(m => !anuladosIds.has(m.id_pago));
+      // Filtrar movimientos pertenecientes a pagos que fueron revertidos
+      const revertedPagoIds = new Set();
+      movements.forEach(m => {
+        const concepto = (m.concepto || '').toUpperCase();
+        if (concepto.startsWith('REVERSO') && m.id_pago) {
+          revertedPagoIds.add(m.id_pago);
+        }
+      });
+      const filteredMovements = movements.filter(m => !m.id_pago || !revertedPagoIds.has(m.id_pago));
 
       const saldosMap = {};
       filteredMovements.forEach(m => {
@@ -264,14 +264,6 @@ const DetallePrestador = ({ prestador, volver, hideVolver, isMobile, parsearDeci
     async function loadMovs() {
       setCargandoMovs(true);
       try {
-        const { data: pagosAnulados, error: errAnulados } = await supabase
-          .from('pagos_motor')
-          .select('id_pago')
-          .eq('estado', 'ANULADO');
-
-        if (errAnulados) throw errAnulados;
-        const anuladosIds = new Set((pagosAnulados || []).map(p => p.id_pago));
-
         const { data, error } = await supabase
           .from('movprestadores_motor')
           .select('*')
@@ -280,7 +272,15 @@ const DetallePrestador = ({ prestador, volver, hideVolver, isMobile, parsearDeci
 
         if (error) throw error;
 
-        const filtered = (data || []).filter(m => !anuladosIds.has(m.id_pago));
+        const revertedPagoIds = new Set();
+        (data || []).forEach(m => {
+          const concepto = (m.concepto || '').toUpperCase();
+          if (concepto.startsWith('REVERSO') && m.id_pago) {
+            revertedPagoIds.add(m.id_pago);
+          }
+        });
+
+        const filtered = (data || []).filter(m => !m.id_pago || !revertedPagoIds.has(m.id_pago));
         setTodosMovimientos(filtered);
 
         let saldoAcumulado = 0;
