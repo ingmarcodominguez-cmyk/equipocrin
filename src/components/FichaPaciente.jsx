@@ -581,6 +581,94 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
             sesInitial[p.id_prestador] = 0;
           });
           setSesionesPrestadores(sesInitial);
+
+          // Buscar sesiones fijas del paciente y auto-completar distribución
+          if (pacienteSeleccionado?.nombre_apellido) {
+            const { data: pacsAgenda } = await supabase.from('pacientes').select('id, nombre');
+            const normalizedTarget = pacienteSeleccionado.nombre_apellido.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+            const targetWords = normalizedTarget.split(/\s+/).filter(w => w.length >= 2);
+
+            const matchedPac = (pacsAgenda || []).find(p => {
+              const norm = (p.nombre || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+              const words = norm.split(/\s+/).filter(w => w.length >= 2);
+              return targetWords.every(w => words.includes(w)) || words.every(w => targetWords.includes(w));
+            });
+
+            if (matchedPac) {
+              const { data: sesiones } = await supabase
+                .from('sesiones_fijas')
+                .select('*')
+                .eq('paciente_id', matchedPac.id);
+
+              if (sesiones && sesiones.length > 0) {
+                const { data: users } = await supabase.from('users').select('*');
+
+                const idViviana = activos.find(p => p.nombre_prestador.toUpperCase().includes('VIVIANA'))?.id_prestador || 1;
+                const PRESTADORES_EXPLICITOS = [
+                  'JIMENEZ ANA',
+                  'LAGARDE MARIA',
+                  'VACA JESSICA',
+                  'PAZ BARRAZA LAURA',
+                  'OLIVERA MARINA',
+                  'VELIZ MATIAS',
+                  'VELIZ PAULA'
+                ].map(n => n.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim());
+
+                const encontrarPrestadorIdLocal = (usuarioNombre, prestadoresList) => {
+                  if (!usuarioNombre) return null;
+                  const normalizedUser = usuarioNombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+                  const userWords = normalizedUser.split(/\s+/).filter(w => w.length >= 2);
+
+                  for (const p of prestadoresList) {
+                    const normalizedPrestador = p.nombre_prestador.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+                    const prestadorWords = normalizedPrestador.split(/\s+/).filter(w => w.length >= 2);
+                    const match = userWords.every(word => prestadorWords.includes(word));
+                    if (match) return p.id_prestador;
+                  }
+                  
+                  for (const p of prestadoresList) {
+                    const normalizedPrestador = p.nombre_prestador.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+                    const prestadorWords = normalizedPrestador.split(/\s+/).filter(w => w.length >= 2);
+                    const matches = userWords.filter(word => prestadorWords.includes(word));
+                    if (matches.length >= 2) {
+                      return p.id_prestador;
+                    }
+                  }
+                  return null;
+                };
+
+                const sesActual = { ...sesInitial };
+
+                sesiones.forEach(s => {
+                  const prof = (users || []).find(u => u.id === s.profesional_id);
+                  if (!prof) {
+                    sesActual[idViviana] = (sesActual[idViviana] || 0) + 1;
+                    return;
+                  }
+
+                  const normProfNombre = prof.nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+                  const esExplicito = PRESTADORES_EXPLICITOS.some(n => {
+                    const pWords = n.split(/\s+/);
+                    const profWords = normProfNombre.split(/\s+/);
+                    return pWords.every(w => profWords.includes(w)) || profWords.every(w => pWords.includes(w));
+                  });
+
+                  if (esExplicito) {
+                    const matchedPrestadorId = encontrarPrestadorIdLocal(prof.nombre, activos);
+                    if (matchedPrestadorId) {
+                      sesActual[matchedPrestadorId] = (sesActual[matchedPrestadorId] || 0) + 1;
+                    } else {
+                      sesActual[idViviana] = (sesActual[idViviana] || 0) + 1;
+                    }
+                  } else {
+                    sesActual[idViviana] = (sesActual[idViviana] || 0) + 1;
+                  }
+                });
+
+                setSesionesPrestadores(sesActual);
+              }
+            }
+          }
         } catch (error) {
           console.error("Error al cargar prestadores:", error);
         } finally {
