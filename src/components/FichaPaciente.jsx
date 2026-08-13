@@ -590,11 +590,24 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
             const normalizedTarget = pacienteSeleccionado.nombre_apellido.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
             const targetWords = normalizedTarget.split(/\s+/).filter(w => w.length >= 2);
 
-            const matchedPac = (pacsAgenda || []).find(p => {
-              const norm = (p.nombre || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-              const words = norm.split(/\s+/).filter(w => w.length >= 2);
-              return targetWords.every(w => words.includes(w)) || words.every(w => targetWords.includes(w));
-            });
+            const sortedMatches = (pacsAgenda || [])
+              .map(p => {
+                const norm = (p.nombre || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+                const words = norm.split(/\s+/).filter(w => w.length >= 2);
+                const matches = targetWords.filter(w => words.includes(w));
+                return { p, matchesCount: matches.length, totalWords: words.length };
+              })
+              .filter(item => item.matchesCount >= 2)
+              .sort((a, b) => {
+                if (b.matchesCount !== a.matchesCount) {
+                  return b.matchesCount - a.matchesCount;
+                }
+                const diffA = Math.abs(a.totalWords - targetWords.length);
+                const diffB = Math.abs(b.totalWords - targetWords.length);
+                return diffA - diffB;
+              });
+
+            const matchedPac = sortedMatches[0]?.p;
 
             if (matchedPac) {
               const { data: sesiones } = await supabase
