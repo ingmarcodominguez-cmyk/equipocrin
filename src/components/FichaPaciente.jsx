@@ -581,9 +581,11 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
             sesInitial[p.id_prestador] = 0;
           });
           setSesionesPrestadores(sesInitial);
+          
+          // Buscar sesiones fijas del paciente y auto-completar distribución (solo para acuerdos mensuales activos)
+          const tieneMensualActivo = (acuerdos || []).some(ac => ac.tipo_acuerdo === 'MENSUAL' && ac.estado === 'ACTIVO');
 
-          // Buscar sesiones fijas del paciente y auto-completar distribución
-          if (pacienteSeleccionado?.nombre_apellido) {
+          if (tieneMensualActivo && pacienteSeleccionado?.nombre_apellido) {
             const { data: pacsAgenda } = await supabase.from('pacientes').select('id, nombre');
             const normalizedTarget = pacienteSeleccionado.nombre_apellido.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
             const targetWords = normalizedTarget.split(/\s+/).filter(w => w.length >= 2);
