@@ -39,6 +39,11 @@ function AgendaFija({ userData }) {
     setSesiones(sData || []); setPacientes(pData || []); setUsers(uData || []);
   }
 
+  async function recargarPacientes() {
+    const { data: pData } = await supabase.from('pacientes').select('*').order('nombre', { ascending: true });
+    if (pData) setPacientes(pData);
+  }
+
   const generarHorarios = () => {
     const arr = [];
     const rangos = [{ inicio: 9, fin: 12, minFin: 30 }, { inicio: 14, fin: 20, minFin: 0 }];
@@ -119,7 +124,7 @@ function AgendaFija({ userData }) {
             <div style={{ display: 'grid', gap: '10px' }}>
               <select style={inputStyle} value={dia} onChange={(e) => setDia(e.target.value)}>{dias.map(d => <option key={d} value={d}>{d}</option>)}</select>
               <select style={inputStyle} value={hora} onChange={(e) => { setHora(e.target.value); setHorarioManual(''); }}>{generarHorarios().map(h => <option key={h} value={h}>{h}</option>)}</select>
-              <select style={inputStyle} value={pacienteSeleccionado} onChange={(e) => setPacienteSeleccionado(e.target.value)}><option value="">Paciente...</option>{pacientes.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select>
+              <select style={inputStyle} value={pacienteSeleccionado} onChange={(e) => setPacienteSeleccionado(e.target.value)} onFocus={recargarPacientes}><option value="">Paciente...</option>{pacientes.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select>
               <select style={inputStyle} value={prestadorSeleccionado} onChange={(e) => setPrestadorSeleccionado(e.target.value)}><option value="">Profesional...</option>{users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
               <button disabled={guardando} onClick={guardarSesion} style={btnAccionStyle}>{guardando ? '...' : (editId ? 'ACTUALIZAR' : 'GUARDAR')}</button>
             </div>
@@ -156,7 +161,7 @@ function AgendaFija({ userData }) {
         </>
       ) : (
         <div style={cardStyle}>
-          <input style={{...inputStyle, width: '100%'}} placeholder="Buscar paciente..." onChange={(e) => setFiltroPaciente(e.target.value)} />
+          <input style={{...inputStyle, width: '100%'}} placeholder="Buscar paciente..." onChange={(e) => setFiltroPaciente(e.target.value)} onFocus={recargarPacientes} />
           <div style={{ maxHeight: '150px', overflowY: 'auto', margin: '10px 0' }}>
             {pacientesFiltrados.map(p => (
               <div key={p.id} onClick={() => setPacienteConsultaId(p.id)} style={{ padding: '10px', background: p.id === pacienteConsultaId ? '#00f2ff' : 'transparent', color: p.id === pacienteConsultaId ? '#000' : '#fff', cursor: 'pointer' }}>{p.nombre}</div>

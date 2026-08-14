@@ -60,6 +60,11 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
   const [sesionesFijas, setSesionesFijas] = useState([]);
   const [usuariosList, setUsuariosList] = useState([]);
   const [cargandoAgenda, setCargandoAgenda] = useState(false);
+  const [documentos, setDocumentos] = useState([]);
+  const [cargandoDocumentos, setCargandoDocumentos] = useState(false);
+  const [liquidacionesPrestadores, setLiquidacionesPrestadores] = useState([]);
+  const [cargandoLiquidaciones, setCargandoLiquidaciones] = useState(false);
+  const [filtroPrestador, setFiltroPrestador] = useState('');
 
   // Estados para Registro de Pago
   const [modalPagoAbierto, setModalPagoAbierto] = useState(false);
@@ -108,14 +113,17 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
       try {
         const [
           { data: pacientesData, error: errorPacientes },
-          { data: prestacionesData, error: errorPrestaciones }
+          { data: prestacionesData, error: errorPrestaciones },
+          { data: prestadoresData, error: errorPrestadores }
         ] = await Promise.all([
           supabase.from('pacientes_motor').select('*'),
-          supabase.from('prestaciones_motor').select('*')
+          supabase.from('prestaciones_motor').select('*'),
+          supabase.from('prestadores_motor').select('*')
         ]);
 
         if (errorPacientes) throw errorPacientes;
         if (errorPrestaciones) throw errorPrestaciones;
+        if (errorPrestadores) throw errorPrestadores;
 
         const ordenados = (pacientesData || []).sort((a, b) => {
           const nombreA = (a.nombre_apellido || '').toLowerCase();
@@ -125,6 +133,7 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
 
         setListaPacientes(ordenados);
         setPrestaciones(prestacionesData || []);
+        setPrestadoresList(prestadoresData || []);
       } catch (error) {
         console.error('Error al inicializar datos:', error);
         setMensaje({ texto: 'Error al cargar datos iniciales: ' + error.message, tipo: 'error' });
@@ -264,6 +273,115 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
       console.error("Error al cargar observaciones:", error);
     } finally {
       setCargandoObservaciones(false);
+    }
+  };
+
+  const cargarDocumentos = async (idPaciente) => {
+    if (!idPaciente) return;
+    setCargandoDocumentos(true);
+    try {
+      const { data, error } = await supabase
+        .from('documentos_pacientes')
+        .select('*')
+        .eq('id_paciente_excel', idPaciente)
+        .order('fecha_subida', { ascending: false });
+
+      if (error) throw error;
+      setDocumentos(data || []);
+    } catch (err) {
+      console.error("Error al cargar documentos del paciente:", err);
+    } finally {
+      setCargandoDocumentos(false);
+    }
+  };
+
+  const cargarLiquidacionesPrestadores = async (idPaciente, nombrePaciente) => {
+    if (!idPaciente) return;
+    setCargandoLiquidaciones(true);
+    try {
+      const nombreBuscar = nombrePaciente ? nombrePaciente.trim() : '';
+      let query = supabase.from('movprestadores_motor').select('*');
+      
+      if (nombreBuscar) {
+        query = query.or(`id_paciente.eq.${idPaciente},concepto.ilike.%${nombreBuscar}%`);
+      } else {
+        query = query.eq('id_paciente', idPaciente);
+      }
+
+      const { data, error } = await query.order('fecha', { ascending: false });
+
+      if (error) throw error;
+
+      // Filtrado inteligente en frontend para evitar solapamiento de nombres similares
+      const filtrados = (data || []).filter(m => {
+        if (m.id_paciente && String(m.id_paciente) === String(idPaciente)) {
+          return true;
+        }
+        
+        const conceptoUpper = (m.concepto || '').toUpperCase();
+        const nombreUpper = nombreBuscar.toUpperCase();
+        
+        if (conceptoUpper.includes(nombreUpper)) {
+          const otrosPacientesConMismoInicio = listaPacientes.filter(p => 
+            p.id_paciente !== idPaciente && 
+            p.nombre_apellido && 
+            p.nombre_apellido.trim().toUpperCase().startsWith(nombreUpper)
+          );
+          
+          const perteneceAOtro = otrosPacientesConMismoInicio.some(p => 
+            conceptoUpper.includes(p.nombre_apellido.trim().toUpperCase())
+          );
+          
+          return !perteneceAOtro;
+        }
+        
+        return false;
+      });
+
+      // Filtrar reversos y sus originales correspondientes
+      const items = [...filtrados];
+      const toIgnore = new Set();
+
+      for (let i = 0; i < items.length; i++) {
+        if (toIgnore.has(items[i].id_mov)) continue;
+
+        const m1 = items[i];
+        const concepto1 = (m1.concepto || '').toUpperCase().trim();
+        
+        if (concepto1.startsWith('REVERSO')) {
+          const baseConcepto = concepto1.replace(/^REVERSO\s*/i, '').trim();
+          const debe1 = parsearMoneda(m1.debe);
+          const haber1 = parsearMoneda(m1.haber);
+
+          const originalIdx = items.findIndex((m2, idx) => {
+            if (idx === i || toIgnore.has(m2.id_mov)) return false;
+            
+            const concepto2 = (m2.concepto || '').toUpperCase().trim();
+            if (concepto2.startsWith('REVERSO')) return false;
+
+            if (concepto2 !== baseConcepto && concepto2.replace(/\s+/g, '') !== baseConcepto.replace(/\s+/g, '')) return false;
+            if (String(m2.id_prestador) !== String(m1.id_prestador)) return false;
+
+            const debe2 = parsearMoneda(m2.debe);
+            const haber2 = parsearMoneda(m2.haber);
+            
+            const matchImporte = (debe1 > 0 && haber2 === debe1) || (haber1 > 0 && debe2 === haber1);
+            return matchImporte;
+          });
+
+          if (originalIdx !== -1) {
+            toIgnore.add(m1.id_mov);
+            toIgnore.add(items[originalIdx].id_mov);
+          }
+        }
+      }
+
+      const finalLiquidaciones = items.filter(m => !toIgnore.has(m.id_mov));
+      setLiquidacionesPrestadores(finalLiquidaciones);
+    } catch (err) {
+      console.error("Error al cargar historial de liquidaciones:", err);
+    } finally {
+      setCargandoLiquidaciones(false);
     }
   };
 
@@ -418,6 +536,9 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
       // Cargar observaciones
       await cargarObservaciones(pacienteEncontrado.id_paciente);
       await cargarAgendaPaciente(pacienteEncontrado);
+      await cargarDocumentos(pacienteEncontrado.id_paciente);
+      await cargarLiquidacionesPrestadores(pacienteEncontrado.id_paciente, pacienteEncontrado.nombre_apellido);
+      setFiltroPrestador('');
 
       const acuerdosConPrestacion = (acuerdosData || []).map(acuerdo => {
         const prestacionEncontrada = prestaciones.find(
@@ -2064,6 +2185,28 @@ const confirmarRegistroPago = async () => {
                 <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Días, horarios y prestadores semanales asignados.</p>
               </div>
 
+              <div 
+                onClick={() => setVistaActiva('documentos')}
+                style={{ border: '2px solid #cbd5e1', borderRadius: '10px', padding: '20px', textAlign: 'center', cursor: 'pointer', background: '#fff', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '8px' }}>📁</div>
+                <h4 style={{ margin: '0 0 6px 0', color: '#0ea5e9', fontSize: '15px' }}>Documentos del Paciente</h4>
+                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Historias clínicas, CUD, contratos y presupuestos guardados.</p>
+              </div>
+
+              <div 
+                onClick={() => setVistaActiva('liquidaciones_prestadores')}
+                style={{ border: '2px solid #cbd5e1', borderRadius: '10px', padding: '20px', textAlign: 'center', cursor: 'pointer', background: '#fff', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '8px' }}>💸</div>
+                <h4 style={{ margin: '0 0 6px 0', color: '#b91c1c', fontSize: '15px' }}>Historial de Liquidaciones</h4>
+                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Detalle de lo liquidado a prestadores por este paciente.</p>
+              </div>
+
             </div>
           )}
 
@@ -2795,7 +2938,211 @@ const confirmarRegistroPago = async () => {
             </div>
           )}
 
+          {vistaActiva === 'documentos' && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '2px solid #e2e8f0', paddingBottom: '8px' }}>
+                <h4 style={{ color: '#1e293b', margin: 0 }}>📁 Documentos del Paciente</h4>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    onClick={() => cargarDocumentos(pacienteSeleccionado.id_paciente)}
+                    disabled={cargandoDocumentos}
+                    style={{ background: '#0284c7', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
+                  >
+                    {cargandoDocumentos ? 'Cargando...' : '🔄 Refrescar'}
+                  </button>
+                  <button
+                    onClick={() => setVistaActiva('menu')}
+                    style={{ background: '#e2e8f0', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#334155' }}
+                  >
+                    ← Volver al Menú de la Ficha
+                  </button>
+                </div>
+              </div>
 
+              {cargandoDocumentos ? (
+                <p style={{ color: '#64748b' }}>Cargando documentos...</p>
+              ) : documentos.length === 0 ? (
+                <p style={{ color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '20px', borderRadius: '8px', textAlign: 'center' }}>
+                  No se registran documentos cargados para este paciente en Supabase.
+                </p>
+              ) : (
+                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {documentos.map(doc => {
+                      const isJson = doc.url_storage && doc.url_storage.startsWith('JSON:');
+                      const fileUrl = isJson
+                        ? `${window.location.origin}/?presupuesto=${doc.id}`
+                        : `https://gqhfrzvtccxrixdtazzs.supabase.co/storage/v1/object/public/documentos_pacientes/${doc.url_storage}`;
+
+                      return (
+                        <div 
+                          key={doc.id} 
+                          style={{ 
+                            padding: '14px 18px', 
+                            background: '#f8fafc', 
+                            border: '1px solid #e2e8f0', 
+                            borderRadius: '10px', 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.01)'
+                          }}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left' }}>
+                            <span style={{ fontWeight: '600', color: '#1e293b', fontSize: '14px' }}>📄 {doc.nombre_archivo}</span>
+                            <span style={{ fontSize: '11px', color: '#64748b' }}>Subido el: {new Date(doc.fecha_subida).toLocaleDateString('es-AR')}</span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <a 
+                              href={fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ 
+                                background: '#3b82f6', 
+                                color: '#fff', 
+                                textDecoration: 'none', 
+                                padding: '6px 14px', 
+                                borderRadius: '6px', 
+                                fontSize: '12px', 
+                                fontWeight: '600', 
+                                cursor: 'pointer',
+                                transition: 'background 0.2s'
+                              }}
+                              onMouseOver={(e) => e.target.style.background = '#2563eb'}
+                              onMouseOut={(e) => e.target.style.background = '#3b82f6'}
+                            >
+                              Descargar / Abrir
+                            </a>
+                            {!isJson && (
+                              <button
+                                onClick={() => {
+                                  window.open(`https://docs.google.com/viewer?url=${encodeURIComponent(fileUrl)}&embedded=true`, '_blank');
+                                }}
+                                style={{ 
+                                  background: '#10b981', 
+                                  color: '#fff', 
+                                  border: 'none',
+                                  padding: '6px 14px', 
+                                  borderRadius: '6px', 
+                                  fontSize: '12px', 
+                                  fontWeight: '600', 
+                                  cursor: 'pointer',
+                                  transition: 'background 0.2s'
+                                }}
+                                onMouseOver={(e) => e.target.style.background = '#059669'}
+                                onMouseOut={(e) => e.target.style.background = '#10b981'}
+                              >
+                                👁️ Ver Online
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {vistaActiva === 'liquidaciones_prestadores' && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '2px solid #e2e8f0', paddingBottom: '8px' }}>
+                <h4 style={{ color: '#1e293b', margin: 0 }}>💸 Historial de Liquidaciones a Prestadores</h4>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <select
+                    value={filtroPrestador}
+                    onChange={(e) => setFiltroPrestador(e.target.value)}
+                    style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#fff', color: '#1e293b', outline: 'none' }}
+                  >
+                    <option value="">-- Todos los prestadores --</option>
+                    {prestadoresList.map(p => (
+                      <option key={p.id_prestador} value={p.id_prestador}>{p.nombre_prestador}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => cargarLiquidacionesPrestadores(pacienteSeleccionado.id_paciente, pacienteSeleccionado.nombre_apellido)}
+                    disabled={cargandoLiquidaciones}
+                    style={{ background: '#0284c7', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
+                  >
+                    {cargandoLiquidaciones ? 'Cargando...' : '🔄 Refrescar'}
+                  </button>
+                  <button
+                    onClick={() => setVistaActiva('menu')}
+                    style={{ background: '#e2e8f0', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#334155' }}
+                  >
+                    ← Volver al Menú de la Ficha
+                  </button>
+                </div>
+              </div>
+
+              {cargandoLiquidaciones ? (
+                <p style={{ color: '#64748b' }}>Cargando liquidaciones...</p>
+              ) : liquidacionesPrestadores.length === 0 ? (
+                <p style={{ color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '20px', borderRadius: '8px', textAlign: 'center' }}>
+                  No se registran liquidaciones a prestadores vinculadas a este paciente.
+                </p>
+              ) : (
+                (() => {
+                  const filtradas = liquidacionesPrestadores.filter(m => {
+                    if (!filtroPrestador) return true;
+                    return String(m.id_prestador) === String(filtroPrestador);
+                  });
+
+                  if (filtradas.length === 0) {
+                    return (
+                      <p style={{ color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '20px', borderRadius: '8px', textAlign: 'center' }}>
+                        No se registran liquidaciones para el prestador seleccionado.
+                      </p>
+                    );
+                  }
+
+                  return (
+                    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', overflowX: 'auto', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                        <thead>
+                          <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1' }}>
+                            <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Fecha</th>
+                            <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Prestador / Profesional</th>
+                            <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Concepto / Detalle</th>
+                            <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Acuerdo / Convenio</th>
+                            <th style={{ padding: '10px', color: '#475569', fontWeight: '600', textAlign: 'right' }}>Importe Liquidado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filtradas.map(m => {
+                            const prestadorObj = prestadoresList.find(p => String(p.id_prestador) === String(m.id_prestador));
+                            const nombrePrestador = prestadorObj ? prestadorObj.nombre_prestador : `ID Prestador: ${m.id_prestador}`;
+                            const haberVal = parsearMoneda(m.haber);
+                            const debeVal = parsearMoneda(m.debe);
+                            const esCredito = haberVal > 0;
+                            const montoMostrar = esCredito ? haberVal : debeVal;
+
+                            return (
+                              <tr key={m.id_mov} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                <td style={{ padding: '10px', fontWeight: '500' }}>{new Date(m.fecha).toLocaleDateString('es-AR')}</td>
+                                <td style={{ padding: '10px', fontWeight: 'bold', color: '#1e293b' }}>{nombrePrestador}</td>
+                                <td style={{ padding: '10px', color: '#475569' }}>{m.concepto || '-'}</td>
+                                <td style={{ padding: '10px', color: '#64748b' }}>{m.acuerdo || 'Particular'}</td>
+                                <td style={{ 
+                                  padding: '10px', 
+                                  textAlign: 'right', 
+                                  fontWeight: '600',
+                                  color: esCredito ? '#16a34a' : '#dc2626' 
+                                }}>
+                                  {esCredito ? '+' : '-'}${montoMostrar.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()
+              )}
+            </div>
+          )}
 
       {modalPagoAbierto && (
         <div style={{

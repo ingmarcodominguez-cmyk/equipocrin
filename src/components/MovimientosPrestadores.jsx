@@ -268,7 +268,9 @@ const DetallePrestador = ({ prestador, volver, hideVolver, isMobile, parsearDeci
           .from('movprestadores_motor')
           .select('*')
           .eq('id_prestador', prestador.id_prestador)
-          .order('fecha', { ascending: true });
+          .order('fecha', { ascending: true })
+          .order('debe', { ascending: true })
+          .order('id_mov', { ascending: true });
 
         if (error) throw error;
 

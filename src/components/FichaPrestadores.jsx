@@ -155,7 +155,9 @@ export default function FichaPrestadores({ onVolver, usuario }) {
         .from('movprestadores_motor')
         .select('*')
         .eq('id_prestador', idPrestador)
-        .order('fecha', { ascending: true });
+        .order('fecha', { ascending: true })
+        .order('debe', { ascending: true })
+        .order('id_mov', { ascending: true });
 
       if (error) throw error;
 
@@ -425,7 +427,7 @@ export default function FichaPrestadores({ onVolver, usuario }) {
               onMouseOver={(e) => e.target.style.background = '#059669'}
               onMouseOut={(e) => e.target.style.background = '#10b981'}
             >
-              💵 Registrar Pago (al Haber)
+              💵 Registrar Pago (al Debe)
             </button>
 
             <button
