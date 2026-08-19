@@ -82,10 +82,10 @@ function App() {
   }, [])
 
   // Ejecución automática en segundo plano al iniciar sesión para ADMINISTRACIÓN o DIRECCIÓN
+  // Ejecución automática en segundo plano al iniciar la app, reanudar o enfocar
   useEffect(() => {
     if (userData && Object.keys(userData).length > 0) {
-      const rolNorm = normalizarRol(userData.rol);
-      if (rolNorm === 'ADMINISTRACION' || rolNorm === 'DIRECCION') {
+      const ejecutarSilencioso = () => {
         console.log(`[Motor de Recargos Autónomo] Ejecutando verificación de mora en segundo plano...`);
         const fechaActualTrabajo = obtenerFechaTrabajo();
         generarCuotasMensualesDB(false).then(() => {
@@ -95,7 +95,31 @@ function App() {
         }).catch(err => {
           console.error("[Motor Autónomo] Error en ejecución automática:", err);
         });
-      }
+      };
+
+      // 1. Ejecutar al iniciar la app
+      ejecutarSilencioso();
+
+      // 2. Ejecutar al volver a enfocar la ventana o pestaña (útil en móviles al reabrir/desbloquear)
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          console.log("[Motor Autónomo] Pestaña visible, re-ejecutando motor...");
+          ejecutarSilencioso();
+        }
+      };
+
+      const handleFocus = () => {
+        console.log("[Motor Autónomo] Ventana enfocada, re-ejecutando motor...");
+        ejecutarSilencioso();
+      };
+
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      window.addEventListener('focus', handleFocus);
+
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        window.removeEventListener('focus', handleFocus);
+      };
     }
   }, [userData]);
 
