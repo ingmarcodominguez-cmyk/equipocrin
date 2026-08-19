@@ -106,6 +106,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
       const prestadorMesMapa = {};
       movimientosFiltrados.forEach(m => {
         if (!m.fecha) return;
+        if (m.fecha < '2026-03-01') return; // Descartar enero y febrero
         const mes = m.fecha.substring(0, 7);
         const id = m.id_prestador;
 
