@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
-export default function EstadosCuenta({ onVolver }) {
+export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdminOrDir }) {
   const [datos, setDatos] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [filtroNombre, setFiltroNombre] = useState('');
@@ -13,156 +13,171 @@ export default function EstadosCuenta({ onVolver }) {
   const [mapaPacientes, setMapaPacientes] = useState({});
   const [mapaPrestaciones, setMapaPrestaciones] = useState({});
   const [mapaAcuerdos, setMapaAcuerdos] = useState({});
+  const [actualizandoMotor, setActualizandoMotor] = useState(false);
 
   useEffect(() => {
-    async function fetchData() {
-      setCargando(true);
-      try {
-        // 1. Obtener todos los pacientes de pacientes_motor
-        const { data: pacientes, error: errorPacientes } = await supabase
-          .from('pacientes_motor')
-          .select('id_paciente, nombre_apellido')
-          .order('nombre_apellido', { ascending: true });
-        
-        if (errorPacientes) throw errorPacientes;
+    async function init() {
+      if (esAdminOrDir && typeof actualizarMoraYCuotas === 'function') {
+        setActualizandoMotor(true);
+        try {
+          await actualizarMoraYCuotas();
+        } catch (err) {
+          console.error("Error al actualizar moras al inicio:", err);
+        } finally {
+          setActualizandoMotor(false);
+        }
+      }
+      fetchData();
+    }
+    init();
+  }, []);
 
-        // 2. Obtener todos los movimientos de movimientoscuenta_motor (paginado para evitar límite de 1000)
-        let movements = [];
-        let epoch = 0;
-        let tieneMas = true;
-        while (tieneMas) {
-          const { data, error } = await supabase
-             .from('movimientoscuenta_motor')
-             .select('*')
-             .range(epoch * 1000, (epoch + 1) * 1000 - 1)
-             .order('id_movimiento', { ascending: true });
+  async function fetchData() {
+    setCargando(true);
+    try {
+      // 1. Obtener todos los pacientes de pacientes_motor
+      const { data: pacientes, error: errorPacientes } = await supabase
+        .from('pacientes_motor')
+        .select('id_paciente, nombre_apellido')
+        .order('nombre_apellido', { ascending: true });
+      
+      if (errorPacientes) throw errorPacientes;
 
-          if (error) throw error;
-          if (!data || data.length === 0) {
+      // 2. Obtener todos los movimientos de movimientoscuenta_motor (paginado para evitar límite de 1000)
+      let movements = [];
+      let epoch = 0;
+      let tieneMas = true;
+      while (tieneMas) {
+        const { data, error } = await supabase
+           .from('movimientoscuenta_motor')
+           .select('*')
+           .range(epoch * 1000, (epoch + 1) * 1000 - 1)
+           .order('id_movimiento', { ascending: true });
+
+        if (error) throw error;
+        if (!data || data.length === 0) {
+          tieneMas = false;
+        } else {
+          movements = [...movements, ...data];
+          if (data.length < 1000) {
             tieneMas = false;
           } else {
-            movements = [...movements, ...data];
-            if (data.length < 1000) {
-              tieneMas = false;
-            } else {
-              epoch++;
-            }
+            epoch++;
           }
         }
-        setTodosLosMovimientos(movements);
-
-        // 3. Obtener acuerdos y prestaciones para mapeo de nombres de acuerdos únicos
-        const { data: acuerdos } = await supabase.from('acuerdos_motor').select('*');
-        const { data: prestaciones } = await supabase.from('prestaciones_motor').select('*');
-
-        const pacMap = {};
-        pacientes.forEach(p => { pacMap[p.id_paciente] = p.nombre_apellido; });
-        setMapaPacientes(pacMap);
-
-        const prestMap = {};
-        (prestaciones || []).forEach(p => { prestMap[p.id_prestacion] = p.nombre_prestacion; });
-        setMapaPrestaciones(prestMap);
-
-        const acMap = {};
-        (acuerdos || []).forEach(a => { acMap[a.id_acuerdo] = a.id_prestacion; });
-        setMapaAcuerdos(acMap);
-
-        const parsePlano = (val) => {
-          if (val === null || val === undefined || val === '') return 0;
-          if (typeof val === 'number') return val;
-          const valStr = String(val).trim();
-          if (valStr.includes(',')) {
-            const clean = valStr.replace(/\./g, '').replace(',', '.');
-            const res = parseFloat(clean);
-            return isNaN(res) ? 0 : res;
-          }
-          const res = parseFloat(valStr);
-          return isNaN(res) ? 0 : res;
-        };
-
-        const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
-
-        const balancesPorPaciente = {};
-        pacientes.forEach(p => {
-          balancesPorPaciente[p.id_paciente] = {
-            id_paciente: p.id_paciente,
-            nombre_paciente: p.nombre_apellido,
-            vencido: 0,
-            prox_7: 0,
-            prox_15: 0,
-            prox_30: 0,
-            total: 0
-          };
-        });
-
-        // Agrupar movimientos por paciente -> id_deuda para saldo consolidado por deuda
-        const agrupado = {};
-        movements.forEach(m => {
-          if (!m.id_paciente || !m.id_deuda) return;
-          const pId = m.id_paciente;
-          const dId = m.id_deuda;
-          if (!agrupado[pId]) agrupado[pId] = {};
-          if (!agrupado[pId][dId]) {
-            agrupado[pId][dId] = {
-              fecha_vencimiento: m.fecha_vencimiento,
-              debe: 0,
-              haber: 0
-            };
-          }
-          agrupado[pId][dId].debe += parsePlano(m.debe);
-          agrupado[pId][dId].haber += parsePlano(m.haber);
-        });
-
-        // Distribuir deudas en las columnas temporales del dashboard
-        for (const pId in agrupado) {
-          const patientRow = balancesPorPaciente[pId];
-          if (!patientRow) continue;
-
-          for (const dId in agrupado[pId]) {
-            const debt = agrupado[pId][dId];
-            const saldo = debt.debe - debt.haber;
-
-            if (saldo > 0.01) {
-              if (!debt.fecha_vencimiento) {
-                patientRow.vencido += saldo;
-                patientRow.total += saldo;
-                continue;
-              }
-
-              const [a, mesIndex, dia] = debt.fecha_vencimiento.split('-').map(Number);
-              const fechaVenc = new Date(a, mesIndex - 1, dia);
-              const diffTime = fechaVenc.getTime() - hoy.getTime();
-              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-              if (diffDays < 0) {
-                patientRow.vencido += saldo;
-              } else if (diffDays <= 7) {
-                patientRow.prox_7 += saldo;
-              } else if (diffDays <= 15) {
-                patientRow.prox_15 += saldo;
-              } else if (diffDays <= 30) {
-                patientRow.prox_30 += saldo;
-              }
-              patientRow.total += saldo;
-            }
-          }
-        }
-
-        // Mostrar todos los pacientes ordenados alfabéticamente
-        const arrayFinal = Object.values(balancesPorPaciente)
-          .filter(p => p.total > 0.01)
-          .sort((a, b) => a.nombre_paciente.localeCompare(b.nombre_paciente));
-        setDatos(arrayFinal);
-
-      } catch (err) {
-        console.error("Error al inicializar EstadosCuenta:", err);
-      } finally {
-        setCargando(false);
       }
+      setTodosLosMovimientos(movements);
+
+      // 3. Obtener acuerdos y prestaciones para mapeo de nombres de acuerdos únicos
+      const { data: acuerdos } = await supabase.from('acuerdos_motor').select('*');
+      const { data: prestaciones } = await supabase.from('prestaciones_motor').select('*');
+
+      const pacMap = {};
+      pacientes.forEach(p => { pacMap[p.id_paciente] = p.nombre_apellido; });
+      setMapaPacientes(pacMap);
+
+      const prestMap = {};
+      (prestaciones || []).forEach(p => { prestMap[p.id_prestacion] = p.nombre_prestacion; });
+      setMapaPrestaciones(prestMap);
+
+      const acMap = {};
+      (acuerdos || []).forEach(a => { acMap[a.id_acuerdo] = a.id_prestacion; });
+      setMapaAcuerdos(acMap);
+
+      const parsePlano = (val) => {
+        if (val === null || val === undefined || val === '') return 0;
+        if (typeof val === 'number') return val;
+        const valStr = String(val).trim();
+        if (valStr.includes(',')) {
+          const clean = valStr.replace(/\./g, '').replace(',', '.');
+          const res = parseFloat(clean);
+          return isNaN(res) ? 0 : res;
+        }
+        const res = parseFloat(valStr);
+        return isNaN(res) ? 0 : res;
+      };
+
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+
+      const balancesPorPaciente = {};
+      pacientes.forEach(p => {
+        balancesPorPaciente[p.id_paciente] = {
+          id_paciente: p.id_paciente,
+          nombre_paciente: p.nombre_apellido,
+          vencido: 0,
+          prox_7: 0,
+          prox_15: 0,
+          prox_30: 0,
+          total: 0
+        };
+      });
+
+      // Agrupar movimientos por paciente -> id_deuda para saldo consolidado por deuda
+      const agrupado = {};
+      movements.forEach(m => {
+        if (!m.id_paciente || !m.id_deuda) return;
+        const pId = m.id_paciente;
+        const dId = m.id_deuda;
+        if (!agrupado[pId]) agrupado[pId] = {};
+        if (!agrupado[pId][dId]) {
+          agrupado[pId][dId] = {
+            fecha_vencimiento: m.fecha_vencimiento,
+            debe: 0,
+            haber: 0
+          };
+        }
+        agrupado[pId][dId].debe += parsePlano(m.debe);
+        agrupado[pId][dId].haber += parsePlano(m.haber);
+      });
+
+      // Distribuir deudas en las columnas temporales del dashboard
+      for (const pId in agrupado) {
+        const patientRow = balancesPorPaciente[pId];
+        if (!patientRow) continue;
+
+        for (const dId in agrupado[pId]) {
+          const debt = agrupado[pId][dId];
+          const saldo = debt.debe - debt.haber;
+
+          if (saldo > 0.01) {
+            if (!debt.fecha_vencimiento) {
+              patientRow.vencido += saldo;
+              patientRow.total += saldo;
+              continue;
+            }
+
+            const [a, mesIndex, dia] = debt.fecha_vencimiento.split('-').map(Number);
+            const fechaVenc = new Date(a, mesIndex - 1, dia);
+            const diffTime = fechaVenc.getTime() - hoy.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (diffDays < 0) {
+              patientRow.vencido += saldo;
+            } else if (diffDays <= 7) {
+              patientRow.prox_7 += saldo;
+            } else if (diffDays <= 15) {
+              patientRow.prox_15 += saldo;
+            } else if (diffDays <= 30) {
+              patientRow.prox_30 += saldo;
+            }
+            patientRow.total += saldo;
+          }
+        }
+      }
+
+      // Mostrar todos los pacientes ordenados alfabéticamente
+      const arrayFinal = Object.values(balancesPorPaciente)
+        .filter(p => p.total > 0.01)
+        .sort((a, b) => a.nombre_paciente.localeCompare(b.nombre_paciente));
+      setDatos(arrayFinal);
+
+    } catch (err) {
+      console.error("Error al inicializar EstadosCuenta:", err);
+    } finally {
+      setCargando(false);
     }
-    fetchData();
-  }, []);
+  }
 
   const verDetalle = (idPaciente, nombrePaciente) => {
     setCargandoDetalle(true);
@@ -280,6 +295,28 @@ export default function EstadosCuenta({ onVolver }) {
           <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>Análisis gerencial y consolidado de saldos deudores agrupados por vencimiento.</p>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
+          {esAdminOrDir && (
+            <button
+              onClick={async () => {
+                setActualizandoMotor(true);
+                try {
+                  await actualizarMoraYCuotas();
+                  await fetchData();
+                  alert("¡Recargos y cuotas actualizadas correctamente!");
+                } catch (err) {
+                  alert("Error al actualizar: " + err.message);
+                } finally {
+                  setActualizandoMotor(false);
+                }
+              }}
+              disabled={actualizandoMotor}
+              style={{ background: '#0284c7', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', transition: 'background 0.2s' }}
+              onMouseOver={(e) => e.target.style.background = '#0369a1'}
+              onMouseOut={(e) => e.target.style.background = '#0284c7'}
+            >
+              {actualizandoMotor ? '⚡ Actualizando...' : '⚡ Correr Motor Mora'}
+            </button>
+          )}
           <button
             onClick={descargarExcel}
             disabled={datosFiltrados.length === 0}
@@ -299,6 +336,12 @@ export default function EstadosCuenta({ onVolver }) {
           </button>
         </div>
       </div>
+
+      {actualizandoMotor && (
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', padding: '12px 16px', borderRadius: '8px', color: '#1e40af', fontSize: '13px', fontWeight: '500', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>⚙️ Actualizando recargos por mora y cuotas en la base de datos...</span>
+        </div>
+      )}
 
       {/* Tarjetas de Balance Global (KPIs) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '15px', marginBottom: '25px' }}>

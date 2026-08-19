@@ -929,6 +929,16 @@ function App() {
     }
   }
 
+  const actualizarMoraYCuotas = async () => {
+    console.log("[Motor Autónomo] Iniciando actualización manual de cuotas y moras...");
+    const fechaActualTrabajo = obtenerFechaTrabajo();
+    await generarCuotasMensualesDB(false);
+    if (typeof ejecutarMotorRecargosDB === 'function') {
+      await ejecutarMotorRecargosDB(fechaActualTrabajo);
+    }
+    console.log("[Motor Autónomo] Actualización completada.");
+  };
+
   // Detectar si es una vista pública de presupuesto
   const searchParams = new URLSearchParams(window.location.search);
   const publicPresupuestoId = searchParams.get('presupuesto');
@@ -1268,7 +1278,11 @@ function App() {
 
         {crinAccion === 'ESTADO_FINANCIERO' && (
           <div style={{ width: '100%', maxWidth: '1100px' }}>
-            <EstadosCuenta onVolver={() => setCrinAccion(null)} />
+            <EstadosCuenta 
+              onVolver={() => setCrinAccion(null)} 
+              actualizarMoraYCuotas={actualizarMoraYCuotas} 
+              esAdminOrDir={true} 
+            />
           </div>
         )}
 
@@ -2054,7 +2068,7 @@ function App() {
       >
         Cambiar Modo
       </button>
-      <Layout userData={userData} logout={logout} />
+      <Layout userData={userData} logout={logout} actualizarMoraYCuotas={actualizarMoraYCuotas} />
     </div>
   )
 }

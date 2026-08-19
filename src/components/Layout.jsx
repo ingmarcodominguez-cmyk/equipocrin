@@ -8,7 +8,7 @@ import MovimientosPrestadores from './MovimientosPrestadores.jsx'
 import Documentos from './Documentos.jsx'
 import logo from '../assets/photo.jpg'
 
-function Layout({ userData, logout }) {
+function Layout({ userData, logout, actualizarMoraYCuotas }) {
   // --- INTERRUPTOR DE BLOQUEO ---
   const MANTENIMIENTO = false; 
   if (MANTENIMIENTO) {
@@ -75,7 +75,12 @@ function Layout({ userData, logout }) {
             {vista === 'tareas' && <Tasks userData={userData} playNotification={playNotification} />}
             {vista === 'profesionales' && <AgendaFija userData={userData} />}
             {vista === 'pacientes' && <GestionPacientes />}
-            {vista === 'estados' && <EstadosCuenta />}
+            {vista === 'estados' && (
+              <EstadosCuenta 
+                actualizarMoraYCuotas={actualizarMoraYCuotas} 
+                esAdminOrDir={esAdminOrDir} 
+              />
+            )}
             {vista === 'movimientos' && <MovimientosPrestadores userData={userData} />}
             {vista === 'documentos' && <Documentos />}
           </div>
