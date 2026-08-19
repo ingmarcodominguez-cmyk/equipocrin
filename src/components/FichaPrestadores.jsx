@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
-export default function FichaPrestadores({ onVolver, usuario }) {
+export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
   const parsearDecimal = (val) => {
     if (val === null || val === undefined || val === '') return 0;
     if (typeof val === 'number') return val;
@@ -53,6 +53,138 @@ export default function FichaPrestadores({ onVolver, usuario }) {
   const [procesandoTx, setProcesandoTx] = useState(false);
 
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' });
+
+  // --- REPORTE DE INGRESOS MENSUALES CONFIDENCIAL ---
+  const [modalReporteAbierto, setModalReporteAbierto] = useState(false);
+  const [cargandoReporte, setCargandoReporte] = useState(false);
+  const [datosReporte, setDatosReporte] = useState([]);
+
+  const ALLOWED_EMAILS = ['marcodominguez@crin.app', 'vivianajimenez@crin.app'];
+  const tieneAccesoReporte = ALLOWED_EMAILS.includes(String(userEmail || '').trim().toLowerCase());
+
+  const cargarReporteIngresos = async () => {
+    setCargandoReporte(true);
+    try {
+      const { data: prestadores, error: errorP } = await supabase
+        .from('prestadores_motor')
+        .select('id_prestador, nombre_prestador')
+        .order('nombre_prestador', { ascending: true });
+
+      if (errorP) throw errorP;
+
+      let listaMovs = [];
+      let from = 0;
+      let to = 999;
+      let keepFetching = true;
+      
+      while (keepFetching) {
+        const { data, error } = await supabase
+          .from('movprestadores_motor')
+          .select('id_prestador, debe, haber, id_pago, concepto, fecha')
+          .range(from, to);
+          
+        if (error) throw error;
+        listaMovs = listaMovs.concat(data || []);
+        
+        if (!data || data.length < 1000) {
+          keepFetching = false;
+        } else {
+          from += 1000;
+          to += 1000;
+        }
+      }
+
+      const revertedPagoIds = new Set();
+      listaMovs.forEach(m => {
+        const concepto = (m.concepto || '').toUpperCase();
+        if (concepto.startsWith('REVERSO') && m.id_pago) {
+          revertedPagoIds.add(m.id_pago);
+        }
+      });
+      const movimientosFiltrados = listaMovs.filter(m => !m.id_pago || !revertedPagoIds.has(m.id_pago));
+
+      const prestadorMesMapa = {};
+      movimientosFiltrados.forEach(m => {
+        if (!m.fecha) return;
+        const mes = m.fecha.substring(0, 7);
+        const id = m.id_prestador;
+
+        const conc = (m.concepto || '').toUpperCase();
+        const esPago = conc.includes('PAGO') || conc.includes('RETIRO') || conc.includes('ENTREGA');
+
+        if (!esPago) {
+          const debeVal = parsearDecimal(m.debe);
+          const haberVal = parsearDecimal(m.haber);
+          const neto = haberVal - debeVal;
+
+          if (!prestadorMesMapa[id]) {
+            prestadorMesMapa[id] = {};
+          }
+          if (!prestadorMesMapa[id][mes]) {
+            prestadorMesMapa[id][mes] = 0;
+          }
+          prestadorMesMapa[id][mes] += neto;
+        }
+      });
+
+      const listadoFinal = prestadores.map(p => {
+        const meses = prestadorMesMapa[p.id_prestador] || {};
+        const listaMesesValidos = Object.keys(meses).sort();
+        
+        let suma = 0;
+        let cantMeses = 0;
+        const desglose = listaMesesValidos.map(m => {
+          const val = meses[m];
+          if (Math.abs(val) > 0.01) {
+            suma += val;
+            cantMeses++;
+          }
+          return { mes: m, monto: val };
+        });
+
+        const promedio = cantMeses > 0 ? suma / cantMeses : 0;
+
+        return {
+          id_prestador: p.id_prestador,
+          nombre_prestador: p.nombre_prestador,
+          promedio,
+          desglose
+        };
+      }).filter(p => p.promedio > 0 || p.desglose.length > 0)
+        .sort((a, b) => b.promedio - a.promedio);
+
+      setDatosReporte(listadoFinal);
+    } catch (err) {
+      console.error("Error al cargar reporte de ingresos prestadores:", err);
+      alert("Error al cargar el reporte: " + err.message);
+    } finally {
+      setCargandoReporte(false);
+    }
+  };
+
+  const descargarReporteIngresosExcel = () => {
+    const BOM = "\uFEFF";
+    let csv = "sep=;\n";
+    csv += `Reporte Confidencial - Promedio Mensual de Ingresos por Prestador\n\n`;
+    csv += "Prestador;Promedio Mensual ($);Meses y Montos Detallados\r\n";
+
+    datosReporte.forEach(p => {
+      const promedioStr = p.promedio.toFixed(2).replace('.', ',');
+      const desgloseStr = p.desglose
+        .map(d => `${d.mes}: $${d.monto.toFixed(2)}`)
+        .join(" | ");
+      csv += `${p.nombre_prestador};${promedioStr};${desgloseStr}\r\n`;
+    });
+
+    const blob = new Blob([BOM + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Promedios_Mensuales_Prestadores.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   useEffect(() => {
     cargarPrestadores();
@@ -329,14 +461,29 @@ export default function FichaPrestadores({ onVolver, usuario }) {
           </h2>
           <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>Gestioná honorarios, pagos, gastos y saldos corrientes de los profesionales.</p>
         </div>
-        <button
-          onClick={onVolver}
-          style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#475569', transition: 'background 0.2s' }}
-          onMouseOver={(e) => e.target.style.background = '#e2e8f0'}
-          onMouseOut={(e) => e.target.style.background = '#f1f5f9'}
-        >
-          ← Volver al Menú
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          {tieneAccesoReporte && (
+            <button
+              onClick={() => {
+                setModalReporteAbierto(true);
+                cargarReporteIngresos();
+              }}
+              style={{ background: '#e11d48', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', transition: 'background 0.2s' }}
+              onMouseOver={(e) => e.target.style.background = '#be123c'}
+              onMouseOut={(e) => e.target.style.background = '#e11d48'}
+            >
+              📊 Ver Promedios Mensuales
+            </button>
+          )}
+          <button
+            onClick={onVolver}
+            style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#475569', transition: 'background 0.2s' }}
+            onMouseOver={(e) => e.target.style.background = '#e2e8f0'}
+            onMouseOut={(e) => e.target.style.background = '#f1f5f9'}
+          >
+            ← Volver al Menú
+          </button>
+        </div>
       </div>
 
       {mensaje.texto && (
@@ -613,6 +760,99 @@ export default function FichaPrestadores({ onVolver, usuario }) {
                 </table>
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {/* Modal Reporte de Ingresos Confidencial */}
+      {modalReporteAbierto && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
+          <div style={{ background: '#fff', padding: '30px', borderRadius: '16px', width: '90%', maxWidth: '850px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.3)', border: '1px solid #e2e8f0' }}>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e11d48', paddingBottom: '15px', marginBottom: '20px' }}>
+              <div>
+                <h3 style={{ margin: 0, color: '#e11d48', fontSize: '20px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📊 Reporte Confidencial: Promedios Mensuales de Ingresos
+                </h3>
+                <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '13px' }}>
+                  Suma de honorarios liquidados por mes (neto de débitos/reversos, antes de pagos).
+                </p>
+              </div>
+              <button 
+                onClick={() => setModalReporteAbierto(false)} 
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#94a3b8' }}
+              >
+                &times;
+              </button>
+            </div>
+
+            <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', padding: '12px 16px', borderRadius: '8px', color: '#9f1239', fontSize: '13px', fontWeight: 'bold', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              ⚠️ Información sumamente sensible y reservada. Solo visible para usuarios autorizados.
+            </div>
+
+            {cargandoReporte ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '50px' }}>
+                <div style={{ width: '40px', height: '40px', border: '4px solid #f3f4f6', borderTop: '4px solid #e11d48', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                <p style={{ marginTop: '15px', color: '#64748b', fontSize: '14px', fontWeight: '500' }}>Calculando históricos y promedios...</p>
+              </div>
+            ) : (
+              <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px', marginBottom: '20px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 'bold' }}>
+                      <th style={{ padding: '12px 16px' }}>Prestador</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right', width: '180px' }}>Promedio Mensual ($)</th>
+                      <th style={{ padding: '12px 16px' }}>Desglose por Mes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {datosReporte.length > 0 ? (
+                      datosReporte.map((p, i) => (
+                        <tr key={p.id_prestador} style={{ borderBottom: '1px solid #edf2f7', background: i % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                          <td style={{ padding: '12px 16px', fontWeight: 'bold', color: '#1e293b' }}>
+                            {p.nombre_prestador}
+                          </td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '800', color: '#2563eb', fontSize: '14px' }}>
+                            ${p.promedio.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td style={{ padding: '12px 16px', color: '#64748b', fontSize: '12px' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                              {p.desglose.map((d, idx) => (
+                                <span key={idx} style={{ background: '#edf2f7', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>
+                                  <strong>{d.mes}</strong>: ${d.monto.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="3" style={{ padding: '30px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>
+                          No se encontraron datos de movimientos.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid #e2e8f0', paddingTop: '15px' }}>
+              <button 
+                onClick={descargarReporteIngresosExcel} 
+                disabled={datosReporte.length === 0 || cargandoReporte}
+                style={{ background: '#10b981', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                📥 Descargar Excel
+              </button>
+              <button 
+                onClick={() => setModalReporteAbierto(false)} 
+                style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', color: '#475569' }}
+              >
+                Cerrar
+              </button>
+            </div>
+            
           </div>
         </div>
       )}

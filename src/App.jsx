@@ -1257,6 +1257,7 @@ function App() {
              <FichaPrestadores 
                onVolver={() => setCrinAccion(null)} 
                usuario={userData?.nombre || session?.user?.email || 'Usuario'} 
+               userEmail={session?.user?.email}
              />
           </div>
         )}
