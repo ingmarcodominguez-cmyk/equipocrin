@@ -265,10 +265,12 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
         setDatosReporte([]);
         setKpiReporte({
           totalEsperados: 0,
+          totalTranscurridos: 0,
           presentes: 0,
           conAviso: 0,
           sinAviso: 0,
           pendientes: 0,
+          futuros: 0,
           porcentaje: 0
         });
         setCargandoReporte(false);
@@ -306,10 +308,19 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
         mapaAsistencias[a.fecha] = a;
       });
 
+      // Obtener hoy en formato YYYY-MM-DD (hora local)
+      const dHoy = new Date();
+      const anioLocal = dHoy.getFullYear();
+      const mesLocal = String(dHoy.getMonth() + 1).padStart(2, '0');
+      const diaLocal = String(dHoy.getDate()).padStart(2, '0');
+      const hoyStr = `${anioLocal}-${mesLocal}-${diaLocal}`;
+
       let countPresente = 0;
       let countConAviso = 0;
       let countSinAviso = 0;
-      let countPendiente = 0;
+      let countPendiente = 0; // Transcurridos y pendientes de registrar (cuentan como inasistencia)
+      let totalEsperadosTranscurridos = 0;
+      let countFuturos = 0;
 
       const listadoFechas = fechasEsperadas.map(f => {
         const diaSem = getDiaSemana(f);
@@ -323,32 +334,49 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
           obs = registroAsist.obs || '';
         }
 
-        if (est === 'Presente') countPresente++;
-        else if (est === 'Ausente con Aviso') countConAviso++;
-        else if (est === 'Ausente sin Aviso') countSinAviso++;
-        else countPendiente++;
+        const esFuturo = f > hoyStr;
+
+        if (esFuturo) {
+          countFuturos++;
+        } else {
+          totalEsperadosTranscurridos++;
+          if (est === 'Presente') {
+            countPresente++;
+          } else if (est === 'Ausente con Aviso') {
+            countConAviso++;
+          } else if (est === 'Ausente sin Aviso') {
+            countSinAviso++;
+          } else {
+            countPendiente++;
+          }
+        }
 
         return {
           fecha: f,
           dia_semana: diaSem,
           sesiones: ses,
           estado: est,
-          obs: obs
+          obs: obs,
+          esFuturo
         };
       });
 
       listadoFechas.sort((a, b) => a.fecha.localeCompare(b.fecha));
 
-      const totalRegistrados = countPresente + countConAviso + countSinAviso;
-      const porcentaje = totalRegistrados > 0 ? (countPresente / totalRegistrados) * 100 : 0;
+      // El porcentaje se calcula como: Presentes / Total Esperados Transcurridos
+      const porcentaje = totalEsperadosTranscurridos > 0 
+        ? (countPresente / totalEsperadosTranscurridos) * 100 
+        : 0;
 
       setDatosReporte(listadoFechas);
       setKpiReporte({
         totalEsperados: fechasEsperadas.length,
+        totalTranscurridos: totalEsperadosTranscurridos,
         presentes: countPresente,
         conAviso: countConAviso,
         sinAviso: countSinAviso,
         pendientes: countPendiente,
+        futuros: countFuturos,
         porcentaje
       });
 
@@ -373,13 +401,15 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
     const BOM = "\uFEFF";
     let csv = "sep=;\n";
     csv += `Reporte Mensual de Asistencia - Paciente: ${nombrePac} (${reporteMes})\n`;
-    csv += `Porcentaje de Asistencia: ${kpiReporte?.porcentaje.toFixed(1)}% | Asistencias: ${kpiReporte?.presentes}/${kpiReporte?.totalEsperados - kpiReporte?.pendientes} registrados\n\n`;
-    csv += "Fecha;Día de la Semana;Horario Sesiones;Estado;Observaciones\r\n";
+    csv += `Porcentaje de Asistencia (Hasta hoy): ${kpiReporte?.porcentaje.toFixed(1)}% | Presentes: ${kpiReporte?.presentes}/${kpiReporte?.totalTranscurridos} dias transcurridos\n\n`;
+    csv += "Fecha;Día de la Semana;Horario Sesiones;Estado;Observaciones;Tipo Día\r\n";
 
     datosReporte.forEach(r => {
       const fecha = new Date(r.fecha + 'T00:00:00').toLocaleDateString('es-AR');
       const sesionesStr = r.sesiones.map(s => `${s.hora} - ${s.profesional}`).join(" | ");
-      csv += `${fecha};${r.dia_semana};${sesionesStr};${r.estado};${r.obs || ''}\r\n`;
+      const tipoDia = r.esFuturo ? "Futuro" : "Transcurrido";
+      const estadoFinal = r.esFuturo ? "Futuro" : r.estado;
+      csv += `${fecha};${r.dia_semana};${sesionesStr};${estadoFinal};${r.obs || ''};${tipoDia}\r\n`;
     });
 
     const blob = new Blob([BOM + csv], { type: "text/csv;charset=utf-8;" });
@@ -698,36 +728,42 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
                 <>
                   {/* Bloque KPI */}
                   {kpiReporte && (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '15px', marginBottom: '25px' }}>
-                      <div style={{ padding: '15px', borderRadius: '12px', background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '1px solid #bfdbfe', display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#1e40af', textTransform: 'uppercase' }}>Porcentaje Asistencia</span>
-                        <span style={{ fontSize: '24px', fontWeight: '800', color: '#2563eb', marginTop: '4px' }}>{kpiReporte.porcentaje.toFixed(1)}%</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '25px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '15px' }}>
+                        <div style={{ padding: '15px', borderRadius: '12px', background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '1px solid #bfdbfe', display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#1e40af', textTransform: 'uppercase' }}>Porcentaje Asistencia</span>
+                          <span style={{ fontSize: '24px', fontWeight: '800', color: '#2563eb', marginTop: '4px' }}>{kpiReporte.porcentaje.toFixed(1)}%</span>
+                        </div>
+                        <div style={{ padding: '15px', borderRadius: '12px', background: '#f0fdf4', border: '1px solid #bbf7d0', display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#166534', textTransform: 'uppercase' }}>Presentes</span>
+                          <span style={{ fontSize: '24px', fontWeight: '800', color: '#16a34a', marginTop: '4px' }}>{kpiReporte.presentes} d</span>
+                        </div>
+                        <div style={{ padding: '15px', borderRadius: '12px', background: '#fef3c7', border: '1px solid #fde68a', display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#92400e', textTransform: 'uppercase' }}>Ausentes c/Aviso</span>
+                          <span style={{ fontSize: '24px', fontWeight: '800', color: '#d97706', marginTop: '4px' }}>{kpiReporte.conAviso} d</span>
+                        </div>
+                        <div style={{ padding: '15px', borderRadius: '12px', background: '#fef2f2', border: '1px solid #fecaca', display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#991b1b', textTransform: 'uppercase' }}>Ausentes s/Aviso</span>
+                          <span style={{ fontSize: '24px', fontWeight: '800', color: '#dc2626', marginTop: '4px' }}>{kpiReporte.sinAviso} d</span>
+                        </div>
+                        <div style={{ padding: '15px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Sin Registrar (Inasistencia)</span>
+                          <span style={{ fontSize: '24px', fontWeight: '800', color: '#64748b', marginTop: '4px' }}>{kpiReporte.pendientes} d</span>
+                        </div>
+                        <div style={{ padding: '15px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Días Transcurridos</span>
+                          <span style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a', marginTop: '4px' }}>{kpiReporte.totalTranscurridos} d</span>
+                        </div>
                       </div>
-                      <div style={{ padding: '15px', borderRadius: '12px', background: '#f0fdf4', border: '1px solid #bbf7d0', display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#166534', textTransform: 'uppercase' }}>Presentes</span>
-                        <span style={{ fontSize: '24px', fontWeight: '800', color: '#16a34a', marginTop: '4px' }}>{kpiReporte.presentes} d</span>
-                      </div>
-                      <div style={{ padding: '15px', borderRadius: '12px', background: '#fef3c7', border: '1px solid #fde68a', display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#92400e', textTransform: 'uppercase' }}>Ausentes c/Aviso</span>
-                        <span style={{ fontSize: '24px', fontWeight: '800', color: '#d97706', marginTop: '4px' }}>{kpiReporte.conAviso} d</span>
-                      </div>
-                      <div style={{ padding: '15px', borderRadius: '12px', background: '#fef2f2', border: '1px solid #fecaca', display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#991b1b', textTransform: 'uppercase' }}>Ausentes s/Aviso</span>
-                        <span style={{ fontSize: '24px', fontWeight: '800', color: '#dc2626', marginTop: '4px' }}>{kpiReporte.sinAviso} d</span>
-                      </div>
-                      <div style={{ padding: '15px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Sin Registrar</span>
-                        <span style={{ fontSize: '24px', fontWeight: '800', color: '#64748b', marginTop: '4px' }}>{kpiReporte.pendientes} d</span>
-                      </div>
-                      <div style={{ padding: '15px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Total Esperados</span>
-                        <span style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a', marginTop: '4px' }}>{kpiReporte.totalEsperados} d</span>
+                      
+                      <div style={{ fontSize: '12px', color: '#64748b', background: '#f8fafc', padding: '10px 15px', borderRadius: '8px', border: '1px solid #e2e8f0', fontWeight: '500' }}>
+                        ℹ️ <strong>Nota de KPI:</strong> El porcentaje de asistencia <strong>({kpiReporte.porcentaje.toFixed(1)}%)</strong> se calcula sobre los días transcurridos hasta hoy ({kpiReporte.totalTranscurridos} de {kpiReporte.totalEsperados} días programados en el mes). Los días con registro <strong>Pendiente</strong> que ya han transcurrido computan automáticamente como inasistencia.
                       </div>
                     </div>
                   )}
 
                   {/* Tabla del Reporte */}
-                  <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+                  <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px', marginBottom: '20px' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', textAlign: 'left' }}>
                       <thead>
                         <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 'bold' }}>
@@ -743,7 +779,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
                           const dateObj = new Date(r.fecha + 'T00:00:00');
                           const dateStr = dateObj.toLocaleDateString('es-AR');
                           return (
-                            <tr key={r.fecha} style={{ borderBottom: '1px solid #edf2f7', background: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                            <tr key={r.fecha} style={{ borderBottom: '1px solid #edf2f7', background: idx % 2 === 0 ? '#ffffff' : '#f8fafc', opacity: r.esFuturo ? 0.6 : 1 }}>
                               <td style={{ padding: '14px 20px', fontWeight: 'bold', color: '#0f172a' }}>
                                 {dateStr}
                               </td>
@@ -767,7 +803,8 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
                                   fontSize: '12px',
                                   fontWeight: 'bold',
                                   color: '#fff',
-                                  backgroundColor: r.estado === 'Presente' ? '#10b981' :
+                                  backgroundColor: r.esFuturo ? '#cbd5e1' :
+                                                   r.estado === 'Presente' ? '#10b981' :
                                                    r.estado === 'Ausente con Aviso' ? '#f59e0b' :
                                                    r.estado === 'Ausente sin Aviso' ? '#ef4444' : '#64748b'
                                 }}>
