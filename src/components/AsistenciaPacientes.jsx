@@ -129,7 +129,13 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
 
   const cambiarEstadoPaciente = (idPaciente, nuevoEstado) => {
     setPacientesCargados(prev =>
-      prev.map(p => p.id_paciente === idPaciente ? { ...p, estado: nuevoEstado } : p)
+      prev.map(p => {
+        if (p.id_paciente === idPaciente) {
+          const estadoFinal = p.estado === nuevoEstado ? 'Pendiente' : nuevoEstado;
+          return { ...p, estado: estadoFinal };
+        }
+        return p;
+      })
     );
   };
 
