@@ -12,7 +12,6 @@ export default function Documentos() {
       const { data, error } = await supabase
         .from('pacientes_motor')
         .select('id_paciente, nombre_apellido')
-        .eq('estado', 'ACTIVO')
         .order('nombre_apellido');
       
       if (error) {
