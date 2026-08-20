@@ -493,18 +493,29 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
         if (fechasTranscurridas.length === 0) return;
 
         let countPresente = 0;
+        let countConAviso = 0;
+        let countSinAviso = 0;
+        let countPendiente = 0;
         const asistPac = asistenciasPorPaciente[pac.id_paciente] || {};
 
         fechasTranscurridas.forEach(f => {
           const est = asistPac[f] || 'Pendiente';
           if (est === 'Presente') {
             countPresente++;
+          } else if (est === 'Ausente con Aviso') {
+            countConAviso++;
+          } else if (est === 'Ausente sin Aviso') {
+            countSinAviso++;
+          } else {
+            countPendiente++;
           }
         });
 
-        const porcentaje = (countPresente / fechasTranscurridas.length) * 100;
+        // porcentajeCritico = (Presente + Aviso) / Esperados. Mide la tasa de justificación/asistencia.
+        const porcentajeCritico = ((countPresente + countConAviso) / fechasTranscurridas.length) * 100;
+        const porcentajeReal = (countPresente / fechasTranscurridas.length) * 100;
 
-        if (porcentaje <= Number(alertaLimite)) {
+        if (porcentajeCritico <= Number(alertaLimite)) {
           resultadosCriticos.push({
             id_paciente: pac.id_paciente,
             nombre_apellido: pac.nombre_apellido,
@@ -513,13 +524,17 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
             tel_padres: pac.tel_padres || 'No registrado',
             tel_alternativo: pac.tel_alternativo || 'No registrado',
             presentes: countPresente,
+            conAviso: countConAviso,
+            sinAviso: countSinAviso,
+            pendientes: countPendiente,
             esperados: fechasTranscurridas.length,
-            porcentaje
+            porcentaje: porcentajeReal,
+            porcentajeCritico
           });
         }
       });
 
-      resultadosCriticos.sort((a, b) => a.porcentaje - b.porcentaje);
+      resultadosCriticos.sort((a, b) => a.porcentajeCritico - b.porcentajeCritico);
       setPacientesCriticos(resultadosCriticos);
 
     } catch (err) {
@@ -539,11 +554,11 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
     
     const BOM = "\uFEFF";
     let csv = "sep=;\n";
-    csv += `Reporte de Casos Críticos de Ausentismo (Corte: <= ${alertaLimite}%) - Mes: ${alertaMes}\n\n`;
-    csv += "Paciente;DNI;Domicilio;Contacto Padres;Contacto Alternativo;Días Presentes;Días Esperados;Tasa Asistencia\r\n";
+    csv += `Reporte de Casos Críticos de Ausentismo (Corte: <= ${alertaLimite}% justificado) - Mes: ${alertaMes}\n\n`;
+    csv += "Paciente;DNI;Domicilio;Contacto Padres;Contacto Alternativo;Días Presentes;Días Con Aviso;Días Sin Aviso;Días Sin Registrar;Días Esperados;Asistencia Real;Concurrencia+Aviso (Justificado)\r\n";
 
     pacientesCriticos.forEach(c => {
-      csv += `${c.nombre_apellido};${c.dni || ''};${c.domicilio};${c.tel_padres};${c.tel_alternativo};${c.presentes};${c.esperados};${c.porcentaje.toFixed(1)}%\r\n`;
+      csv += `${c.nombre_apellido};${c.dni || ''};${c.domicilio};${c.tel_padres};${c.tel_alternativo};${c.presentes};${c.conAviso};${c.sinAviso};${c.pendientes};${c.esperados};${c.porcentaje.toFixed(1)}%;${c.porcentajeCritico.toFixed(1)}%\r\n`;
     });
 
     const blob = new Blob([BOM + csv], { type: "text/csv;charset=utf-8;" });
@@ -1010,7 +1025,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
 
             <div style={{ display: 'flex', alignItems: 'center', background: '#fee2e2', border: '1px solid #fecaca', padding: '8px 15px', borderRadius: '8px', gap: '8px', fontSize: '12px', color: '#991b1b', fontWeight: '500', maxWidth: '380px' }}>
               <span>⚠️</span>
-              <span><strong>Criterio de Alerta:</strong> Los pacientes con asistencia menor o igual al {alertaLimite}% (incluyendo días sin registrar como inasistencia) serán listados aquí para derivación a Trabajo Social.</span>
+              <span><strong>Criterio de Alerta:</strong> Pacientes con asistencia justificada (Presente + Con Aviso) menor o igual al {alertaLimite}%. Las faltas sin aviso o sin registrar incrementan la criticidad.</span>
             </div>
 
             {pacientesCriticos.length > 0 && (
@@ -1037,16 +1052,16 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
                 <div style={{ padding: '40px', textAlign: 'center', border: '2px dashed #cbd5e1', borderRadius: '12px', background: '#f8fafc' }}>
                   <span style={{ fontSize: '32px', display: 'block', marginBottom: '10px' }}>🎉</span>
                   <h4 style={{ margin: 0, color: '#16a34a', fontSize: '15px', fontWeight: 'bold' }}>
-                    ¡Excelente! Ningún paciente se encuentra por debajo del {alertaLimite}% de asistencia en este mes.
+                    ¡Excelente! Ningún paciente se encuentra por debajo del {alertaLimite}% de asistencia justificada en este mes.
                   </h4>
                   <p style={{ margin: '5px 0 0 0', color: '#64748b', fontSize: '12px' }}>
-                    Todos los pacientes activos están cumpliendo con los objetivos mínimos de concurrencia.
+                    Todos los pacientes están avisando o asistiendo adecuadamente.
                   </p>
                 </div>
               ) : (
                 <>
                   <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', padding: '12px 20px', borderRadius: '8px', color: '#b45309', fontSize: '13px', fontWeight: '600', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    🚨 Se identificaron <strong>{pacientesCriticos.length} casos críticos</strong> de ausentismo con un porcentaje menor o igual al {alertaLimite}%.
+                    🚨 Se identificaron <strong>{pacientesCriticos.length} casos críticos</strong> con un porcentaje de justificación/contacto menor o igual al {alertaLimite}%.
                   </div>
 
                   <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
@@ -1054,8 +1069,9 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
                       <thead>
                         <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 'bold' }}>
                           <th style={{ padding: '14px 20px' }}>Paciente</th>
-                          <th style={{ padding: '14px 20px', width: '180px', textAlign: 'center' }}>% Asistencia</th>
-                          <th style={{ padding: '14px 20px' }}>Días Concurridos / Transcurridos</th>
+                          <th style={{ padding: '14px 20px', width: '140px', textAlign: 'center' }}>% Justificado *</th>
+                          <th style={{ padding: '14px 20px', width: '140px', textAlign: 'center' }}>% Asist. Real</th>
+                          <th style={{ padding: '14px 20px' }}>Detalle de Días (Transcurridos)</th>
                           <th style={{ padding: '14px 20px' }}>Domicilio</th>
                           <th style={{ padding: '14px 20px' }}>Contactos de Emergencia / Padres</th>
                         </tr>
@@ -1075,13 +1091,18 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
                                 fontSize: '13px',
                                 fontWeight: '800',
                                 color: '#fff',
-                                backgroundColor: c.porcentaje <= 40 ? '#ef4444' : '#f59e0b'
+                                backgroundColor: c.porcentajeCritico <= 40 ? '#ef4444' : '#f59e0b'
                               }}>
-                                {c.porcentaje.toFixed(1)}%
+                                {c.porcentajeCritico.toFixed(1)}%
                               </span>
                             </td>
-                            <td style={{ padding: '14px 20px', fontWeight: '600', color: '#475569' }}>
-                              {c.presentes} presentes de {c.esperados} esperados
+                            <td style={{ padding: '14px 20px', textAlign: 'center', fontWeight: 'bold', color: '#475569' }}>
+                              {c.porcentaje.toFixed(1)}%
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#475569', fontSize: '13px' }}>
+                              <div>🟢 <strong>{c.presentes}</strong> Pres. | 🟡 <strong>{c.conAviso}</strong> C/Aviso</div>
+                              <div style={{ color: '#b91c1c', marginTop: '3px' }}>🔴 <strong>{c.sinAviso + c.pendientes}</strong> Sin Aviso/Pendientes</div>
+                              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>Total transcurridos: {c.esperados} d</div>
                             </td>
                             <td style={{ padding: '14px 20px', color: '#334155' }}>
                               📍 {c.domicilio}
