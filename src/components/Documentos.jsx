@@ -10,12 +10,20 @@ export default function Documentos() {
   useEffect(() => {
     const fetchPacientes = async () => {
       const { data, error } = await supabase
-        .from('pacientes')
-        .select('id_paciente_excel, nombre')
-        .order('nombre');
+        .from('pacientes_motor')
+        .select('id_paciente, nombre_apellido')
+        .eq('estado', 'ACTIVO')
+        .order('nombre_apellido');
       
-      if (error) console.error("Error al cargar pacientes:", error);
-      else setPacientes(data || []);
+      if (error) {
+        console.error("Error al cargar pacientes:", error);
+      } else {
+        const mapped = (data || []).map(p => ({
+          id_paciente_excel: p.id_paciente,
+          nombre: p.nombre_apellido
+        }));
+        setPacientes(mapped);
+      }
     };
     fetchPacientes();
   }, []);
