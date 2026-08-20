@@ -6,6 +6,7 @@ import GestionPacientes from './GestionPacientes.jsx'
 import EstadosCuenta from './EstadosCuenta.jsx'
 import MovimientosPrestadores from './MovimientosPrestadores.jsx'
 import Documentos from './Documentos.jsx'
+import AsistenciaPacientes from './AsistenciaPacientes.jsx'
 import logo from '../assets/photo.jpg'
 
 function Layout({ userData, logout, actualizarMoraYCuotas }) {
@@ -45,6 +46,10 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
             <button onClick={() => setVista('tareas')} style={btnHubStyle}>✅ TAREAS</button>
             <button onClick={() => setVista('profesionales')} style={btnHubStyle}>⚙️ AGENDA FIJA</button>
             
+            {tieneAccesoTotal && (
+              <button onClick={() => setVista('asistencia_pacientes')} style={{...btnHubStyle, borderColor: '#f43f5e'}}>📋 ASISTENCIA PACIENTES</button>
+            )}
+            
             {/* GESTIÓN PACIENTES ACCESIBLE PARA TODOS */}
             <button onClick={() => setVista('pacientes')} style={{...btnHubStyle, borderColor: '#00f2ff'}}>👤 GESTIÓN PACIENTES</button>
 
@@ -67,7 +72,7 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
         </div>
       )}
 
-      {['agenda', 'tareas', 'profesionales', 'pacientes', 'estados', 'movimientos', 'documentos'].includes(vista) && (
+      {['agenda', 'tareas', 'profesionales', 'pacientes', 'estados', 'movimientos', 'documentos', 'asistencia_pacientes'].includes(vista) && (
         <div style={{ maxWidth: '1200px', margin: 'auto' }}>
           <button onClick={() => setVista('hub')} style={btnVolverStyle}>← VOLVER AL MENÚ</button>
           <div style={{ backgroundColor: '#111', padding: 20, borderRadius: 15, marginTop: 10 }}>
@@ -83,6 +88,12 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
             )}
             {vista === 'movimientos' && <MovimientosPrestadores userData={userData} />}
             {vista === 'documentos' && <Documentos />}
+            {vista === 'asistencia_pacientes' && (
+              <AsistenciaPacientes 
+                onVolver={() => setVista('hub')} 
+                usuario={userData?.nombre || userData?.nombre_apellido || 'Usuario'} 
+              />
+            )}
           </div>
         </div>
       )}

@@ -7,6 +7,7 @@ import FichaPaciente from './components/FichaPaciente.jsx'
 import SimuladorMotorMora from './components/SimuladorMotorMora.jsx'
 import FichaPrestadores from './components/FichaPrestadores.jsx'
 import AsistenciaAuxiliares from './components/AsistenciaAuxiliares.jsx'
+import AsistenciaPacientes from './components/AsistenciaPacientes.jsx'
 import LiquidacionAuxiliares from './components/LiquidacionAuxiliares.jsx'
 import CajaDiaria from './components/CajaDiaria.jsx'
 import TareasPendientes from './components/TareasPendientes.jsx'
@@ -1271,6 +1272,15 @@ function App() {
           </div>
         )}
 
+        {crinAccion === 'ASISTENCIA_PACIENTES' && (
+          <div style={{ width: '100%', maxWidth: '950px' }}>
+             <AsistenciaPacientes 
+               onVolver={() => setCrinAccion(null)} 
+               usuario={userData?.nombre || session?.user?.email || 'Usuario'} 
+             />
+          </div>
+        )}
+
         {crinAccion === 'LIQUIDACION_AUXILIARES' && (
           <div style={{ width: '100%', maxWidth: '950px' }}>
              <LiquidacionAuxiliares 
@@ -1780,6 +1790,39 @@ function App() {
             >
               <div style={{ fontSize: '36px', marginBottom: '12px' }}>📋🤝</div>
               ASISTENCIA AUXILIARES
+            </button>
+
+            {/* Button 6.5: ASISTENCIA PACIENTES */}
+            <button 
+              onClick={() => handleAccionClick('ASISTENCIA_PACIENTES')}
+              style={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '30px 15px', 
+                background: 'linear-gradient(135deg, #fef2f2 100%, #fee2e2 0%)', 
+                color: '#991b1b', 
+                border: '2px solid #fecaca', 
+                borderRadius: '16px', 
+                cursor: 'pointer', 
+                fontWeight: '800', 
+                fontSize: '15px', 
+                textAlign: 'center',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                transition: 'transform 0.2s, box-shadow 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'scale(1.03)';
+                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+              }}
+            >
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>📋👥</div>
+              ASISTENCIA PACIENTES
             </button>
 
             {/* Button 7: LIQUIDACION AUXILIARES */}
