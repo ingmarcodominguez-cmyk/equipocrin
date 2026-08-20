@@ -460,18 +460,21 @@ function App() {
 
       if (movimientos.length === 0) return;
 
-      // 1. Traer todos los acuerdos para mapear admite_recargo
+      // 1. Traer todos los acuerdos para mapear admite_recargo y estado
       const { data: acuerdosData, error: errorAcuerdos } = await supabase
         .from('acuerdos_motor')
-        .select('id_acuerdo, admite_recargo');
+        .select('id_acuerdo, admite_recargo, estado');
 
       if (errorAcuerdos) {
         throw new Error("Error al obtener acuerdos para recargos: " + errorAcuerdos.message);
       }
 
-      const mapaAdmiteRecargo = {};
+      const mapaAcuerdos = {};
       (acuerdosData || []).forEach(ac => {
-        mapaAdmiteRecargo[ac.id_acuerdo] = ac.admite_recargo;
+        mapaAcuerdos[ac.id_acuerdo] = {
+          admite_recargo: ac.admite_recargo,
+          estado: ac.estado ? ac.estado.trim().toUpperCase() : ''
+        };
       });
 
       const deudasMap = {};
@@ -609,12 +612,17 @@ function App() {
         const cuotaBase = deuda.movimientos.find(m => (m.subtipo || '').toUpperCase() === 'CUOTA_MENSUAL');
         if (!cuotaBase) continue;
 
-        // Verificar si la cuenta/acuerdo admite recargo
+        // Verificar si la cuenta/acuerdo admite recargo y está activo
         const idAcuerdo = deuda.id_acuerdo || cuotaBase.id_acuerdo;
         if (idAcuerdo) {
-          const admite = mapaAdmiteRecargo[idAcuerdo];
-          if (admite && String(admite).toUpperCase() === 'NO') {
-            continue;
+          const acInfo = mapaAcuerdos[idAcuerdo];
+          if (acInfo) {
+            if (acInfo.admite_recargo && String(acInfo.admite_recargo).toUpperCase() === 'NO') {
+              continue;
+            }
+            if (acInfo.estado === 'RESCINDIDO' || acInfo.estado === 'FINALIZADO') {
+              continue;
+            }
           }
         }
 

@@ -72,30 +72,40 @@ export default function SimuladorMotorMora() {
 
       let siguienteIdMovimiento = (ultMov && ultMov.length > 0) ? (ultMov[0].id_movimiento || 0) + 1 : 1
 
-      // Traer todos los acuerdos para mapear admite_recargo
+      // Traer todos los acuerdos para mapear admite_recargo y estado
       const { data: acuerdosData, error: errorAcuerdos } = await supabase
         .from('acuerdos_motor')
-        .select('id_acuerdo, admite_recargo');
+        .select('id_acuerdo, admite_recargo, estado');
 
       if (errorAcuerdos) throw errorAcuerdos;
 
-      const mapaAdmiteRecargo = {};
+      const mapaAcuerdos = {};
       (acuerdosData || []).forEach(ac => {
-        mapaAdmiteRecargo[ac.id_acuerdo] = ac.admite_recargo;
+        mapaAcuerdos[ac.id_acuerdo] = {
+          admite_recargo: ac.admite_recargo,
+          estado: ac.estado ? ac.estado.trim().toUpperCase() : ''
+        };
       });
 
       for (const deudaOriginal of deudasBase) {
         const idDeudaActual = deudaOriginal.id_deuda || deudaOriginal.id_movimiento
         const fechaVencStr = deudaOriginal.fecha_vencimiento
 
-        // Verificar si la cuenta/acuerdo admite recargo
+        // Verificar si la cuenta/acuerdo admite recargo y está activo
         const idAcuerdo = deudaOriginal.id_acuerdo;
         if (idAcuerdo) {
-          const admite = mapaAdmiteRecargo[idAcuerdo];
-          if (admite && String(admite).toUpperCase() === 'NO') {
-            logs.push(`   -> Cuota ID ${idDeudaActual} (Acuerdo #${idAcuerdo}) no admite recargo por configuración. Omitiendo.`)
-            setLogResultados([...logs])
-            continue;
+          const acInfo = mapaAcuerdos[idAcuerdo];
+          if (acInfo) {
+            if (acInfo.admite_recargo && String(acInfo.admite_recargo).toUpperCase() === 'NO') {
+              logs.push(`   -> Cuota ID ${idDeudaActual} (Acuerdo #${idAcuerdo}) no admite recargo por configuración. Omitiendo.`)
+              setLogResultados([...logs])
+              continue;
+            }
+            if (acInfo.estado === 'RESCINDIDO' || acInfo.estado === 'FINALIZADO') {
+              logs.push(`   -> Cuota ID ${idDeudaActual} (Acuerdo #${idAcuerdo}) está ${acInfo.estado}. Omitiendo recargos.`)
+              setLogResultados([...logs])
+              continue;
+            }
           }
         }
 
