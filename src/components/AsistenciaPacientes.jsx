@@ -26,6 +26,12 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
   const [datosReporte, setDatosReporte] = useState([]);
   const [kpiReporte, setKpiReporte] = useState(null);
 
+  // Estados de Tab 3 (Alertas)
+  const [alertaMes, setAlertaMes] = useState(new Date().toISOString().substring(0, 7)); // "YYYY-MM"
+  const [alertaLimite, setAlertaLimite] = useState(60);
+  const [cargandoAlertas, setCargandoAlertas] = useState(false);
+  const [pacientesCriticos, setPacientesCriticos] = useState([]);
+
   const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
   const getDiaSemana = (fechaStr) => {
@@ -55,7 +61,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
 
       // 2. Cargar listas de mapeo de pacientes
       const { data: pList, error: errP } = await supabase.from('pacientes').select('id, nombre, id_paciente_excel');
-      const { data: pmList, error: errPM } = await supabase.from('pacientes_motor').select('id_paciente, nombre_apellido, dni');
+      const { data: pmList, error: errPM } = await supabase.from('pacientes_motor').select('id_paciente, nombre_apellido, dni, domicilio, tel_padres, tel_alternativo');
 
       if (errP) throw errP;
       if (errPM) throw errPM;
@@ -75,13 +81,19 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
           patientLookup[p.id] = {
             id_paciente: match.id_paciente,
             nombre_apellido: match.nombre_apellido,
-            dni: match.dni
+            dni: match.dni,
+            domicilio: match.domicilio,
+            tel_padres: match.tel_padres,
+            tel_alternativo: match.tel_alternativo
           };
           listadoMapeado.push({
             id_uuid: p.id,
             id_paciente: match.id_paciente,
             nombre_apellido: match.nombre_apellido,
-            dni: match.dni
+            dni: match.dni,
+            domicilio: match.domicilio,
+            tel_padres: match.tel_padres,
+            tel_alternativo: match.tel_alternativo
           });
         }
       });
@@ -421,6 +433,129 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
     link.click();
     document.body.removeChild(link);
   };
+
+  const generarReporteAlertas = async () => {
+    if (!alertaMes || pacientesMap.length === 0) {
+      setPacientesCriticos([]);
+      return;
+    }
+
+    setCargandoAlertas(true);
+    try {
+      const dHoy = new Date();
+      const anioLocal = dHoy.getFullYear();
+      const mesLocal = String(dHoy.getMonth() + 1).padStart(2, '0');
+      const diaLocal = String(dHoy.getDate()).padStart(2, '0');
+      const hoyStr = `${anioLocal}-${mesLocal}-${diaLocal}`;
+
+      const { data: sesionesFijasTodas, error: errS } = await supabase
+        .from('sesiones_fijas')
+        .select('*')
+        .eq('estado', 'ACTIVO');
+
+      if (errS) throw errS;
+
+      const sesionesPorPaciente = {};
+      (sesionesFijasTodas || []).forEach(s => {
+        if (!sesionesPorPaciente[s.paciente_id]) {
+          sesionesPorPaciente[s.paciente_id] = [];
+        }
+        sesionesPorPaciente[s.paciente_id].push(s);
+      });
+
+      const primerDia = `${alertaMes}-01`;
+      const ultimoDia = `${alertaMes}-31`;
+      const { data: asistenciasTodas, error: errA } = await supabase
+        .from('asistencia_pacientes_motor')
+        .select('*')
+        .gte('fecha', primerDia)
+        .lte('fecha', ultimoDia);
+
+      if (errA) throw errA;
+
+      const asistenciasPorPaciente = {};
+      (asistenciasTodas || []).forEach(a => {
+        if (!asistenciasPorPaciente[a.id_paciente]) {
+          asistenciasPorPaciente[a.id_paciente] = {};
+        }
+        asistenciasPorPaciente[a.id_paciente][a.fecha] = a.estado;
+      });
+
+      const resultadosCriticos = [];
+
+      pacientesMap.forEach(pac => {
+        const sesPac = sesionesPorPaciente[pac.id_uuid] || [];
+        if (sesPac.length === 0) return;
+
+        const diasSemanaPac = [...new Set(sesPac.map(s => s.dia_semana))];
+        const fechasEsperadas = getFechasSemanaEnMes(alertaMes, diasSemanaPac);
+        const fechasTranscurridas = fechasEsperadas.filter(f => f <= hoyStr);
+        if (fechasTranscurridas.length === 0) return;
+
+        let countPresente = 0;
+        const asistPac = asistenciasPorPaciente[pac.id_paciente] || {};
+
+        fechasTranscurridas.forEach(f => {
+          const est = asistPac[f] || 'Pendiente';
+          if (est === 'Presente') {
+            countPresente++;
+          }
+        });
+
+        const porcentaje = (countPresente / fechasTranscurridas.length) * 100;
+
+        if (porcentaje <= Number(alertaLimite)) {
+          resultadosCriticos.push({
+            id_paciente: pac.id_paciente,
+            nombre_apellido: pac.nombre_apellido,
+            dni: pac.dni,
+            domicilio: pac.domicilio || 'No registrado',
+            tel_padres: pac.tel_padres || 'No registrado',
+            tel_alternativo: pac.tel_alternativo || 'No registrado',
+            presentes: countPresente,
+            esperados: fechasTranscurridas.length,
+            porcentaje
+          });
+        }
+      });
+
+      resultadosCriticos.sort((a, b) => a.porcentaje - b.porcentaje);
+      setPacientesCriticos(resultadosCriticos);
+
+    } catch (err) {
+      console.error("Error al generar alertas de ausentismo:", err);
+      alert("Error al generar las alertas: " + err.message);
+    } finally {
+      setCargandoAlertas(false);
+    }
+  };
+
+  useEffect(() => {
+    generarReporteAlertas();
+  }, [alertaMes, alertaLimite, pacientesMap]);
+
+  const descargarReporteAlertasExcel = () => {
+    if (pacientesCriticos.length === 0) return;
+    
+    const BOM = "\uFEFF";
+    let csv = "sep=;\n";
+    csv += `Reporte de Casos Críticos de Ausentismo (Corte: <= ${alertaLimite}%) - Mes: ${alertaMes}\n\n`;
+    csv += "Paciente;DNI;Domicilio;Contacto Padres;Contacto Alternativo;Días Presentes;Días Esperados;Tasa Asistencia\r\n";
+
+    pacientesCriticos.forEach(c => {
+      csv += `${c.nombre_apellido};${c.dni || ''};${c.domicilio};${c.tel_padres};${c.tel_alternativo};${c.presentes};${c.esperados};${c.porcentaje.toFixed(1)}%\r\n`;
+    });
+
+    const blob = new Blob([BOM + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Alertas_Ausentismo_${alertaMes}_corte_${alertaLimite}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div style={{ background: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b' }}>
       
@@ -493,6 +628,23 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
           }}
         >
           📊 Reporte Mensual por Paciente
+        </button>
+        <button
+          onClick={() => setActiveTab('alertas')}
+          style={{
+            padding: '10px 20px',
+            border: 'none',
+            background: 'none',
+            borderBottom: activeTab === 'alertas' ? '3px solid #ef4444' : '3px solid transparent',
+            color: activeTab === 'alertas' ? '#ef4444' : '#64748b',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            fontSize: '14px',
+            transition: 'all 0.2s',
+            outline: 'none'
+          }}
+        >
+          🚨 Alertas de Ausentismo
         </button>
       </div>
 
@@ -817,6 +969,129 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
                             </tr>
                           );
                         })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      {activeTab === 'alertas' && (
+        <>
+          {/* Filtros del Reporte de Alertas */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center', marginBottom: '25px', background: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '180px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Mes / Año *</label>
+              <input
+                type="month"
+                value={alertaMes}
+                onChange={(e) => setAlertaMes(e.target.value)}
+                style={{ padding: '7px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px', background: '#fff', fontWeight: '600', color: '#0f172a' }}
+              />
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '180px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Límite de Alerta (%) *</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={alertaLimite}
+                  onChange={(e) => setAlertaLimite(Math.min(100, Math.max(0, Number(e.target.value))))}
+                  style={{ padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px', background: '#fff', fontWeight: '600', color: '#0f172a', width: '80px' }}
+                />
+                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#475569' }}>% o menos</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', background: '#fee2e2', border: '1px solid #fecaca', padding: '8px 15px', borderRadius: '8px', gap: '8px', fontSize: '12px', color: '#991b1b', fontWeight: '500', maxWidth: '380px' }}>
+              <span>⚠️</span>
+              <span><strong>Criterio de Alerta:</strong> Los pacientes con asistencia menor o igual al {alertaLimite}% (incluyendo días sin registrar como inasistencia) serán listados aquí para derivación a Trabajo Social.</span>
+            </div>
+
+            {pacientesCriticos.length > 0 && (
+              <button
+                onClick={descargarReporteAlertasExcel}
+                style={{ marginLeft: 'auto', background: '#10b981', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', transition: 'background 0.2s' }}
+                onMouseOver={(e) => e.currentTarget.style.background = '#059669'}
+                onMouseOut={(e) => e.currentTarget.style.background = '#10b981'}
+              >
+                📥 Descargar Casos Críticos
+              </button>
+            )}
+          </div>
+
+          {/* Grilla / Resultados de Alertas */}
+          {cargandoAlertas ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '50px' }}>
+              <div style={{ width: '40px', height: '40px', border: '4px solid #f3f4f6', borderTop: '4px solid #3b82f6', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+              <p style={{ marginTop: '15px', color: '#64748b', fontSize: '14px', fontWeight: '500' }}>Calculando ausentismos...</p>
+            </div>
+          ) : (
+            <>
+              {pacientesCriticos.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', border: '2px dashed #cbd5e1', borderRadius: '12px', background: '#f8fafc' }}>
+                  <span style={{ fontSize: '32px', display: 'block', marginBottom: '10px' }}>🎉</span>
+                  <h4 style={{ margin: 0, color: '#16a34a', fontSize: '15px', fontWeight: 'bold' }}>
+                    ¡Excelente! Ningún paciente se encuentra por debajo del {alertaLimite}% de asistencia en este mes.
+                  </h4>
+                  <p style={{ margin: '5px 0 0 0', color: '#64748b', fontSize: '12px' }}>
+                    Todos los pacientes activos están cumpliendo con los objetivos mínimos de concurrencia.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', padding: '12px 20px', borderRadius: '8px', color: '#b45309', fontSize: '13px', fontWeight: '600', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🚨 Se identificaron <strong>{pacientesCriticos.length} casos críticos</strong> de ausentismo con un porcentaje menor o igual al {alertaLimite}%.
+                  </div>
+
+                  <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 'bold' }}>
+                          <th style={{ padding: '14px 20px' }}>Paciente</th>
+                          <th style={{ padding: '14px 20px', width: '180px', textAlign: 'center' }}>% Asistencia</th>
+                          <th style={{ padding: '14px 20px' }}>Días Concurridos / Transcurridos</th>
+                          <th style={{ padding: '14px 20px' }}>Domicilio</th>
+                          <th style={{ padding: '14px 20px' }}>Contactos de Emergencia / Padres</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pacientesCriticos.map((c, idx) => (
+                          <tr key={c.id_paciente} style={{ borderBottom: '1px solid #edf2f7', background: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                            <td style={{ padding: '14px 20px', fontWeight: 'bold', color: '#0f172a' }}>
+                              {c.nombre_apellido}
+                              {c.dni && <span style={{ display: 'block', fontSize: '11px', color: '#94a3b8', fontWeight: '500', marginTop: '2px' }}>DNI: {c.dni}</span>}
+                            </td>
+                            <td style={{ padding: '14px 20px', textAlign: 'center' }}>
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '6px 14px',
+                                borderRadius: '20px',
+                                fontSize: '13px',
+                                fontWeight: '800',
+                                color: '#fff',
+                                backgroundColor: c.porcentaje <= 40 ? '#ef4444' : '#f59e0b'
+                              }}>
+                                {c.porcentaje.toFixed(1)}%
+                              </span>
+                            </td>
+                            <td style={{ padding: '14px 20px', fontWeight: '600', color: '#475569' }}>
+                              {c.presentes} presentes de {c.esperados} esperados
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#334155' }}>
+                              📍 {c.domicilio}
+                            </td>
+                            <td style={{ padding: '14px 20px', fontSize: '13px', color: '#1e293b' }}>
+                              📞 {c.tel_padres} 
+                              {c.tel_alternativo && c.tel_alternativo !== 'No registrado' && ` / 📱 ${c.tel_alternativo}`}
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
