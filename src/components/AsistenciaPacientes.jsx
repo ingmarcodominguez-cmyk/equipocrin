@@ -66,7 +66,12 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
       if (errP) throw errP;
       if (errPM) throw errPM;
 
-      setPacientesMotor(pmList || []);
+      const sortedPM = (pmList || []).sort((a, b) => {
+        const nameA = (a.nombre_apellido || '').trim().toLowerCase();
+        const nameB = (b.nombre_apellido || '').trim().toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+      setPacientesMotor(sortedPM);
 
       // Construir mapa de UUID -> INT paciente
       const listadoMapeado = [];
