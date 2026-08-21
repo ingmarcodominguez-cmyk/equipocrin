@@ -1481,11 +1481,13 @@ const confirmarRegistroPago = async () => {
         usuario: usuario || 'Sistema'
       };
       
-      const { error: errAjuste } = await supabase
+      const { data: insertResult, error: errAjuste } = await supabase
         .from('ajustes_motor')
-        .insert([registroAjuste]);
+        .insert([registroAjuste])
+        .select('*');
         
       if (errAjuste) throw errAjuste;
+      const nuevoAjusteId = insertResult && insertResult[0]?.id_ajuste ? insertResult[0].id_ajuste : null;
       
       // 2. Obtener el próximo id_movimiento
       const { data: maxMovData, error: errorMaxMov } = await supabase
@@ -1542,7 +1544,8 @@ const confirmarRegistroPago = async () => {
               debe: '0',
               haber: montoAsignar.toString(),
               saldo: '0.00',
-              usuario: usuario || 'Sistema'
+              usuario: usuario || 'Sistema',
+              id_origen: nuevoAjusteId
             });
             restante -= montoAsignar;
             nextIdMovimiento++;
@@ -1564,7 +1567,8 @@ const confirmarRegistroPago = async () => {
             debe: '0',
             haber: restante.toString(),
             saldo: '0.00',
-            usuario: usuario || 'Sistema'
+            usuario: usuario || 'Sistema',
+            id_origen: nuevoAjusteId
           });
           nextIdMovimiento++;
         }
@@ -1606,7 +1610,8 @@ const confirmarRegistroPago = async () => {
           debe: tipoAjusteSeleccionado === 'nota_debito' ? importeNum.toString() : '0',
           haber: tipoAjusteSeleccionado === 'nota_credito' ? importeNum.toString() : '0',
           saldo: '0.00',
-          usuario: usuario || 'Sistema'
+          usuario: usuario || 'Sistema',
+          id_origen: nuevoAjusteId
         };
         
         const { error: errMov } = await supabase
@@ -1960,42 +1965,58 @@ const confirmarRegistroPago = async () => {
       setMensaje({ texto: `Eliminando ${tipoTexto}...`, tipo: 'info' });
 
       try {
-        // 1. Eliminar el movimiento seleccionado y cualquier otro movimiento del mismo lote de ajuste
-        const { error: errDelMov } = await supabase
-          .from('movimientoscuenta_motor')
-          .delete()
-          .eq('id_paciente', mov.id_paciente)
-          .eq('fecha_movimiento', mov.fecha_movimiento)
-          .eq('tipo_movimiento', mov.tipo_movimiento)
-          .eq('subtipo', mov.subtipo)
-          .eq('concepto', mov.concepto);
+        // 1. Si el movimiento tiene id_origen, eliminamos por ese identificador único de lote
+        if (mov.id_origen) {
+          const { error: errDelMov } = await supabase
+            .from('movimientoscuenta_motor')
+            .delete()
+            .eq('id_origen', mov.id_origen);
 
-        if (errDelMov) throw errDelMov;
+          if (errDelMov) throw errDelMov;
 
-        // 2. Determinar concepto original para eliminar la cabecera en la tabla de ajustes_motor
-        const prefijo = esNC ? 'N.Crédito: ' : 'N.Débito: ';
-        let conceptoOriginal = mov.concepto || '';
-        if (conceptoOriginal.startsWith(prefijo)) {
-          conceptoOriginal = conceptoOriginal.substring(prefijo.length);
-        } else if (conceptoOriginal.startsWith('N.Crédito:')) {
-          conceptoOriginal = conceptoOriginal.substring('N.Crédito:'.length);
-        } else if (conceptoOriginal.startsWith('N.Débito:')) {
-          conceptoOriginal = conceptoOriginal.substring('N.Débito:'.length);
-        }
+          const { error: errDelAjuste } = await supabase
+            .from('ajustes_motor')
+            .delete()
+            .eq('id_ajuste', mov.id_origen);
 
-        conceptoOriginal = conceptoOriginal.trim();
+          if (errDelAjuste) {
+            console.warn("No se pudo eliminar de ajustes_motor por id_ajuste:", errDelAjuste.message);
+          }
+        } else {
+          // Fallback heredado para movimientos antiguos sin id_origen
+          const { error: errDelMov } = await supabase
+            .from('movimientoscuenta_motor')
+            .delete()
+            .eq('id_paciente', mov.id_paciente)
+            .eq('fecha_movimiento', mov.fecha_movimiento)
+            .eq('tipo_movimiento', mov.tipo_movimiento)
+            .eq('subtipo', mov.subtipo)
+            .eq('concepto', mov.concepto);
 
-        // Buscamos eliminar en la tabla ajustes_motor
-        const { error: errDelAjuste } = await supabase
-          .from('ajustes_motor')
-          .delete()
-          .eq('id_paciente', mov.id_paciente)
-          .eq('fecha_ajuste', mov.fecha_movimiento)
-          .eq('tipo_ajuste', mov.subtipo)
-          .or(`concepto.eq."${conceptoOriginal}",concepto.eq."${esNC ? 'Nota de Crédito' : 'Nota de Débito'}"`);
+          if (errDelMov) throw errDelMov;
 
-        if (errDelAjuste) {
-          console.warn("No se pudo eliminar de ajustes_motor:", errDelAjuste.message);
+          const prefijo = esNC ? 'N.Crédito: ' : 'N.Débito: ';
+          let conceptoOriginal = mov.concepto || '';
+          if (conceptoOriginal.startsWith(prefijo)) {
+            conceptoOriginal = conceptoOriginal.substring(prefijo.length);
+          } else if (conceptoOriginal.startsWith('N.Crédito:')) {
+            conceptoOriginal = conceptoOriginal.substring('N.Crédito:'.length);
+          } else if (conceptoOriginal.startsWith('N.Débito:')) {
+            conceptoOriginal = conceptoOriginal.substring('N.Débito:'.length);
+          }
+          conceptoOriginal = conceptoOriginal.trim();
+
+          const { error: errDelAjuste } = await supabase
+            .from('ajustes_motor')
+            .delete()
+            .eq('id_paciente', mov.id_paciente)
+            .eq('fecha_ajuste', mov.fecha_movimiento)
+            .eq('tipo_ajuste', mov.subtipo)
+            .or(`concepto.eq."${conceptoOriginal}",concepto.eq."${esNC ? 'Nota de Crédito' : 'Nota de Débito'}"`);
+
+          if (errDelAjuste) {
+            console.warn("No se pudo eliminar de ajustes_motor:", errDelAjuste.message);
+          }
         }
 
         setMensaje({ texto: `${tipoTexto} eliminada correctamente de todos los registros.`, tipo: 'exito' });
