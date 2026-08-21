@@ -19,6 +19,10 @@ import Presupuesto from './components/Presupuesto.jsx'
 import PresupuestoPublico from './components/PresupuestoPublico.jsx'
 import PlanillaGastos from './components/PlanillaGastos.jsx'
 
+// Locks para evitar ejecuciones concurrentes de los motores
+let motorRecargosLock = false;
+let cuotasMensualesLock = false;
+
 const normalizarRol = (r) => {
   if (!r) return '';
   return String(r)
@@ -193,6 +197,11 @@ function App() {
 
   // ⚙️ MOTOR DE GENERACIÓN DE CUOTAS (CON VIGÍA A PRUEBA DE BRECHAS)
   async function generarCuotasMensualesDB(forzarPrueba = false) {
+    if (cuotasMensualesLock) {
+      console.log("[Motor de Cuotas] Ya hay una ejecución del motor de cuotas en curso. Omitiendo.");
+      return;
+    }
+    cuotasMensualesLock = true;
     try {
       const fechaTrabajo = obtenerFechaTrabajo();
       const mesActual = fechaTrabajo.getMonth() + 1; 
@@ -407,11 +416,18 @@ function App() {
     } catch (err) {
       console.error("Excepción en generarCuotasMensualesDB:", err);
       alert('❌ Error crítico en el motor de cuotas: ' + (err.message || JSON.stringify(err)));
+    } finally {
+      cuotasMensualesLock = false;
     }
   }
 
 // ⚡ MOTOR DE RECARGOS CORREGIDO (FACTOR MATEMÁTICO EXACTO)
   async function ejecutarMotorRecargosDB(fechaTrabajo) {
+    if (motorRecargosLock) {
+      console.log("[Motor de Mora] Ya hay una ejecución del motor de recargos en curso. Omitiendo.");
+      return;
+    }
+    motorRecargosLock = true;
     const formatearFechaLocal = (d) => {
       const year = d.getFullYear();
       const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -762,6 +778,8 @@ function App() {
 
     } catch (err) {
       console.error("Error crítico en ejecutarMotorRecargosDB:", err);
+    } finally {
+      motorRecargosLock = false;
     }
   }
 
@@ -1031,9 +1049,10 @@ function App() {
             {(normalizarRol(userData?.rol) === 'ADMINISTRACION' || normalizarRol(userData?.rol) === 'DIRECCION') && (
               <button 
                 onClick={handleAccesoSistemaCrin} 
-                style={{ padding: '15px', background: '#111', color: '#fff', border: '1px solid #00f2ff', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}
+                disabled={cargando}
+                style={{ padding: '15px', background: '#111', color: '#fff', border: '1px solid #00f2ff', borderRadius: '10px', cursor: cargando ? 'not-allowed' : 'pointer', fontWeight: 'bold', opacity: cargando ? 0.5 : 1 }}
               >
-                💻 Acceder a Sistema Crin
+                {cargando ? '⌛ Procesando...' : '💻 Acceder a Sistema Crin'}
               </button>
             )}
           </div>
