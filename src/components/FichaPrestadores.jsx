@@ -55,6 +55,50 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
 
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' });
 
+  // --- BÚSQUEDA Y SUMARIZACIÓN GLOBAL ---
+  const [globalSearchTerm, setGlobalSearchTerm] = useState('');
+  const [globalResults, setGlobalResults] = useState([]);
+  const [cargandoGlobal, setCargandoGlobal] = useState(false);
+
+  const ejecutarBusquedaGlobal = async () => {
+    if (!globalSearchTerm.trim()) {
+      alert("Por favor ingrese un concepto o referencia para buscar.");
+      return;
+    }
+    setCargandoGlobal(true);
+    try {
+      const term = `%${globalSearchTerm.trim()}%`;
+      const { data, error } = await supabase
+        .from('movprestadores_motor')
+        .select('*')
+        .or(`concepto.ilike.${term},acuerdo.ilike.${term}`)
+        .order('fecha', { ascending: false });
+
+      if (error) throw error;
+
+      const revertedPagoIds = new Set();
+      (data || []).forEach(m => {
+        const concepto = (m.concepto || '').toUpperCase();
+        if (concepto.startsWith('REVERSO') && m.id_pago) {
+          revertedPagoIds.add(m.id_pago);
+        }
+      });
+      const filtered = (data || []).filter(m => !m.id_pago || !revertedPagoIds.has(m.id_pago));
+
+      setGlobalResults(filtered);
+    } catch (err) {
+      console.error("Error en búsqueda global:", err);
+      alert("Error al buscar: " + err.message);
+    } finally {
+      setCargandoGlobal(false);
+    }
+  };
+
+  const getNombrePrestador = (id) => {
+    const p = prestadores.find(x => String(x.id_prestador) === String(id));
+    return p ? p.nombre_prestador : `Prestador #${id}`;
+  };
+
   // --- REPORTE DE INGRESOS MENSUALES CONFIDENCIAL ---
   const [modalReporteAbierto, setModalReporteAbierto] = useState(false);
   const [cargandoReporte, setCargandoReporte] = useState(false);
@@ -465,6 +509,10 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
   const totalHaberFiltrado = movimientosFiltrados.reduce((sum, m) => sum + parsearDecimal(m.haber), 0);
   const balanceFiltrado = totalHaberFiltrado - totalDebeFiltrado;
 
+  const globalTotalDebe = globalResults.reduce((sum, m) => sum + parsearDecimal(m.debe), 0);
+  const globalTotalHaber = globalResults.reduce((sum, m) => sum + parsearDecimal(m.haber), 0);
+  const globalBalance = globalTotalHaber - globalTotalDebe;
+
   return (
     <div style={{ background: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b' }}>
       
@@ -539,6 +587,125 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
           </select>
         )}
       </div>
+
+      {!prestadorSeleccionado && (
+        <div style={{ marginTop: '20px', background: '#ffffff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+          <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', fontWeight: 'bold', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            🔍 Buscador y Sumarizador Global (Todos los Profesionales)
+          </h3>
+          <p style={{ margin: '0 0 15px 0', fontSize: '13px', color: '#64748b' }}>
+            Buscá un concepto o número de acuerdo/referencia en toda la base de datos para ver el total liquidado de todos los prestadores juntos.
+          </p>
+
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+            <input 
+              type="text"
+              value={globalSearchTerm}
+              onChange={(e) => setGlobalSearchTerm(e.target.value)}
+              placeholder="Ej: Subsidio de Salud Julio 2026, Deuda #953, Acuerdo #784..."
+              style={{ flex: 1, padding: '10px 14px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff' }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') ejecutarBusquedaGlobal();
+              }}
+            />
+            <button
+              onClick={ejecutarBusquedaGlobal}
+              disabled={cargandoGlobal}
+              style={{ background: '#4f46e5', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              {cargandoGlobal ? 'Buscando...' : '🔍 Buscar y Sumar'}
+            </button>
+          </div>
+
+          {globalResults.length > 0 && (
+            <div>
+              {/* Tarjetas de Resumen Global */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px', marginBottom: '20px' }}>
+                <div style={{ background: '#fff', padding: '15px', borderRadius: '10px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Total Debe (Global)</span>
+                  <h4 style={{ margin: '4px 0 0 0', fontSize: '18px', color: '#b91c1c', fontWeight: 'bold' }}>
+                    ${globalTotalDebe.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </h4>
+                </div>
+                <div style={{ background: '#fff', padding: '15px', borderRadius: '10px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Total Haber (Global)</span>
+                  <h4 style={{ margin: '4px 0 0 0', fontSize: '18px', color: '#15803d', fontWeight: 'bold' }}>
+                    ${globalTotalHaber.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </h4>
+                </div>
+                <div style={{ background: '#fff', padding: '15px', borderRadius: '10px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Saldo Neto (Global)</span>
+                  <h4 style={{ margin: '4px 0 0 0', fontSize: '18px', color: globalBalance >= 0 ? '#15803d' : '#b91c1c', fontWeight: 'bold' }}>
+                    ${globalBalance.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </h4>
+                </div>
+              </div>
+
+              {/* Botón Descarga Excel */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '15px' }}>
+                <button
+                  onClick={() => manejarDescargaExcel(globalResults, `Reporte_Global_${globalSearchTerm.replace(/\s+/g, '_')}`)}
+                  style={{ padding: '8px 16px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  📥 Descargar Resultados (Excel)
+                </button>
+              </div>
+
+              {/* Tabla de Resultados */}
+              <div style={{ overflowX: 'auto', border: '1px solid #cbd5e1', borderRadius: '12px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left', background: '#fff' }}>
+                  <thead>
+                    <tr style={{ background: '#f1f5f9', color: '#475569', borderBottom: '2px solid #cbd5e1' }}>
+                      <th style={{ padding: '12px 10px' }}>Fecha</th>
+                      <th style={{ padding: '12px 10px' }}>Profesional</th>
+                      <th style={{ padding: '12px 10px' }}>Concepto</th>
+                      <th style={{ padding: '12px 10px' }}>Acuerdo / Ref</th>
+                      <th style={{ padding: '12px 10px', textAlign: 'right' }}>Debe</th>
+                      <th style={{ padding: '12px 10px', textAlign: 'right' }}>Haber</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {globalResults.map((m, idx) => {
+                      const valDebe = parsearDecimal(m.debe);
+                      const valHaber = parsearDecimal(m.haber);
+                      return (
+                        <tr key={m.id_mov || idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                          <td style={{ padding: '10px', whiteSpace: 'nowrap', color: '#475569' }}>
+                            {m.fecha ? new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/F'}
+                          </td>
+                          <td style={{ padding: '10px', color: '#0f172a', fontWeight: 'bold' }}>
+                            {getNombrePrestador(m.id_prestador)}
+                          </td>
+                          <td style={{ padding: '10px', color: '#1e293b' }}>
+                            {m.concepto || 'S/D'}
+                          </td>
+                          <td style={{ padding: '10px', color: '#64748b' }}>
+                            <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>
+                              {m.acuerdo || '-'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px', textAlign: 'right', color: valDebe > 0 ? '#b91c1c' : '#94a3b8' }}>
+                            {valDebe > 0 ? `$${valDebe.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                          </td>
+                          <td style={{ padding: '10px', textAlign: 'right', color: valHaber > 0 ? '#15803d' : '#94a3b8' }}>
+                            {valHaber > 0 ? `$${valHaber.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {globalResults.length === 0 && globalSearchTerm && !cargandoGlobal && (
+            <p style={{ margin: '15px 0 0 0', color: '#64748b', fontStyle: 'italic', textAlign: 'center' }}>
+              No se encontraron liquidaciones con ese concepto o referencia en ningún profesional.
+            </p>
+          )}
+        </div>
+      )}
+
 
       {prestadorSeleccionado && (
         <div>
