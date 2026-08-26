@@ -40,6 +40,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
   const [prestadores, setPrestadores] = useState([]);
   const [prestadorSeleccionado, setPrestadorSeleccionado] = useState(null);
   const [movimientos, setMovimientos] = useState([]);
+  const [filtroConcepto, setFiltroConcepto] = useState('');
   const [cargandoPrestadores, setCargandoPrestadores] = useState(false);
   const [cargandoMovimientos, setCargandoMovimientos] = useState(false);
 
@@ -452,6 +453,15 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
   const totalDebe = movimientos.reduce((acc, m) => acc + parsearDecimal(m.debe), 0);
   const saldoFinal = totalHaber - totalDebe;
 
+  const movimientosFiltrados = movimientos.filter(m => {
+    if (!filtroConcepto.trim()) return true;
+    return (m.concepto || '').toLowerCase().includes(filtroConcepto.toLowerCase());
+  });
+
+  const totalDebeFiltrado = movimientosFiltrados.reduce((sum, m) => sum + parsearDecimal(m.debe), 0);
+  const totalHaberFiltrado = movimientosFiltrados.reduce((sum, m) => sum + parsearDecimal(m.haber), 0);
+  const balanceFiltrado = totalHaberFiltrado - totalDebeFiltrado;
+
   return (
     <div style={{ background: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b' }}>
       
@@ -698,22 +708,67 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
               <h3 style={{ fontSize: '16px', color: '#0f172a', fontWeight: 'bold', margin: 0 }}>
-                📋 Extracto de Cuenta Corriente (Completo)
+                📋 Extracto de Cuenta Corriente {filtroConcepto ? '(Filtrado)' : '(Completo)'}
               </h3>
-              {movimientos.length > 0 && (
+              {movimientosFiltrados.length > 0 && (
                 <button
-                  onClick={() => manejarDescargaExcel(movimientos, prestadorSeleccionado.nombre_prestador)}
+                  onClick={() => manejarDescargaExcel(movimientosFiltrados, prestadorSeleccionado.nombre_prestador)}
                   style={{ padding: '8px 16px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}
                 >
-                  📥 Descargar Liquidación (Excel)
+                  📥 Descargar Liquidación {filtroConcepto ? 'Filtrada' : ''} (Excel)
                 </button>
               )}
             </div>
+
+            {/* Panel de Filtro de Conceptos y Totales de Filtro */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', minWidth: '120px' }}>🔍 Filtrar Concepto:</label>
+                <input 
+                  type="text"
+                  value={filtroConcepto}
+                  onChange={(e) => setFiltroConcepto(e.target.value)}
+                  placeholder="Ej: Subsidio de Salud Julio 2026, Adelanto, etc."
+                  style={{ flex: 1, padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '13px', outline: 'none', background: '#fff' }}
+                />
+                {filtroConcepto && (
+                  <button 
+                    onClick={() => setFiltroConcepto('')}
+                    style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                  >
+                    Limpiar
+                  </button>
+                )}
+              </div>
+              {filtroConcepto && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px', marginTop: '5px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
+                  <div style={{ background: '#fff', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Total Debe (Filtro)</span>
+                    <h4 style={{ margin: '4px 0 0 0', fontSize: '15px', color: '#b91c1c', fontWeight: 'bold' }}>
+                      ${totalDebeFiltrado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </h4>
+                  </div>
+                  <div style={{ background: '#fff', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Total Haber (Filtro)</span>
+                    <h4 style={{ margin: '4px 0 0 0', fontSize: '15px', color: '#15803d', fontWeight: 'bold' }}>
+                      ${totalHaberFiltrado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </h4>
+                  </div>
+                  <div style={{ background: '#fff', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Saldo Neto (Filtro)</span>
+                    <h4 style={{ margin: '4px 0 0 0', fontSize: '15px', color: balanceFiltrado >= 0 ? '#15803d' : '#b91c1c', fontWeight: 'bold' }}>
+                      ${balanceFiltrado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </h4>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {cargandoMovimientos ? (
               <p style={{ fontSize: '14px', color: '#64748b' }}>Cargando extracto...</p>
-            ) : movimientos.length === 0 ? (
+            ) : movimientosFiltrados.length === 0 ? (
               <p style={{ color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '20px', borderRadius: '8px', textAlign: 'center' }}>
-                Este profesional no registra movimientos contables en su cuenta corriente.
+                No se registran movimientos con los filtros aplicados.
               </p>
             ) : (
               <div style={{ overflowX: 'auto', border: '1px solid #cbd5e1', borderRadius: '12px' }}>
@@ -729,7 +784,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {movimientos.map((m, idx) => {
+                    {movimientosFiltrados.map((m, idx) => {
                       const valDebe = parsearDecimal(m.debe);
                       const valHaber = parsearDecimal(m.haber);
                       return (
