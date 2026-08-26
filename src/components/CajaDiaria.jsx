@@ -25,7 +25,22 @@ export default function CajaDiaria({ onVolver, usuario }) {
 
   const [movimientos, setMovimientos] = useState([]);
   const [cargando, setCargando] = useState(true);
-  const [filtroFecha, setFiltroFecha] = useState(getLocalDateString());
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState(getLocalDateString());
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState(getLocalDateString());
+  
+  const setHoy = () => {
+    const hoy = getLocalDateString();
+    setFiltroFechaDesde(hoy);
+    setFiltroFechaHasta(hoy);
+  };
+
+  const getFiltroFechaLabel = () => {
+    if (filtroFechaDesde === filtroFechaHasta) {
+      return filtroFechaDesde ? new Date(filtroFechaDesde + 'T00:00:00').toLocaleDateString('es-AR') : 'S/F';
+    }
+    return `del ${new Date(filtroFechaDesde + 'T00:00:00').toLocaleDateString('es-AR')} al ${new Date(filtroFechaHasta + 'T00:00:00').toLocaleDateString('es-AR')}`;
+  };
+
   const [modalAbierto, setModalAbierto] = useState(null); // 'ingreso', 'egreso', 'ajuste', o 'cierre'
   const [tipoAjusteCaja, setTipoAjusteCaja] = useState('INGRESO');
   
@@ -104,11 +119,23 @@ export default function CajaDiaria({ onVolver, usuario }) {
       const actual = saldoCajaTotal.toString();
       setSaldoRealCierre(actual);
       setMontoRendidoCierre(actual); // Por defecto rinde toda la plata
-      setTurnoCierre('TARDE');
+      
+      // Auto-detectar turno por la hora actual
+      const currentHour = new Date().getHours();
+      const defaultTurno = currentHour < 13 ? 'MAÑANA' : 'TARDE';
+      setTurnoCierre(defaultTurno);
+      
       setEntregadoPorCierre(usuario || 'Sistema');
       setRecibidoPorCierre('DIRECCIÓN');
       setMotivoDifCierre('');
-      setFechaSiguienteApertura(getTomorrowDate());
+      
+      // Si cerramos turno MAÑANA, el siguiente turno (TARDE) abre hoy.
+      // Si cerramos turno TARDE/NOCHE, el siguiente turno (MAÑANA) abre mañana.
+      if (defaultTurno === 'MAÑANA') {
+        setFechaSiguienteApertura(getLocalDateString());
+      } else {
+        setFechaSiguienteApertura(getTomorrowDate());
+      }
     } else {
       setConceptoTx(tipo === 'egreso' ? '' : tipo === 'ajuste' ? 'Ajuste de Caja' : 'Ingreso Manual de Caja');
       setMontoTx('');
@@ -445,8 +472,8 @@ export default function CajaDiaria({ onVolver, usuario }) {
     }
   };
 
-  // Filtrar los movimientos según la fecha seleccionada
-  const movimientosFiltrados = movimientos.filter(m => m.fecha === filtroFecha);
+  // Filtrar los movimientos según el rango de fechas seleccionado
+  const movimientosFiltrados = movimientos.filter(m => m.fecha >= filtroFechaDesde && m.fecha <= filtroFechaHasta);
 
   // Totales de la fecha seleccionada
   const ingresosDelDia = movimientosFiltrados
@@ -456,6 +483,11 @@ export default function CajaDiaria({ onVolver, usuario }) {
   const egresosDelDia = movimientosFiltrados
     .filter(m => m.tipo === 'EGRESO')
     .reduce((acc, m) => acc + (parseFloat(m.importe) || 0), 0);
+
+  const esRango = filtroFechaDesde !== filtroFechaHasta;
+  const textoPeriodo = esRango ? 'del Período' : 'del Día';
+  const textoPeriodoSub = esRango ? 'Entradas de efectivo en el período' : 'Entradas de efectivo registradas hoy';
+  const textoPeriodoSubEg = esRango ? 'Salidas de efectivo en el período' : 'Salidas de efectivo registradas hoy';
 
   // Diferencia calculada para el modal de cierre
   const diferenciaCalculada = (parseFloat(saldoRealCierre) || 0) - saldoCajaTotal;
@@ -501,23 +533,23 @@ export default function CajaDiaria({ onVolver, usuario }) {
         {/* Ingresos de la Fecha */}
         <div style={{ background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)', padding: '20px', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
           <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#166534', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Ingresos del Día
+            Ingresos {textoPeriodo}
           </span>
           <h3 style={{ margin: '8px 0 2px 0', fontSize: '26px', fontWeight: '800', color: '#14532d' }}>
             +${ingresosDelDia.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
           </h3>
-          <span style={{ fontSize: '11px', color: '#22c55e' }}>Entradas de efectivo registradas hoy</span>
+          <span style={{ fontSize: '11px', color: '#22c55e' }}>{textoPeriodoSub}</span>
         </div>
 
         {/* Egresos de la Fecha */}
         <div style={{ background: 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)', padding: '20px', borderRadius: '12px', border: '1px solid #fecaca' }}>
           <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#991b1b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Egresos del Día
+            Egresos {textoPeriodo}
           </span>
           <h3 style={{ margin: '8px 0 2px 0', fontSize: '26px', fontWeight: '800', color: '#7f1d1d' }}>
             -${egresosDelDia.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
           </h3>
-          <span style={{ fontSize: '11px', color: '#ef4444' }}>Salidas de efectivo registradas hoy</span>
+          <span style={{ fontSize: '11px', color: '#ef4444' }}>{textoPeriodoSubEg}</span>
         </div>
 
       </div>
@@ -525,15 +557,34 @@ export default function CajaDiaria({ onVolver, usuario }) {
       {/* Panel de Filtros y Acciones */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '15px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '25px' }}>
         
-        {/* Selector de Fecha */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569' }}>Filtrar por Fecha:</label>
-          <input 
-            type="date"
-            value={filtroFecha}
-            onChange={(e) => setFiltroFecha(e.target.value)}
-            style={{ padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '13px', outline: 'none', background: '#ffffff', color: '#0f172a' }}
-          />
+        {/* Selector de Rango de Fechas */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569' }}>Desde:</label>
+            <input 
+              type="date"
+              value={filtroFechaDesde}
+              onChange={(e) => setFiltroFechaDesde(e.target.value)}
+              style={{ padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '13px', outline: 'none', background: '#ffffff', color: '#0f172a' }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569' }}>Hasta:</label>
+            <input 
+              type="date"
+              value={filtroFechaHasta}
+              onChange={(e) => setFiltroFechaHasta(e.target.value)}
+              style={{ padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '13px', outline: 'none', background: '#ffffff', color: '#0f172a' }}
+            />
+          </div>
+          <button 
+            onClick={setHoy}
+            style={{ background: '#3b82f6', color: '#ffffff', border: 'none', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', transition: 'background 0.2s', boxShadow: '0 2px 4px rgba(59, 130, 246, 0.1)' }}
+            onMouseOver={(e) => e.currentTarget.style.background = '#2563eb'}
+            onMouseOut={(e) => e.currentTarget.style.background = '#3b82f6'}
+          >
+            📅 Hoy
+          </button>
         </div>
 
         {/* Botones de Operación */}
@@ -584,7 +635,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
               const saldoRestanteVal = saldoContadoVal - montoRendidoVal;
 
               imprimirResumenCaja(
-                filtroFecha,
+                filtroFechaDesde === filtroFechaHasta ? filtroFechaDesde : `${filtroFechaDesde} al ${filtroFechaHasta}`,
                 cierreRow ? (cierreRow.turno || 'COMPLETO') : 'ACTUAL',
                 movimientosFiltrados,
                 saldoContadoVal,
@@ -783,7 +834,15 @@ export default function CajaDiaria({ onVolver, usuario }) {
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>Turno que Cierra *</label>
                 <select 
                   value={turnoCierre}
-                  onChange={(e) => setTurnoCierre(e.target.value)}
+                  onChange={(e) => {
+                    const selectedTurno = e.target.value;
+                    setTurnoCierre(selectedTurno);
+                    if (selectedTurno === 'MAÑANA') {
+                      setFechaSiguienteApertura(getLocalDateString());
+                    } else {
+                      setFechaSiguienteApertura(getTomorrowDate());
+                    }
+                  }}
                   style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', background: '#fff' }}
                 >
                   <option value="TARDE">TARDE</option>
@@ -854,7 +913,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
       {/* Tabla de Movimientos del Día */}
       <div>
         <h3 style={{ fontSize: '15px', color: '#0f172a', fontWeight: 'bold', margin: '0 0 15px 0' }}>
-          📋 Movimientos de la Fecha ({filtroFecha ? new Date(filtroFecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/F'})
+          📋 Movimientos de la Fecha ({getFiltroFechaLabel()})
         </h3>
         {cargando ? (
           <p style={{ fontSize: '14px', color: '#64748b' }}>Cargando caja...</p>
