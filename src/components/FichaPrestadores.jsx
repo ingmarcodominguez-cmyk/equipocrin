@@ -455,7 +455,10 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
 
   const movimientosFiltrados = movimientos.filter(m => {
     if (!filtroConcepto.trim()) return true;
-    return (m.concepto || '').toLowerCase().includes(filtroConcepto.toLowerCase());
+    const term = filtroConcepto.toLowerCase();
+    const concepto = (m.concepto || '').toLowerCase();
+    const acuerdo = (m.acuerdo || '').toLowerCase();
+    return concepto.includes(term) || acuerdo.includes(term);
   });
 
   const totalDebeFiltrado = movimientosFiltrados.reduce((sum, m) => sum + parsearDecimal(m.debe), 0);
@@ -723,12 +726,12 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
             {/* Panel de Filtro de Conceptos y Totales de Filtro */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', minWidth: '120px' }}>🔍 Filtrar Concepto:</label>
+                <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', minWidth: '150px' }}>🔍 Filtrar Concepto / Ref:</label>
                 <input 
                   type="text"
                   value={filtroConcepto}
                   onChange={(e) => setFiltroConcepto(e.target.value)}
-                  placeholder="Ej: Subsidio de Salud Julio 2026, Adelanto, etc."
+                  placeholder="Ej: Subsidio de Salud Julio 2026, Deuda #953, Acuerdo #784, etc."
                   style={{ flex: 1, padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '13px', outline: 'none', background: '#fff' }}
                 />
                 {filtroConcepto && (
