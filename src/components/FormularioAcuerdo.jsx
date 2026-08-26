@@ -288,7 +288,7 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
           id_deuda: siguienteIdDeuda,
           fecha_cuota_origen: fechaAcuerdoFinal,
           fecha_vencimiento: fechaVencimientoCalculada, // NULL si es único, calculado por tercio si es cuota inicial mensual
-          fecha_movimiento: esMensualDiferido ? fechaAcuerdoFinal : new Date().toISOString().split('T')[0],
+          fecha_movimiento: fechaAcuerdoFinal,
           ciclo_mora: cicloMoraCalculado,
           escalon_mora: '0',
           tipo_movimiento: 'cuota',
