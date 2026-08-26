@@ -601,13 +601,30 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
             <input 
               type="text"
               value={globalSearchTerm}
-              onChange={(e) => setGlobalSearchTerm(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setGlobalSearchTerm(val);
+                if (!val.trim()) {
+                  setGlobalResults([]);
+                }
+              }}
               placeholder="Ej: Subsidio de Salud Julio 2026, Deuda #953, Acuerdo #784..."
               style={{ flex: 1, padding: '10px 14px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff' }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') ejecutarBusquedaGlobal();
               }}
             />
+            {globalSearchTerm && (
+              <button
+                onClick={() => {
+                  setGlobalSearchTerm('');
+                  setGlobalResults([]);
+                }}
+                style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
+              >
+                Limpiar
+              </button>
+            )}
             <button
               onClick={ejecutarBusquedaGlobal}
               disabled={cargandoGlobal}
