@@ -40,6 +40,12 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
     return diasSemana[d.getDay()];
   };
 
+  const getTurno = (sesiones) => {
+    if (!sesiones || sesiones.length === 0) return 'Tarde';
+    const sortedHours = [...sesiones].sort((a, b) => a.hora.localeCompare(b.hora));
+    return sortedHours[0].hora < '13:00' ? 'Mañana' : 'Tarde';
+  };
+
   const diaSemanaNombre = getDiaSemana(fechaTrabajo);
 
   // Carga inicial
@@ -152,10 +158,15 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
         }
       });
 
-      // Ordenar alfabéticamente por nombre de paciente
-      const listadoFinal = Object.values(mapaPacientesAgrupados).sort((a, b) =>
-        a.paciente_nombre.localeCompare(b.paciente_nombre)
-      );
+      // Ordenar por turno (Mañana primero, Tarde después) y luego alfabéticamente por nombre de paciente
+      const listadoFinal = Object.values(mapaPacientesAgrupados).sort((a, b) => {
+        const turnoA = getTurno(a.sesiones);
+        const turnoB = getTurno(b.sesiones);
+        if (turnoA !== turnoB) {
+          return turnoA.localeCompare(turnoB); // "Mañana" viene antes que "Tarde"
+        }
+        return a.paciente_nombre.localeCompare(b.paciente_nombre);
+      });
 
       setPacientesCargados(listadoFinal);
     } catch (err) {
@@ -734,7 +745,20 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
                       {pacientesCargados.map((p, idx) => (
                         <tr key={p.id_paciente} style={{ borderBottom: '1px solid #edf2f7', background: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
                           <td style={{ padding: '14px 20px', fontWeight: 'bold', color: '#0f172a' }}>
-                            {p.paciente_nombre}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span>{p.paciente_nombre}</span>
+                              <span style={{ 
+                                display: 'inline-block', 
+                                fontSize: '10px', 
+                                fontWeight: 'bold', 
+                                color: getTurno(p.sesiones) === 'Mañana' ? '#0369a1' : '#b45309', 
+                                background: getTurno(p.sesiones) === 'Mañana' ? '#e0f2fe' : '#fef3c7', 
+                                padding: '2px 6px', 
+                                borderRadius: '4px' 
+                              }}>
+                                {getTurno(p.sesiones) === 'Mañana' ? '☀️ Mañana' : '⛅ Tarde'}
+                              </span>
+                            </div>
                             {p.dni && <span style={{ display: 'block', fontSize: '11px', color: '#94a3b8', fontWeight: '500', marginTop: '2px' }}>DNI: {p.dni}</span>}
                           </td>
                           <td style={{ padding: '14px 20px' }}>
