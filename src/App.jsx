@@ -415,7 +415,12 @@ function App() {
 
     } catch (err) {
       console.error("Excepción en generarCuotasMensualesDB:", err);
-      alert('❌ Error crítico en el motor de cuotas: ' + (err.message || JSON.stringify(err)));
+      const errMsg = String(err.message || err.description || '');
+      if (errMsg.includes('JWT issued at future')) {
+        alert('⚠️ Desincronización de Hora Detectada\n\nEl reloj de tu computadora está adelantado con respecto a la hora de internet, lo que provoca que los servidores de seguridad de Supabase rechacen la conexión temporalmente ("JWT issued at future").\n\nPara solucionarlo fácil en Windows:\n1. Hacé clic derecho sobre la hora (esquina inferior derecha de la barra de tareas).\n2. Elegí "Ajustar fecha y hora".\n3. Desplázate hacia abajo y hacé clic en el botón "Sincronizar ahora" (bajo "Sincronizar su reloj").\n\nPodés seguir trabajando sin problemas, pero los motores de facturación automática se activarán recién cuando sincronices la hora.');
+      } else {
+        alert('❌ Error crítico en el motor de cuotas: ' + (err.message || JSON.stringify(err)));
+      }
     } finally {
       cuotasMensualesLock = false;
     }
