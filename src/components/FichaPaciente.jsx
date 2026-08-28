@@ -80,6 +80,8 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
   const [recibidoPor, setRecibidoPor] = useState('');
   const [entregadoPor, setEntregadoPor] = useState('');
   const [sesionesPrestadores, setSesionesPrestadores] = useState({});
+  const [distribucionPorMonto, setDistribucionPorMonto] = useState(false);
+  const [montosPrestadores, setMontosPrestadores] = useState({});
   const [procesandoPago, setProcesandoPago] = useState(false);
   const [cargandoUltimaDist, setCargandoUltimaDist] = useState(false);
   const [ultimaDistInfo, setUltimaDistInfo] = useState(null);
@@ -696,12 +698,16 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
           const activos = (data || []).filter(p => !p.estado || (p.estado || '').trim().toUpperCase() === 'ACTIVO');
           setPrestadoresList(activos);
           
-          // Inicializar las sesiones a 0 para cada prestador
+          // Inicializar las sesiones a 0 y montos a vacío para cada prestador
           const sesInitial = {};
+          const montosInitial = {};
           activos.forEach(p => {
             sesInitial[p.id_prestador] = 0;
+            montosInitial[p.id_prestador] = '';
           });
           setSesionesPrestadores(sesInitial);
+          setMontosPrestadores(montosInitial);
+          setDistribucionPorMonto(false);
           
           // Autocompletado diferido al gancho reactivo
         } catch (error) {
@@ -931,11 +937,23 @@ const confirmarRegistroPago = async () => {
       }
     }
     
-    // 5. Validar Distribución de Sesiones a Prestadores
-    const totalSesiones = Object.values(sesionesPrestadores).reduce((acc, curr) => acc + (parseInt(curr) || 0), 0);
-    if (totalSesiones <= 0) {
-      alert("Por favor distribuya al menos 1 sesión entre los prestadores de la lista para poder proceder con el pago.");
-      return;
+    // 5. Validar Distribución de Sesiones o Montos a Prestadores
+    if (distribucionPorMonto) {
+      const totalMonto = Object.values(montosPrestadores).reduce((acc, curr) => acc + (parseFloat(curr) || 0), 0);
+      if (totalMonto <= 0) {
+        alert("Por favor distribuya al menos $1 entre los prestadores de la lista para poder proceder con el pago.");
+        return;
+      }
+      if (totalMonto > (importeNum + 0.01)) {
+        alert(`El total de la distribución por montos ($${totalMonto.toLocaleString('es-AR')}) supera el importe total a pagar ($${importeNum.toLocaleString('es-AR')}).`);
+        return;
+      }
+    } else {
+      const totalSesiones = Object.values(sesionesPrestadores).reduce((acc, curr) => acc + (parseInt(curr) || 0), 0);
+      if (totalSesiones <= 0) {
+        alert("Por favor distribuya al menos 1 sesión entre los prestadores de la lista para poder proceder con el pago.");
+        return;
+      }
     }
     
     setProcesandoPago(true);
@@ -1206,28 +1224,38 @@ const confirmarRegistroPago = async () => {
         }
       }
       
-      const totalSesiones = Object.values(sesionesPrestadores).reduce((acc, curr) => acc + (parseInt(curr) || 0), 0);
-      if (totalSesiones > 0) {
-        const prestadoresConSesiones = prestadoresList.filter(p => (sesionesPrestadores[p.id_prestador] || 0) > 0);
-        
-        const importesDistribuidos = {};
-        let sumaImportes = 0;
-        
-        prestadoresConSesiones.forEach((p) => {
-          const ses = sesionesPrestadores[p.id_prestador];
-          let share = (ses / totalSesiones) * importeNum;
-          share = Math.round(share * 100) / 100;
-          
-          importesDistribuidos[p.id_prestador] = share;
-          sumaImportes += share;
+      let importesDistribuidos = {};
+      let prestadoresConDistribucion = [];
+
+      if (distribucionPorMonto) {
+        prestadoresConDistribucion = prestadoresList.filter(p => (parseFloat(montosPrestadores[p.id_prestador]) || 0) > 0);
+        prestadoresConDistribucion.forEach((p) => {
+          importesDistribuidos[p.id_prestador] = parseFloat(montosPrestadores[p.id_prestador]);
         });
-        
-        const diffRedondeo = Math.round((importeNum - sumaImportes) * 100) / 100;
-        if (diffRedondeo !== 0 && prestadoresConSesiones.length > 0) {
-          const firstId = prestadoresConSesiones[0].id_prestador;
-          importesDistribuidos[firstId] = Math.round((importesDistribuidos[firstId] + diffRedondeo) * 100) / 100;
+      } else {
+        const totalSesiones = Object.values(sesionesPrestadores).reduce((acc, curr) => acc + (parseInt(curr) || 0), 0);
+        if (totalSesiones > 0) {
+          prestadoresConDistribucion = prestadoresList.filter(p => (sesionesPrestadores[p.id_prestador] || 0) > 0);
+          let sumaImportes = 0;
+          
+          prestadoresConDistribucion.forEach((p) => {
+            const ses = sesionesPrestadores[p.id_prestador];
+            let share = (ses / totalSesiones) * importeNum;
+            share = Math.round(share * 100) / 100;
+            
+            importesDistribuidos[p.id_prestador] = share;
+            sumaImportes += share;
+          });
+          
+          const diffRedondeo = Math.round((importeNum - sumaImportes) * 100) / 100;
+          if (diffRedondeo !== 0 && prestadoresConDistribucion.length > 0) {
+            const firstId = prestadoresConDistribucion[0].id_prestador;
+            importesDistribuidos[firstId] = Math.round((importesDistribuidos[firstId] + diffRedondeo) * 100) / 100;
+          }
         }
-        
+      }
+
+      if (prestadoresConDistribucion.length > 0) {
         let nombreAcuerdoRef = 'Sin Acuerdo';
         if (deudaSeleccionadaId !== 'FIFO' && deudaSeleccionadaObj?.nombre_prestacion && deudaSeleccionadaObj.nombre_prestacion !== 'Sin Acuerdo') {
           nombreAcuerdoRef = deudaSeleccionadaObj.nombre_prestacion;
@@ -1242,7 +1270,7 @@ const confirmarRegistroPago = async () => {
           }
         }
 
-        const nuevosMovPrestadores = prestadoresConSesiones.map(p => ({
+        const nuevosMovPrestadores = prestadoresConDistribucion.map(p => ({
           id_prestador: p.id_prestador,
           id_paciente: pacienteSeleccionado.id_paciente,
           fecha: fechaPago,
@@ -3496,12 +3524,68 @@ const confirmarRegistroPago = async () => {
 
             {/* Distribución a Prestadores */}
             <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '20px', marginBottom: '25px' }}>
-              <h4 style={{ margin: '0 0 6px 0', fontSize: '14px', fontWeight: 'bold', color: '#0f172a' }}>
-                🩺 Distribución de Honorarios a Prestadores
-              </h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 'bold', color: '#0f172a' }}>
+                  🩺 Distribución de Honorarios a Prestadores
+                </h4>
+                {/* Selector de Modo de Distribución */}
+                <div style={{ display: 'flex', background: '#f1f5f9', padding: '3px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <button
+                    type="button"
+                    onClick={() => setDistribucionPorMonto(false)}
+                    style={{
+                      border: 'none',
+                      background: !distribucionPorMonto ? '#ffffff' : 'none',
+                      color: !distribucionPorMonto ? '#0f172a' : '#64748b',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      boxShadow: !distribucionPorMonto ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    🔢 Por Sesiones
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDistribucionPorMonto(true)}
+                    style={{
+                      border: 'none',
+                      background: distribucionPorMonto ? '#ffffff' : 'none',
+                      color: distribucionPorMonto ? '#0f172a' : '#64748b',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      boxShadow: distribucionPorMonto ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    💵 Por Monto Directo
+                  </button>
+                </div>
+              </div>
+
               <p style={{ margin: '0 0 15px 0', fontSize: '12px', color: '#64748b' }}>
-                Asigná la cantidad de sesiones dadas por cada profesional para prorratear el importe ingresado.
+                {distribucionPorMonto 
+                  ? "Ingresá directamente el monto en pesos que le corresponde cobrar a cada profesional de este pago."
+                  : "Asigná la cantidad de sesiones dadas por cada profesional para prorratear el importe ingresado."
+                }
               </p>
+
+              {/* Informador de Totales distribuidos en modo monto */}
+              {distribucionPorMonto && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', background: '#f8fafc', padding: '8px 12px', borderRadius: '6px', fontSize: '12px', marginBottom: '12px', border: '1px solid #cbd5e1' }}>
+                  <span>Total Pago: <strong>${(parseFloat(importePago) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong></span>
+                  <span>Distribuido: <strong style={{ color: '#16a34a' }}>${Object.values(montosPrestadores).reduce((acc, curr) => acc + (parseFloat(curr) || 0), 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong></span>
+                  <span>Restante: <strong style={{ color: ((parseFloat(importePago) || 0) - Object.values(montosPrestadores).reduce((acc, curr) => acc + (parseFloat(curr) || 0), 0)) < 0 ? '#dc2626' : '#475569' }}>
+                    ${((parseFloat(importePago) || 0) - Object.values(montosPrestadores).reduce((acc, curr) => acc + (parseFloat(curr) || 0), 0)).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                  </strong></span>
+                </div>
+              )}
 
               {cargandoPrestadores ? (
                 <p style={{ fontSize: '13px', color: '#64748b' }}>Cargando listado de prestadores...</p>
@@ -3514,8 +3598,14 @@ const confirmarRegistroPago = async () => {
                       <tr style={{ background: '#f1f5f9', color: '#475569', borderBottom: '1px solid #cbd5e1' }}>
                         <th style={{ padding: '8px 10px' }}>Prestador</th>
                         <th style={{ padding: '8px 10px' }}>Especialidad</th>
-                        <th style={{ padding: '8px 10px', width: '100px', textAlign: 'center' }}>Sesiones</th>
-                        <th style={{ padding: '8px 10px', textAlign: 'right' }}>Monto Estimado</th>
+                        {!distribucionPorMonto ? (
+                          <>
+                            <th style={{ padding: '8px 10px', width: '100px', textAlign: 'center' }}>Sesiones</th>
+                            <th style={{ padding: '8px 10px', textAlign: 'right' }}>Monto Estimado</th>
+                          </>
+                        ) : (
+                          <th style={{ padding: '8px 10px', width: '150px', textAlign: 'right' }}>Monto Directo ($)</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -3524,6 +3614,7 @@ const confirmarRegistroPago = async () => {
                         const totalSes = Object.values(sesionesPrestadores).reduce((acc, curr) => acc + (parseInt(curr) || 0), 0);
                         const impTotal = parseFloat(importePago) || 0;
                         const estimado = totalSes > 0 ? ((ses / totalSes) * impTotal).toFixed(2) : '0.00';
+                        const montoDirecto = montosPrestadores[p.id_prestador] || '';
 
                         return (
                           <tr key={p.id_prestador} style={{ borderBottom: '1px solid #e2e8f0' }}>
@@ -3533,24 +3624,46 @@ const confirmarRegistroPago = async () => {
                             <td style={{ padding: '8px 10px', color: '#64748b' }}>
                               {p.especialidad || 'S/D'}
                             </td>
-                            <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                              <input
-                                type="number"
-                                min="0"
-                                value={ses}
-                                onChange={(e) => {
-                                  const val = Math.max(0, parseInt(e.target.value) || 0);
-                                  setSesionesPrestadores({
-                                    ...sesionesPrestadores,
-                                    [p.id_prestador]: val
-                                  });
-                                }}
-                                style={{ width: '60px', padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: '4px', textAlign: 'center' }}
-                              />
-                            </td>
-                            <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 'bold', color: parseFloat(estimado) > 0 ? '#16a34a' : '#64748b' }}>
-                              ${parseFloat(estimado).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                            </td>
+                            {!distribucionPorMonto ? (
+                              <>
+                                <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={ses}
+                                    onChange={(e) => {
+                                      const val = Math.max(0, parseInt(e.target.value) || 0);
+                                      setSesionesPrestadores({
+                                        ...sesionesPrestadores,
+                                        [p.id_prestador]: val
+                                      });
+                                    }}
+                                    style={{ width: '60px', padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: '4px', textAlign: 'center' }}
+                                  />
+                                </td>
+                                <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 'bold', color: parseFloat(estimado) > 0 ? '#16a34a' : '#64748b' }}>
+                                  ${parseFloat(estimado).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                </td>
+                              </>
+                            ) : (
+                              <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={montoDirecto}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setMontosPrestadores({
+                                      ...montosPrestadores,
+                                      [p.id_prestador]: val
+                                    });
+                                  }}
+                                  placeholder="0.00"
+                                  style={{ width: '120px', padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', textAlign: 'right', fontWeight: 'bold', color: '#16a34a' }}
+                                />
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
