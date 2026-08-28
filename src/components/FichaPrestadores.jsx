@@ -72,7 +72,8 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
         .from('movprestadores_motor')
         .select('*')
         .or(`concepto.ilike.${term},acuerdo.ilike.${term}`)
-        .order('fecha', { ascending: false });
+        .order('fecha', { ascending: false })
+        .order('id_mov', { ascending: false });
 
       if (error) throw error;
 
@@ -334,7 +335,6 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
         .select('*')
         .eq('id_prestador', idPrestador)
         .order('fecha', { ascending: true })
-        .order('debe', { ascending: true })
         .order('id_mov', { ascending: true });
 
       if (error) throw error;
