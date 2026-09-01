@@ -343,10 +343,55 @@ function App() {
 
           let nuevoImporte = acuerdo.importeBase;
 
-          // El porcentaje de aumento solo se aplica al período final de trabajo actual
+          // El porcentaje de aumento se aplica al período final según los meses de vida del acuerdo
           if (periodo === periodoActualInt && porcentajeAumento > 0) {
-            nuevoImporte = nuevoImporte * (1 + porcentajeAumento / 100);
-            nuevoImporte = Math.round(nuevoImporte * 100) / 100; 
+            let mesesVida = 3; // Por defecto si no tiene fecha, se asumen >= 3 meses cumplidos
+            const rawFecha = acuerdo.fecha_acuerdo || acuerdo.fecha_registro;
+            if (rawFecha && typeof rawFecha === 'string') {
+              let anioAcuerdo = null;
+              let mesAcuerdo = null;
+
+              if (rawFecha.includes('-')) {
+                const partes = rawFecha.split('T')[0].split('-');
+                if (partes.length >= 2) {
+                  anioAcuerdo = parseInt(partes[0], 10);
+                  mesAcuerdo = parseInt(partes[1], 10);
+                }
+              } else if (rawFecha.includes('/')) {
+                const partes = rawFecha.split('/');
+                if (partes.length >= 3) {
+                  anioAcuerdo = parseInt(partes[2], 10);
+                  mesAcuerdo = parseInt(partes[1], 10);
+                }
+              }
+
+              if (anioAcuerdo && mesAcuerdo) {
+                // Se cuenta cada acuerdo como si fuera del día 1 del mes de origen
+                mesesVida = (anio - anioAcuerdo) * 12 + (mes - mesAcuerdo);
+              }
+            }
+
+            // Regla de Proporcionalidad:
+            // >= 3 meses cumplidos: 100% (factor 1.0)
+            // 2 meses cumplidos: 2/3 (aprox 66.67%)
+            // 1 mes cumplido: 1/3 (aprox 33.33%)
+            // <= 0 meses: 0% (sin aumento)
+            let factor = 1.0;
+            if (mesesVida >= 3) {
+              factor = 1.0;
+            } else if (mesesVida === 2) {
+              factor = 2 / 3;
+            } else if (mesesVida === 1) {
+              factor = 1 / 3;
+            } else {
+              factor = 0.0;
+            }
+
+            const pctAplicar = porcentajeAumento * factor;
+            if (pctAplicar > 0) {
+              nuevoImporte = nuevoImporte * (1 + pctAplicar / 100);
+              nuevoImporte = Math.round(nuevoImporte * 100) / 100;
+            }
             acuerdo.importeBase = nuevoImporte; // Actualizamos para que sirva de base si hubiera más meses
           }
 
