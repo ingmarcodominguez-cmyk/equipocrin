@@ -238,6 +238,14 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
       setGuardando(false);
     }
   };
+
+  const getUltimoDiaMes = (mesAnio) => {
+    if (!mesAnio) return '';
+    const [anio, mes] = mesAnio.split('-').map(Number);
+    const ultimoDia = new Date(anio, mes, 0).getDate();
+    return `${mesAnio}-${String(ultimoDia).padStart(2, '0')}`;
+  };
+
   const getFechasSemanaEnMes = (mesAnio, diasSemanaEsperados) => {
     const mapDias = {
       'Domingo': 0,
@@ -320,7 +328,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
       const fechasEsperadas = getFechasSemanaEnMes(reporteMes, diasSemanaPac);
 
       const primerDia = `${reporteMes}-01`;
-      const ultimoDia = `${reporteMes}-31`;
+      const ultimoDia = getUltimoDiaMes(reporteMes);
       
       const { data: asistencias, error: errA } = await supabase
         .from('asistencia_pacientes_motor')
@@ -480,7 +488,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
       });
 
       const primerDia = `${alertaMes}-01`;
-      const ultimoDia = `${alertaMes}-31`;
+      const ultimoDia = getUltimoDiaMes(alertaMes);
       const { data: asistenciasTodas, error: errA } = await supabase
         .from('asistencia_pacientes_motor')
         .select('*')
