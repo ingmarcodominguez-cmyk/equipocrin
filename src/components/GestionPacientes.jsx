@@ -7,8 +7,13 @@ function GestionPacientes() {
   const [editId, setEditId] = useState(null)
   const [busqueda, setBusqueda] = useState(''); 
   
-  // Nuevo estado para el modal
+  // Nuevo estado para el modal de ficha
   const [pacienteSeleccionado, setPacienteSeleccionado] = useState(null);
+
+  // Estados para el Listado y Descarga de Pacientes Activos
+  const [modalListadoAbierto, setModalListadoAbierto] = useState(false);
+  const [filtroListado, setFiltroListado] = useState('');
+  const [filtroObraSocial, setFiltroObraSocial] = useState('TODAS');
 
   const [dia, setDia] = useState('');
   const [mes, setMes] = useState('');
@@ -42,6 +47,73 @@ function GestionPacientes() {
       })));
     }
   }
+
+  const exportarExcelActivos = (lista = null) => {
+    const fuente = lista || pacientes.filter(p => (p.estado || 'ACTIVO').toUpperCase() === 'ACTIVO');
+    
+    const encabezados = [
+      'ID Paciente',
+      'Nombre y Apellido',
+      'DNI',
+      'Edad',
+      'Fecha Nacimiento',
+      'Obra Social',
+      'Diagnostico',
+      'Telefono Padres',
+      'Telefono Alternativo',
+      'Domicilio',
+      'Escuela',
+      'Estado'
+    ];
+
+    const filas = fuente.map(p => [
+      p.id_paciente || p.id || '',
+      `"${(p.nombre_apellido || p.nombre || '').replace(/"/g, '""')}"`,
+      `"${p.dni || ''}"`,
+      p.edad || '',
+      `"${p.fecha_nacimiento || ''}"`,
+      `"${(p.obra_social || '').replace(/"/g, '""')}"`,
+      `"${(p.diagnostico || '').replace(/"/g, '""')}"`,
+      `"${(p.tel_padres || p.telefono || '').replace(/"/g, '""')}"`,
+      `"${(p.tel_alternativo || '').replace(/"/g, '""')}"`,
+      `"${(p.domicilio || '').replace(/"/g, '""')}"`,
+      `"${(p.escuela || '').replace(/"/g, '""')}"`,
+      `"${p.estado || 'ACTIVO'}"`
+    ]);
+
+    const csvContent = '\uFEFF' + [
+      encabezados.join(';'),
+      ...filas.map(f => f.join(';'))
+    ].join('\r\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const fechaHoy = new Date().toISOString().split('T')[0];
+    link.href = url;
+    link.setAttribute('download', `Pacientes_Activos_Crin_${fechaHoy}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const pacientesActivos = pacientes.filter(p => (p.estado || 'ACTIVO').toUpperCase() === 'ACTIVO');
+  const listaObrasSociales = Array.from(new Set(pacientesActivos.map(p => (p.obra_social || '').trim()).filter(Boolean))).sort();
+
+  const pacientesListadoFiltrados = pacientesActivos.filter(p => {
+    const q = filtroListado.toLowerCase().trim();
+    const coincideTexto = !q || 
+      (p.nombre_apellido && p.nombre_apellido.toLowerCase().includes(q)) ||
+      (p.nombre && p.nombre.toLowerCase().includes(q)) ||
+      (p.dni && String(p.dni).includes(q)) ||
+      (p.obra_social && p.obra_social.toLowerCase().includes(q)) ||
+      (p.diagnostico && p.diagnostico.toLowerCase().includes(q));
+
+    const coincideOS = filtroObraSocial === 'TODAS' || (p.obra_social || '').trim().toUpperCase() === filtroObraSocial.toUpperCase();
+
+    return coincideTexto && coincideOS;
+  });
 
   const pacientesFiltrados = busqueda.trim() === '' 
     ? [] 
@@ -121,7 +193,53 @@ function GestionPacientes() {
         </div>
       )}
 
-      <h2 style={{ color: '#00f2ff' }}>{editId ? '✏️ Editando Paciente' : '➕ Cargar nuevo paciente'}</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
+        <h2 style={{ color: '#00f2ff', margin: 0 }}>{editId ? '✏️ Editando Paciente' : '➕ Cargar nuevo paciente'}</h2>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button 
+            onClick={() => setModalListadoAbierto(true)}
+            style={{ 
+              background: '#00f2ff', 
+              color: '#000', 
+              border: 'none', 
+              padding: '10px 18px', 
+              borderRadius: '8px', 
+              cursor: 'pointer', 
+              fontWeight: 'bold', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px',
+              boxShadow: '0 2px 8px rgba(0, 242, 255, 0.3)',
+              transition: 'transform 0.1s'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            📋 Listado Pacientes Activos ({pacientesActivos.length})
+          </button>
+          <button 
+            onClick={() => exportarExcelActivos()}
+            style={{ 
+              background: '#10b981', 
+              color: '#fff', 
+              border: 'none', 
+              padding: '10px 18px', 
+              borderRadius: '8px', 
+              cursor: 'pointer', 
+              fontWeight: 'bold', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px',
+              boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+              transition: 'transform 0.1s'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            📥 Descargar Excel
+          </button>
+        </div>
+      </div>
       
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px', background: '#1a1a1a', padding: '20px', borderRadius: '10px' }}>
         <input placeholder="Nombre Completo" value={form.nombre} onChange={e => setForm({...form, nombre: e.target.value})} style={inputStyle} />
@@ -183,6 +301,140 @@ function GestionPacientes() {
               <button onClick={() => iniciarEdicion(pacienteSeleccionado)} style={btnStyle}>EDITAR</button>
               <button onClick={() => setPacienteSeleccionado(null)} style={{...btnStyle, borderColor: '#666', color: '#ccc'}}>CERRAR</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Listado Completo de Pacientes Activos */}
+      {modalListadoAbierto && (
+        <div style={overlayStyle}>
+          <div style={{ ...modalStyle, maxWidth: '1100px', width: '95%', background: '#0f172a', border: '1px solid #00f2ff', padding: '25px', borderRadius: '16px' }}>
+            
+            {/* Header del Modal */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: '15px', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <h2 style={{ color: '#00f2ff', margin: 0, fontSize: '22px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  📋 Listado de Pacientes Activos
+                  <span style={{ fontSize: '13px', background: '#0284c7', color: '#fff', padding: '3px 10px', borderRadius: '20px', fontWeight: 'bold' }}>
+                    {pacientesListadoFiltrados.length} de {pacientesActivos.length}
+                  </span>
+                </h2>
+                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
+                  Padrón oficial de pacientes con estado ACTIVO en Sistema Crin
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button 
+                  onClick={() => exportarExcelActivos(pacientesListadoFiltrados)}
+                  style={{ background: '#10b981', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  📥 Descargar Excel
+                </button>
+                <button 
+                  onClick={() => window.print()}
+                  style={{ background: '#334155', color: '#fff', border: '1px solid #475569', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
+                >
+                  🖨️ Imprimir
+                </button>
+                <button 
+                  onClick={() => setModalListadoAbierto(false)}
+                  style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
+                >
+                  ✕ Cerrar
+                </button>
+              </div>
+            </div>
+
+            {/* Filtros */}
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '15px', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '240px' }}>
+                <input 
+                  type="text" 
+                  placeholder="🔍 Buscar por nombre, DNI, diagnóstico u obra social..."
+                  value={filtroListado}
+                  onChange={(e) => setFiltroListado(e.target.value)}
+                  style={{ ...inputStyle, width: '100%', borderColor: '#00f2ff' }}
+                />
+              </div>
+              <div style={{ minWidth: '200px' }}>
+                <select 
+                  value={filtroObraSocial}
+                  onChange={(e) => setFiltroObraSocial(e.target.value)}
+                  style={{ ...inputStyle, width: '100%', borderColor: '#475569', cursor: 'pointer' }}
+                >
+                  <option value="TODAS">Todas las Obras Sociales ({listaObrasSociales.length})</option>
+                  {listaObrasSociales.map(os => (
+                    <option key={os} value={os}>{os}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Tabla de Pacientes */}
+            <div style={{ overflowX: 'auto', maxHeight: '55vh', border: '1px solid #334155', borderRadius: '8px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                <thead style={{ position: 'sticky', top: 0, background: '#1e293b', color: '#00f2ff', zIndex: 1, borderBottom: '2px solid #334155' }}>
+                  <tr>
+                    <th style={{ padding: '10px 8px', width: '35px' }}>#</th>
+                    <th style={{ padding: '10px 8px', width: '50px' }}>ID</th>
+                    <th style={{ padding: '10px 8px' }}>Nombre y Apellido</th>
+                    <th style={{ padding: '10px 8px' }}>DNI</th>
+                    <th style={{ padding: '10px 8px' }}>Edad</th>
+                    <th style={{ padding: '10px 8px' }}>Obra Social</th>
+                    <th style={{ padding: '10px 8px' }}>Diagnóstico</th>
+                    <th style={{ padding: '10px 8px' }}>Teléfono</th>
+                    <th style={{ padding: '10px 8px' }}>Domicilio</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'center' }}>Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pacientesListadoFiltrados.length === 0 ? (
+                    <tr>
+                      <td colSpan="10" style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>
+                        No se encontraron pacientes activos con los filtros aplicados.
+                      </td>
+                    </tr>
+                  ) : (
+                    pacientesListadoFiltrados.map((p, idx) => (
+                      <tr key={p.id_paciente || p.id || idx} style={{ borderBottom: '1px solid #1e293b', background: idx % 2 === 0 ? '#0b1329' : '#0f172a' }}>
+                        <td style={{ padding: '8px', color: '#64748b', fontSize: '11px' }}>{idx + 1}</td>
+                        <td style={{ padding: '8px', color: '#94a3b8', fontWeight: 'bold' }}>{p.id_paciente || p.id}</td>
+                        <td style={{ padding: '8px', fontWeight: 'bold', color: '#f8fafc' }}>
+                          {p.nombre_apellido || p.nombre}
+                        </td>
+                        <td style={{ padding: '8px', color: '#cbd5e1' }}>{p.dni || '-'}</td>
+                        <td style={{ padding: '8px', color: '#cbd5e1' }}>{p.edad ? `${p.edad} años` : '-'}</td>
+                        <td style={{ padding: '8px' }}>
+                          <span style={{ background: '#1e293b', color: '#00f2ff', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>
+                            {p.obra_social || 'Particular'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px', color: '#94a3b8', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={p.diagnostico}>
+                          {p.diagnostico || '-'}
+                        </td>
+                        <td style={{ padding: '8px', color: '#cbd5e1' }}>{p.tel_padres || p.telefono || '-'}</td>
+                        <td style={{ padding: '8px', color: '#94a3b8', maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={p.domicilio}>
+                          {p.domicilio || '-'}
+                        </td>
+                        <td style={{ padding: '8px', textAlign: 'center' }}>
+                          <button 
+                            onClick={() => {
+                              iniciarEdicion(p);
+                              setModalListadoAbierto(false);
+                            }}
+                            style={{ background: '#0284c7', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                          >
+                            ✏️ Editar
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
           </div>
         </div>
       )}
