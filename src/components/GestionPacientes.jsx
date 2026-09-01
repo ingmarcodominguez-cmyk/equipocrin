@@ -32,8 +32,15 @@ function GestionPacientes() {
   }, []);
 
   async function cargarPacientes() {
-    const { data } = await supabase.from('pacientes').select('*').order('nombre', { ascending: true });
-    if (data) setPacientes(data);
+    const { data } = await supabase.from('pacientes_motor').select('*').order('nombre_apellido', { ascending: true });
+    if (data) {
+      setPacientes(data.map(p => ({
+        ...p,
+        id: p.id_paciente,
+        nombre: p.nombre_apellido,
+        telefono: p.tel_padres || p.tel_alternativo || ''
+      })));
+    }
   }
 
   const pacientesFiltrados = busqueda.trim() === '' 
@@ -60,8 +67,14 @@ function GestionPacientes() {
       escuela: p.escuela, telefono: p.telefono, obra_social: p.obra_social, diagnostico: p.diagnostico
     });
     if (p.fecha_nacimiento) {
-      const [y, m, d] = p.fecha_nacimiento.split('-');
-      setAnio(y); setMes(m); setDia(d);
+      const parts = p.fecha_nacimiento.split(/[\/\-\.]/);
+      if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          setAnio(parts[0]); setMes(parts[1]); setDia(parts[2]);
+        } else {
+          setDia(parts[0]); setMes(parts[1]); setAnio(parts[2]);
+        }
+      }
     }
     setPacienteSeleccionado(null); // Cerrar modal al editar
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -70,15 +83,27 @@ function GestionPacientes() {
   async function guardarPaciente() {
     if (!form.nombre || !form.dni || !dia || !mes || !anio) return alert("Nombre, DNI y Fecha de nacimiento son obligatorios");
 
-    const fecha_nacimiento = `${anio}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
-    const edad = calcularEdad(fecha_nacimiento);
-    const payload = { ...form, fecha_nacimiento, edad };
+    const fechaIso = `${anio}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
+    const fechaSlash = `${dia.padStart(2, '0')}/${mes.padStart(2, '0')}/${anio}`;
+    const edad = calcularEdad(fechaIso);
+    const payload = {
+      nombre_apellido: form.nombre,
+      dni: form.dni,
+      domicilio: form.domicilio,
+      escuela: form.escuela,
+      tel_padres: form.telefono,
+      obra_social: form.obra_social,
+      diagnostico: form.diagnostico,
+      fecha_nacimiento: fechaSlash,
+      edad: String(edad),
+      estado: 'ACTIVO'
+    };
 
     if (editId) {
-      const { error } = await supabase.from('pacientes').update(payload).eq('id', editId);
+      const { error } = await supabase.from('pacientes_motor').update(payload).eq('id_paciente', editId);
       if (error) return alert("Error: " + error.message);
     } else {
-      const { error } = await supabase.from('pacientes').insert([payload]);
+      const { error } = await supabase.from('pacientes_motor').insert([payload]);
       if (error) return alert("Error: " + error.message);
     }
 

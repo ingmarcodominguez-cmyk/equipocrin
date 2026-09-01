@@ -32,16 +32,31 @@ function AgendaFija({ userData }) {
 
   useEffect(() => { cargarDatos() }, []);
 
+  const idToUuid = (id) => '00000000-0000-0000-0000-' + String(id).padStart(12, '0');
+
   async function cargarDatos() {
     const { data: sData } = await supabase.from('sesiones_fijas').select('*');
-    const { data: pData } = await supabase.from('pacientes').select('*').order('nombre', { ascending: true });
+    const { data: pData } = await supabase.from('pacientes_motor').select('id_paciente, nombre_apellido, dni').order('nombre_apellido', { ascending: true });
     const { data: uData } = await supabase.from('users').select('*').order('nombre', { ascending: true });
-    setSesiones(sData || []); setPacientes(pData || []); setUsers(uData || []);
+    const mappedPacientes = (pData || []).map(p => ({
+      id: idToUuid(p.id_paciente),
+      id_paciente: p.id_paciente,
+      nombre: p.nombre_apellido,
+      dni: p.dni
+    }));
+    setSesiones(sData || []); setPacientes(mappedPacientes); setUsers(uData || []);
   }
 
   async function recargarPacientes() {
-    const { data: pData } = await supabase.from('pacientes').select('*').order('nombre', { ascending: true });
-    if (pData) setPacientes(pData);
+    const { data: pData } = await supabase.from('pacientes_motor').select('id_paciente, nombre_apellido, dni').order('nombre_apellido', { ascending: true });
+    if (pData) {
+      setPacientes(pData.map(p => ({
+        id: idToUuid(p.id_paciente),
+        id_paciente: p.id_paciente,
+        nombre: p.nombre_apellido,
+        dni: p.dni
+      })));
+    }
   }
 
   const generarHorarios = () => {

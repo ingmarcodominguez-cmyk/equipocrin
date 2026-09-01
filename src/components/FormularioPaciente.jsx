@@ -112,51 +112,6 @@ export default function FormularioPaciente({ onVolver, pacienteAEditar }) {
       
       error = errUpdate
 
-      if (!error) {
-        try {
-          const { data: agendaP } = await supabase
-            .from('pacientes')
-            .select('id')
-            .eq('id_paciente_excel', idEdicion);
-
-          let birthDate = null;
-          if (form.fecha_nacimiento) {
-            const parts = form.fecha_nacimiento.split(/[\/\-\.]/);
-            if (parts.length === 3) {
-              const d = parts[0].padStart(2, '0');
-              const m = parts[1].padStart(2, '0');
-              const y = parts[2];
-              const yFull = y.length === 2 ? (parseInt(y) > 30 ? '19' + y : '20' + y) : y;
-              birthDate = `${yFull}-${m}-${d}`;
-            }
-          }
-
-          const payloadAgenda = {
-            nombre: form.nombre_apellido,
-            dni: form.dni,
-            fecha_nacimiento: birthDate,
-            edad: parseInt(form.edad) || null,
-            domicilio: form.domicilio,
-            telefono: form.tel_padres || form.tel_alternativo || '',
-            obra_social: form.obra_social,
-            diagnostico: form.diagnostico,
-            id_paciente_excel: idEdicion
-          };
-
-          if (agendaP && agendaP.length > 0) {
-            await supabase
-              .from('pacientes')
-              .update(payloadAgenda)
-              .eq('id_paciente_excel', idEdicion);
-          } else {
-            await supabase
-              .from('pacientes')
-              .insert([payloadAgenda]);
-          }
-        } catch (syncErr) {
-          console.error("Error al sincronizar paciente editado con agenda:", syncErr);
-        }
-      }
     } else {
       // MODO NUEVO: Excluimos totalmente las propiedades de ID para que Supabase las genere automáticamente
       const { id, id_paciente, created_at, ...datosAInsertar } = form
@@ -166,48 +121,6 @@ export default function FormularioPaciente({ onVolver, pacienteAEditar }) {
         .insert([datosAInsertar])
       
       error = errInsert
-
-      if (!error) {
-        try {
-          const { data: newP, error: errFetch } = await supabase
-            .from('pacientes_motor')
-            .select('*')
-            .eq('dni', form.dni)
-            .order('id_paciente', { ascending: false })
-            .limit(1);
-
-          if (!errFetch && newP && newP.length > 0) {
-            const createdP = newP[0];
-            let birthDate = null;
-            if (createdP.fecha_nacimiento) {
-              const parts = createdP.fecha_nacimiento.split(/[\/\-\.]/);
-              if (parts.length === 3) {
-                const d = parts[0].padStart(2, '0');
-                const m = parts[1].padStart(2, '0');
-                const y = parts[2];
-                const yFull = y.length === 2 ? (parseInt(y) > 30 ? '19' + y : '20' + y) : y;
-                birthDate = `${yFull}-${m}-${d}`;
-              }
-            }
-
-            const payloadAgenda = {
-              nombre: createdP.nombre_apellido,
-              dni: createdP.dni,
-              fecha_nacimiento: birthDate,
-              edad: parseInt(createdP.edad) || null,
-              domicilio: createdP.domicilio,
-              telefono: createdP.tel_padres || createdP.tel_alternativo || '',
-              obra_social: createdP.obra_social,
-              diagnostico: createdP.diagnostico,
-              id_paciente_excel: createdP.id_paciente
-            };
-
-            await supabase.from('pacientes').insert([payloadAgenda]);
-          }
-        } catch (syncErr) {
-          console.error("Error al sincronizar nuevo paciente con agenda:", syncErr);
-        }
-      }
     }
 
     setGuardando(false)

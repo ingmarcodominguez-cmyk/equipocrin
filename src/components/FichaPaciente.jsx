@@ -212,23 +212,7 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
         if (uData) setUsuariosList(uData);
       }
 
-      let uuidPaciente = null;
-      const { data: pData } = await supabase
-        .from('pacientes')
-        .select('id')
-        .eq('id_paciente_excel', paciente.id_paciente)
-        .maybeSingle();
-
-      if (pData) {
-        uuidPaciente = pData.id;
-      } else if (paciente.dni) {
-        const { data: pDataDni } = await supabase
-          .from('pacientes')
-          .select('id')
-          .eq('dni', paciente.dni)
-          .maybeSingle();
-        if (pDataDni) uuidPaciente = pDataDni.id;
-      }
+      const uuidPaciente = '00000000-0000-0000-0000-' + String(paciente.id_paciente).padStart(12, '0');
 
       if (uuidPaciente) {
         const { data: sData } = await supabase
@@ -766,38 +750,15 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
       return;
     }
 
-    if (pacienteSeleccionado?.nombre_apellido) {
+    if (pacienteSeleccionado?.id_paciente) {
       try {
-        const { data: pacsAgenda } = await supabase.from('pacientes').select('id, nombre');
-        const normalizedTarget = pacienteSeleccionado.nombre_apellido.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-        const targetWords = normalizedTarget.split(/\s+/).filter(w => w.length >= 2);
+        const uuidTarget = '00000000-0000-0000-0000-' + String(pacienteSeleccionado.id_paciente).padStart(12, '0');
+        const { data: sesiones } = await supabase
+          .from('sesiones_fijas')
+          .select('*')
+          .eq('paciente_id', uuidTarget);
 
-        const sortedMatches = (pacsAgenda || [])
-          .map(p => {
-            const norm = (p.nombre || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-            const words = norm.split(/\s+/).filter(w => w.length >= 2);
-            const matches = targetWords.filter(w => words.includes(w));
-            return { p, matchesCount: matches.length, totalWords: words.length };
-          })
-          .filter(item => item.matchesCount >= 2)
-          .sort((a, b) => {
-            if (b.matchesCount !== a.matchesCount) {
-              return b.matchesCount - a.matchesCount;
-            }
-            const diffA = Math.abs(a.totalWords - targetWords.length);
-            const diffB = Math.abs(b.totalWords - targetWords.length);
-            return diffA - diffB;
-          });
-
-        const matchedPac = sortedMatches[0]?.p;
-
-        if (matchedPac) {
-          const { data: sesiones } = await supabase
-            .from('sesiones_fijas')
-            .select('*')
-            .eq('paciente_id', matchedPac.id);
-
-          if (sesiones && sesiones.length > 0) {
+        if (sesiones && sesiones.length > 0) {
             const { data: users } = await supabase.from('users').select('*');
 
             const idViviana = prestadoresList.find(p => p.nombre_prestador.toUpperCase().includes('VIVIANA'))?.id_prestador || 1;
@@ -866,9 +827,6 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
           } else {
             setSesionesPrestadores(sesZero);
           }
-        } else {
-          setSesionesPrestadores(sesZero);
-        }
       } catch (err) {
         console.error("Error al aplicar distribución de sesiones:", err);
         setSesionesPrestadores(sesZero);

@@ -10,7 +10,7 @@ const PanelDireccion = () => {
   // 1. Cargar lista de pacientes para el buscador
   useEffect(() => {
     const fetchPacientes = async () => {
-      const { data } = await supabase.from('pacientes').select('id, nombre');
+      const { data } = await supabase.from('pacientes_motor').select('id:id_paciente, nombre:nombre_apellido');
       setPacientes(data || []);
     };
     fetchPacientes();

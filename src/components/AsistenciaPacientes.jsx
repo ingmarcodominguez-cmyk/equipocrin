@@ -65,11 +65,9 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
       });
       setMapaPrestadores(lookupPrestadores);
 
-      // 2. Cargar listas de mapeo de pacientes
-      const { data: pList, error: errP } = await supabase.from('pacientes').select('id, nombre, id_paciente_excel, dni');
+      // 2. Cargar listas de pacientes directamente de pacientes_motor
       const { data: pmList, error: errPM } = await supabase.from('pacientes_motor').select('id_paciente, nombre_apellido, dni, domicilio, tel_padres, tel_alternativo');
 
-      if (errP) throw errP;
       if (errPM) throw errPM;
 
       const sortedPM = (pmList || []).sort((a, b) => {
@@ -79,40 +77,22 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
       });
       setPacientesMotor(sortedPM);
 
-      // Construir mapa de UUID -> INT paciente
+      // Construir mapa de UUID determinista -> Datos de paciente
       const listadoMapeado = [];
       const patientLookup = {};
-      (pList || []).forEach(p => {
-        let match = (pmList || []).find(pm => pm.id_paciente === p.id_paciente_excel);
-        if (!match && p.dni) {
-          const cleanDni = String(p.dni).trim();
-          if (cleanDni) {
-            match = (pmList || []).find(pm => pm.dni && String(pm.dni).trim() === cleanDni);
-          }
-        }
-        if (!match && p.nombre) {
-          const cleanName = p.nombre.trim().toLowerCase();
-          match = (pmList || []).find(pm => pm.nombre_apellido?.trim().toLowerCase() === cleanName);
-        }
-        if (match) {
-          patientLookup[p.id] = {
-            id_paciente: match.id_paciente,
-            nombre_apellido: match.nombre_apellido,
-            dni: match.dni,
-            domicilio: match.domicilio,
-            tel_padres: match.tel_padres,
-            tel_alternativo: match.tel_alternativo
-          };
-          listadoMapeado.push({
-            id_uuid: p.id,
-            id_paciente: match.id_paciente,
-            nombre_apellido: match.nombre_apellido,
-            dni: match.dni,
-            domicilio: match.domicilio,
-            tel_padres: match.tel_padres,
-            tel_alternativo: match.tel_alternativo
-          });
-        }
+      sortedPM.forEach(pm => {
+        const id_uuid = '00000000-0000-0000-0000-' + String(pm.id_paciente).padStart(12, '0');
+        const pObj = {
+          id_uuid,
+          id_paciente: pm.id_paciente,
+          nombre_apellido: pm.nombre_apellido,
+          dni: pm.dni,
+          domicilio: pm.domicilio,
+          tel_padres: pm.tel_padres,
+          tel_alternativo: pm.tel_alternativo
+        };
+        patientLookup[id_uuid] = pObj;
+        listadoMapeado.push(pObj);
       });
       setPacientesMap(listadoMapeado);
 
