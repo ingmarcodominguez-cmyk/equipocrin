@@ -55,6 +55,12 @@ function App() {
   )
   const [porcentajeAumentoInput, setPorcentajeAumentoInput] = useState('0')
 
+  // Estados para Modal de Detección de Nuevo Mes y Aumento
+  const [modalNuevoMesAbierto, setModalNuevoMesAbierto] = useState(false);
+  const [nuevoMesInfo, setNuevoMesInfo] = useState({ periodoInt: 0, nombreMes: '', anio: 0 });
+  const [aumentoNuevoMes, setAumentoNuevoMes] = useState('');
+  const [tieneAumentoNuevoMes, setTieneAumentoNuevoMes] = useState(null);
+
   // Estados para buscador por ID
   const [criterioBusquedaId, setCriterioBusquedaId] = useState('')
   const [pacienteBuscado, setPacienteBuscado] = useState(null)
@@ -93,13 +99,11 @@ function App() {
       const ejecutarSilencioso = () => {
         console.log(`[Motor de Recargos Autónomo] Ejecutando verificación de mora en segundo plano...`);
         const fechaActualTrabajo = obtenerFechaTrabajo();
-        generarCuotasMensualesDB(false).then(() => {
-          if (typeof ejecutarMotorRecargosDB === 'function') {
-            ejecutarMotorRecargosDB(fechaActualTrabajo);
-          }
-        }).catch(err => {
-          console.error("[Motor Autónomo] Error en ejecución automática:", err);
-        });
+        if (typeof ejecutarMotorRecargosDB === 'function') {
+          ejecutarMotorRecargosDB(fechaActualTrabajo).catch(err => {
+            console.error("[Motor Autónomo] Error en verificación de mora:", err);
+          });
+        }
       };
 
       // 1. Ejecutar al iniciar la app
@@ -196,7 +200,7 @@ function App() {
   }
 
   // ⚙️ MOTOR DE GENERACIÓN DE CUOTAS (CON VIGÍA A PRUEBA DE BRECHAS)
-  async function generarCuotasMensualesDB(forzarPrueba = false) {
+  async function generarCuotasMensualesDB(forzarPrueba = false, aumentoExplicit = null) {
     if (cuotasMensualesLock) {
       console.log("[Motor de Cuotas] Ya hay una ejecución del motor de cuotas en curso. Omitiendo.");
       return;
@@ -210,7 +214,9 @@ function App() {
 
       const nombresMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
-      const porcentajeAumento = parseFloat(porcentajeAumentoInput) || 0;
+      const porcentajeAumento = aumentoExplicit !== null 
+        ? (parseFloat(aumentoExplicit) || 0)
+        : (parseFloat(porcentajeAumentoInput) || 0);
 
       // 1. Consultar al VIGÍA (tabla control_periodos_motor)
       const { data: periodosProcesados, error: errorVigia } = await supabase
@@ -795,12 +801,65 @@ function App() {
       alert("Acceso denegado. No posee los permisos requeridos.");
       return;
     }
-    setCargando(true);
+
     try {
       const fechaActualTrabajo = obtenerFechaTrabajo();
+      const mesActual = fechaActualTrabajo.getMonth() + 1; 
+      const anioActual = fechaActualTrabajo.getFullYear();
+      const periodoActualInt = (anioActual * 100) + mesActual; 
 
-      setMensajeCarga('Verificando y generando cuotas mensuales...');
-      await generarCuotasMensualesDB(false);
+      // 1. Consultar al VIGÍA (tabla control_periodos_motor)
+      const { data: periodosProcesados, error: errorVigia } = await supabase
+        .from('control_periodos_motor')
+        .select('periodo_int')
+        .order('periodo_int', { ascending: false })
+        .limit(1);
+
+      if (errorVigia) throw errorVigia;
+
+      const ultimoPeriodoProcesado = periodosProcesados && periodosProcesados.length > 0 ? periodosProcesados[0].periodo_int : 0;
+
+      // 2. Si detecta cambio de mes y las cuotas aún no fueron procesadas, preguntar aumento interactivamente
+      if (ultimoPeriodoProcesado < periodoActualInt) {
+        const nombresMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+        setNuevoMesInfo({
+          periodoInt: periodoActualInt,
+          nombreMes: nombresMeses[mesActual - 1],
+          anio: anioActual
+        });
+        setTieneAumentoNuevoMes(null);
+        setAumentoNuevoMes('');
+        setModalNuevoMesAbierto(true);
+        return;
+      }
+
+      // 3. Si el mes ya fue procesado, "sigue de largo"
+      setCargando(true);
+      setMensajeCarga('Verificando y aplicando recargos por mora...');
+      if (typeof ejecutarMotorRecargosDB === 'function') {
+        await ejecutarMotorRecargosDB(fechaActualTrabajo);
+      }
+
+      setMensajeCarga('¡Todo listo! Abriendo Sistema Crin...');
+      await new Promise(resolve => setTimeout(resolve, 600));
+
+      setModoSeleccionado('crin');
+    } catch (error) {
+      console.error("Error al iniciar Sistema Crin:", error);
+      alert("Hubo un error al verificar el período: " + (error.message || JSON.stringify(error)));
+    } finally {
+      setCargando(false);
+      setMensajeCarga('Cargando...');
+    }
+  };
+
+  const confirmarGeneracionNuevoMes = async (porcentaje) => {
+    setModalNuevoMesAbierto(false);
+    setCargando(true);
+    setMensajeCarga(`Generando cuotas de ${nuevoMesInfo.nombreMes} ${porcentaje > 0 ? `con ${porcentaje}% de aumento` : 'sin aumento'}...`);
+    try {
+      const fechaActualTrabajo = obtenerFechaTrabajo();
+      await generarCuotasMensualesDB(false, porcentaje);
 
       setMensajeCarga('Calculando y aplicando recargos por mora...');
       if (typeof ejecutarMotorRecargosDB === 'function') {
@@ -808,12 +867,12 @@ function App() {
       }
 
       setMensajeCarga('¡Todo listo! Abriendo Sistema Crin...');
-      await new Promise(resolve => setTimeout(resolve, 800));
+      await new Promise(resolve => setTimeout(resolve, 600));
 
       setModoSeleccionado('crin');
     } catch (error) {
-      console.error("Error al iniciar Sistema Crin:", error);
-      alert("Hubo un error al procesar los motores automáticos.");
+      console.error("Error al generar cuotas del nuevo período:", error);
+      alert("Hubo un error al generar las cuotas: " + (error.message || JSON.stringify(error)));
     } finally {
       setCargando(false);
       setMensajeCarga('Cargando...');
@@ -1125,6 +1184,167 @@ function App() {
             Cerrar Sesión
           </button>
         </div>
+
+        {/* MODAL INTERACTIVO: DETECCIÓN DE CAMBIO DE MES Y AUMENTO DE CUOTA */}
+        {modalNuevoMesAbierto && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.85)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 99999,
+            padding: '20px'
+          }}>
+            <div style={{
+              background: '#ffffff',
+              color: '#1e293b',
+              borderRadius: '20px',
+              maxWidth: '520px',
+              width: '100%',
+              padding: '30px',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+              textAlign: 'center',
+              fontFamily: 'Segoe UI, system-ui, sans-serif',
+              border: '1px solid #e2e8f0'
+            }}>
+              <div style={{ fontSize: '48px', marginBottom: '10px' }}>🗓️</div>
+              <h3 style={{ margin: '0 0 10px 0', fontSize: '22px', color: '#0f172a', fontWeight: '800' }}>
+                ¡Inicio de Nuevo Período!
+              </h3>
+              <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: '#64748b', lineHeight: '1.5' }}>
+                El sistema detectó que hoy inicia el ciclo de <strong>{nuevoMesInfo.nombreMes} {nuevoMesInfo.anio}</strong> y las cuotas mensuales deben ser generadas.
+              </p>
+
+              <div style={{ background: '#f8fafc', padding: '18px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '24px', textAlign: 'left' }}>
+                <p style={{ margin: '0 0 14px 0', fontSize: '14px', fontWeight: 'bold', color: '#1e293b' }}>
+                  ¿Corresponde aplicar aumento a las cuotas de {nuevoMesInfo.nombreMes}?
+                </p>
+
+                <div style={{ display: 'flex', gap: '12px', marginBottom: tieneAumentoNuevoMes === true ? '15px' : '0' }}>
+                  <button
+                    type="button"
+                    onClick={() => setTieneAumentoNuevoMes(false)}
+                    style={{
+                      flex: 1,
+                      padding: '12px 10px',
+                      borderRadius: '10px',
+                      border: tieneAumentoNuevoMes === false ? '2px solid #64748b' : '1px solid #cbd5e1',
+                      background: tieneAumentoNuevoMes === false ? '#f1f5f9' : '#ffffff',
+                      color: '#334155',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    ❌ NO, mantener valores (0%)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTieneAumentoNuevoMes(true)}
+                    style={{
+                      flex: 1,
+                      padding: '12px 10px',
+                      borderRadius: '10px',
+                      border: tieneAumentoNuevoMes === true ? '2px solid #0284c7' : '1px solid #cbd5e1',
+                      background: tieneAumentoNuevoMes === true ? '#e0f2fe' : '#ffffff',
+                      color: '#0369a1',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    📈 SÍ, hay aumento
+                  </button>
+                </div>
+
+                {tieneAumentoNuevoMes === true && (
+                  <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #cbd5e1' }}>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#0f172a', marginBottom: '6px' }}>
+                      Indique el porcentaje de aumento:
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={aumentoNuevoMes}
+                        onChange={(e) => setAumentoNuevoMes(e.target.value)}
+                        placeholder="Ej: 10"
+                        autoFocus
+                        style={{
+                          flex: 1,
+                          padding: '10px 14px',
+                          border: '2px solid #0284c7',
+                          borderRadius: '8px',
+                          fontSize: '16px',
+                          fontWeight: 'bold',
+                          outline: 'none',
+                          color: '#0f172a',
+                          background: '#fff'
+                        }}
+                      />
+                      <span style={{ fontSize: '20px', fontWeight: '800', color: '#0369a1' }}>%</span>
+                    </div>
+                    <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: '#64748b' }}>
+                      Este porcentaje aumentará las cuotas de {nuevoMesInfo.nombreMes} y actualizará el precio base de los acuerdos de aquí en adelante.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setModalNuevoMesAbierto(false)}
+                  style={{
+                    padding: '10px 18px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                    fontSize: '13px'
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={tieneAumentoNuevoMes === null || (tieneAumentoNuevoMes === true && (!aumentoNuevoMes || parseFloat(aumentoNuevoMes) <= 0))}
+                  onClick={() => {
+                    const pct = tieneAumentoNuevoMes ? (parseFloat(aumentoNuevoMes) || 0) : 0;
+                    confirmarGeneracionNuevoMes(pct);
+                  }}
+                  style={{
+                    padding: '10px 22px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: (tieneAumentoNuevoMes === null || (tieneAumentoNuevoMes === true && (!aumentoNuevoMes || parseFloat(aumentoNuevoMes) <= 0))) ? '#94a3b8' : '#0284c7',
+                    color: '#ffffff',
+                    cursor: (tieneAumentoNuevoMes === null || (tieneAumentoNuevoMes === true && (!aumentoNuevoMes || parseFloat(aumentoNuevoMes) <= 0))) ? 'not-allowed' : 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '13px',
+                    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
+                  }}
+                >
+                  {tieneAumentoNuevoMes === false 
+                    ? `Generar Cuotas sin Aumento` 
+                    : tieneAumentoNuevoMes === true
+                      ? `Aplicar ${aumentoNuevoMes || '0'}% y Acceder`
+                      : 'Seleccione una opción'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
