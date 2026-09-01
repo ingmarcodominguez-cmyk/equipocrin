@@ -72,9 +72,22 @@ export default function ReporteAcuerdosMensuales({ onVolver }) {
   const parsearMoneda = (val) => {
     if (val === null || val === undefined || val === '') return 0;
     if (typeof val === 'number') return val;
-    const clean = val.replace(/\$/g, '').replace(/\./g, '').replace(/,/g, '.').trim();
-    const parsed = Number.parseFloat(clean);
-    return isNaN(parsed) ? 0 : parsed;
+    const str = String(val).replace(/\$/g, '').trim();
+    if (str.includes(',')) {
+      const num = Number(str.replace(/\./g, '').replace(',', '.'));
+      return isNaN(num) ? 0 : num;
+    }
+    if (str.includes('.')) {
+      const partes = str.split('.');
+      if (partes.length > 2 || partes[1].length === 3) {
+        const num = Number(str.replace(/\./g, ''));
+        return isNaN(num) ? 0 : num;
+      }
+      const num = Number(str);
+      return isNaN(num) ? 0 : num;
+    }
+    const num = Number(str);
+    return isNaN(num) ? 0 : num;
   };
 
   // Filter list by patient name or prestation

@@ -311,12 +311,20 @@ function App() {
 
       // Mapeamos los acuerdos filtrados a memoria para llevar registro de sus importes
       const listaAcuerdosEnMemoria = acuerdosFiltrados.map(a => {
-        const importeStr = String(a.importe_actual || a.monto_cuota_base || '0')
-          .replace(/\./g, '')       
-          .replace(',', '.');       
-
-        let importeBase = parseFloat(importeStr);
-        if (isNaN(importeBase)) importeBase = 0;
+        const importeStr = String(a.importe_actual || a.monto_cuota_base || '0').trim();
+        let importeBase = 0;
+        if (importeStr.includes(',')) {
+          importeBase = parseFloat(importeStr.replace(/\./g, '').replace(',', '.')) || 0;
+        } else if (importeStr.includes('.')) {
+          const partes = importeStr.split('.');
+          if (partes.length > 2 || partes[1].length === 3) {
+            importeBase = parseFloat(importeStr.replace(/\./g, '')) || 0;
+          } else {
+            importeBase = parseFloat(importeStr) || 0;
+          }
+        } else {
+          importeBase = parseFloat(importeStr) || 0;
+        }
         
         return {
           ...a,
@@ -390,7 +398,7 @@ function App() {
             const pctAplicar = porcentajeAumento * factor;
             if (pctAplicar > 0) {
               nuevoImporte = nuevoImporte * (1 + pctAplicar / 100);
-              nuevoImporte = Math.round(nuevoImporte * 100) / 100;
+              nuevoImporte = Math.round(nuevoImporte); // Siempre redondear a importe entero sin decimales
             }
             acuerdo.importeBase = nuevoImporte; // Actualizamos para que sirva de base si hubiera más meses
           }
