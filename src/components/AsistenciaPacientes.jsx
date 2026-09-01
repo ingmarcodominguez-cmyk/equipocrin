@@ -66,7 +66,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
       setMapaPrestadores(lookupPrestadores);
 
       // 2. Cargar listas de mapeo de pacientes
-      const { data: pList, error: errP } = await supabase.from('pacientes').select('id, nombre, id_paciente_excel');
+      const { data: pList, error: errP } = await supabase.from('pacientes').select('id, nombre, id_paciente_excel, dni');
       const { data: pmList, error: errPM } = await supabase.from('pacientes_motor').select('id_paciente, nombre_apellido, dni, domicilio, tel_padres, tel_alternativo');
 
       if (errP) throw errP;
@@ -84,6 +84,12 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
       const patientLookup = {};
       (pList || []).forEach(p => {
         let match = (pmList || []).find(pm => pm.id_paciente === p.id_paciente_excel);
+        if (!match && p.dni) {
+          const cleanDni = String(p.dni).trim();
+          if (cleanDni) {
+            match = (pmList || []).find(pm => pm.dni && String(pm.dni).trim() === cleanDni);
+          }
+        }
         if (!match && p.nombre) {
           const cleanName = p.nombre.trim().toLowerCase();
           match = (pmList || []).find(pm => pm.nombre_apellido?.trim().toLowerCase() === cleanName);
