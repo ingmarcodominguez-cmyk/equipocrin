@@ -82,21 +82,38 @@ function AgendaMensualPro({ userData }) {
     const fechaISO = `${fechaSeleccionada}T${horaSeleccionada}:00`;
     const profesionalObj = users.find(u => String(u.id) === String(form.profesional_id));
     const nombreProf = profesionalObj ? profesionalObj.nombre : 'Sin Prof.';
-    const obsEmpaquetadas = `[${horaSeleccionada}] [${form.prestacion}] [${nombreProf}] ${form.observaciones}`;
-    const payload = { paciente_nombre: form.paciente_nombre, profesional_id: form.profesional_id, fecha_inicio: fechaISO, observaciones: obsEmpaquetadas, estado: form.estado };
+    
+    // Limpiar posibles cabeceras previas para no acumular tags repetidos
+    const notasLibres = (form.observaciones || '')
+      .replace(/^(\[\s*[^\]]+\]\s*)+/, '')
+      .trim();
+    const obsEmpaquetadas = notasLibres
+      ? `[${horaSeleccionada}] [${form.prestacion}] [${nombreProf}] ${notasLibres}`
+      : `[${horaSeleccionada}] [${form.prestacion}] [${nombreProf}]`;
+
+    const payload = { 
+      paciente_nombre: form.paciente_nombre, 
+      profesional_id: form.profesional_id, 
+      fecha_inicio: fechaISO, 
+      observaciones: obsEmpaquetadas, 
+      estado: form.estado 
+    };
 
     if (turnoEditando) {
       await supabase.from('turnos').update(payload).eq('id', turnoEditando.id);
     } else {
       await supabase.from('turnos').insert([payload]);
     }
-    setDiaSeleccionado(null); setTurnoEditando(null);
+    await cargarDatos();
+    setDiaSeleccionado(null); 
+    setTurnoEditando(null);
   }
 
   async function eliminarTurno() {
     if (!turnoEditando) return;
     if (window.confirm("¿Estás seguro de que quieres eliminar este turno definitivamente?")) {
       await supabase.from('turnos').delete().eq('id', turnoEditando.id);
+      await cargarDatos();
       setDiaSeleccionado(null);
       setTurnoEditando(null);
     }
@@ -199,29 +216,65 @@ function AgendaMensualPro({ userData }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 {tD.sort((a,b) => (a.observaciones?.split(']')[0] || '').localeCompare(b.observaciones?.split(']')[0] || '')).map(t => {
                   const parts = t.observaciones?.split(']') || [];
-                  const hora = parts[0]?.replace('[', '') || '--:--';
-                  const prest = parts[1]?.replace('[', '') || '';
-                  const prof = parts[2]?.replace('[', '') || 'N/A';
+                  const hora = parts[0]?.replace('[', '').trim() || '--:--';
+                  const prest = parts[1]?.replace('[', '').trim() || '';
+                  const prof = parts[2]?.replace('[', '').trim() || 'N/A';
+
+                  const est = (t.estado || '').trim().toLowerCase();
+
+                  // Jerarquía de colores:
+                  // 1. CANCELADO / AUSENTE -> ROJO SIEMPRE (incluso si es Tratamiento)
+                  // 2. REALIZADO / PRESENTE -> VERDE
+                  // 3. PENDIENTE Tratamiento -> AMARILLO
+                  // 4. PENDIENTE Otra Prestación -> CELESTE
+                  let bgCard = '#eefaff';
+                  let borderCard = '#b8daff';
+                  let textNombreColor = '#0056b3';
+                  let decoracionTexto = 'none';
+
+                  if (est === 'cancelado' || est === 'ausente') {
+                    bgCard = '#f8d7da'; // Rojo claro
+                    borderCard = '#f5c6cb';
+                    textNombreColor = '#721c24'; // Rojo oscuro
+                    decoracionTexto = 'line-through';
+                  } else if (est === 'realizado' || est === 'presente') {
+                    bgCard = '#d4edda'; // Verde claro
+                    borderCard = '#c3e6cb';
+                    textNombreColor = '#155724'; // Verde oscuro
+                  } else if (prest === 'Tratamiento') {
+                    bgCard = '#fff3cd'; // Amarillo / crema suave
+                    borderCard = '#ffeeba';
+                    textNombreColor = '#856404';
+                  }
+
                   return (
-                   <div 
-  key={t.id} 
-  onClick={(e) => { e.stopPropagation(); setTurnoEditando(t); setForm({...t, hora: hora, prestacion: prest}); setDiaSeleccionado(dN); }} 
-  style={{ 
-    fontSize: '11px', 
-    // Aplicamos .trim() para limpiar espacios y comparamos
-    background: prest.trim() === 'Tratamiento' 
-      ? '#fff3cd' 
-      : (t.estado === 'realizado' ? '#d4edda' : t.estado === 'cancelado' ? '#f8d7da' : '#eefaff'), 
-    padding: '4px', 
-    cursor: 'pointer', 
-    borderRadius: '4px', 
-    border: '1px solid #ddd' 
-  }}
->
-                      <div style={{ color: '#0056b3', fontWeight: 'bold', fontSize: '12px' }}>{t.paciente_nombre.toUpperCase()}</div>
-                      <div><strong>{hora}</strong> | {prest} | <b>{prof}</b></div>
+                    <div 
+                      key={t.id} 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        setTurnoEditando(t); 
+                        setForm({...t, hora: hora, prestacion: prest}); 
+                        setDiaSeleccionado(dN); 
+                      }} 
+                      style={{ 
+                        fontSize: '11px', 
+                        background: bgCard,
+                        border: `1px solid ${borderCard}`,
+                        padding: '4px 6px', 
+                        cursor: 'pointer', 
+                        borderRadius: '4px',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                        transition: 'transform 0.1s'
+                      }}
+                    >
+                      <div style={{ color: textNombreColor, fontWeight: 'bold', fontSize: '12px', textDecoration: decoracionTexto }}>
+                        {t.paciente_nombre.toUpperCase()} {est === 'cancelado' ? '❌ (CANCELADO)' : ''}
+                      </div>
+                      <div style={{ color: est === 'cancelado' ? '#721c24' : '#333' }}>
+                        <strong>{hora}</strong> | {prest} | <b>{prof}</b>
+                      </div>
                     </div>
-                  )
+                  );
                 })}
               </div>
             </div>
