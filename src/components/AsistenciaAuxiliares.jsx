@@ -64,6 +64,16 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' });
   const [filtroNombre, setFiltroNombre] = useState('');
 
+  // Estados para cruce y selección de Pacientes en modalidad SESION
+  const [listaPacientesMaestro, setListaPacientesMaestro] = useState([]);
+  const [mapaPacientes, setMapaPacientes] = useState({});
+  const [asistenciasPacientesFecha, setAsistenciasPacientesFecha] = useState({});
+  const [pacientesSeleccionadosSesion, setPacientesSeleccionadosSesion] = useState([]);
+  const [modalSeleccionPacientesAbierto, setModalSeleccionPacientesAbierto] = useState(false);
+  const [busquedaPacModal, setBusquedaPacModal] = useState('');
+  const [filtroMatchPac, setFiltroMatchPac] = useState('TODOS'); // 'TODOS', 'MATCH', 'NOMATCH', 'SELECCIONADOS'
+  const [cargandoCrucePacientes, setCargandoCrucePacientes] = useState(false);
+
   const cargarPrestadores = async () => {
     try {
       const { data, error } = await supabase
@@ -77,6 +87,56 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
     }
   };
 
+  const cargarPacientesMaestro = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('pacientes_motor')
+        .select('id_paciente, nombre_apellido, dni, estado')
+        .order('nombre_apellido', { ascending: true });
+      if (error) throw error;
+      const list = data || [];
+      setListaPacientesMaestro(list);
+      const mapa = {};
+      list.forEach(p => {
+        mapa[p.id_paciente] = p;
+      });
+      setMapaPacientes(mapa);
+    } catch (err) {
+      console.error("Error al cargar pacientes maestro:", err);
+    }
+  };
+
+  const cargarAsistenciasPacientesFecha = async (fechaAUsar) => {
+    if (!fechaAUsar) return;
+    setCargandoCrucePacientes(true);
+    try {
+      const { data, error } = await supabase
+        .from('asistencia_pacientes_motor')
+        .select('id_paciente, paciente_nombre, estado')
+        .eq('fecha', fechaAUsar);
+      if (error) throw error;
+      const mapa = {};
+      (data || []).forEach(a => {
+        mapa[a.id_paciente] = a.estado; // 'Presente', 'Ausente con Aviso', 'Ausente sin Aviso', 'Pendiente'
+      });
+      setAsistenciasPacientesFecha(mapa);
+    } catch (err) {
+      console.error("Error al cargar asistencias de pacientes para fecha:", err);
+    } finally {
+      setCargandoCrucePacientes(false);
+    }
+  };
+
+  const parsearPacientesObs = (obsText) => {
+    if (!obsText) return [];
+    const matchP = obsText.match(/\[PACS:\s*([^\]]+)\]/);
+    if (!matchP) return [];
+    return matchP[1]
+      .split(',')
+      .map(idStr => Number(idStr.trim()))
+      .filter(id => !isNaN(id) && id > 0);
+  };
+
   const parsearPrestadoresObs = (obsText) => {
     let pM1 = '';
     let sM1 = '1';
@@ -87,10 +147,20 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
     let sT1 = '1';
     let pT2 = '';
     let sT2 = '';
+    let pacsIds = [];
     
     let limpiaObs = obsText || '';
     
     if (limpiaObs) {
+      const matchP = limpiaObs.match(/\[PACS:\s*([^\]]+)\]/);
+      if (matchP) {
+        pacsIds = matchP[1]
+          .split(',')
+          .map(idStr => Number(idStr.trim()))
+          .filter(id => !isNaN(id) && id > 0);
+        limpiaObs = limpiaObs.replace(matchP[0], '');
+      }
+
       const matchM = limpiaObs.match(/\[P_M:\s*([^\]]+)\]/);
       if (matchM) {
         const parts = matchM[1].split(',').map(p => p.trim());
@@ -129,19 +199,24 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
     return {
       prestadorM1: pM1, shareM1: sM1, prestadorM2: pM2, shareM2: sM2,
       prestadorT1: pT1, shareT1: sT1, prestadorT2: pT2, shareT2: sT2,
+      pacsIds,
       limpiaObs
     };
   };
 
-  const componerObsConPrestadores = (pM1, sM1, pM2, sM2, pT1, sT1, pT2, sT2, observacionesTexto) => {
+  const componerObsConPrestadores = (pM1, sM1, pM2, sM2, pT1, sT1, pT2, sT2, observacionesTexto, pacsIds = []) => {
     let resultado = '';
+
+    if (pacsIds && pacsIds.length > 0) {
+      resultado += `[PACS: ${pacsIds.join(',')}] `;
+    }
     
     if (pM1) {
       let tag = `[P_M: ${pM1}|${sM1 || '1'}`;
       if (pM2) {
         tag += `, ${pM2}|${sM2 || '1'}`;
       }
-      tag += ']';
+      tag += '] ';
       resultado += tag;
     }
     
@@ -150,12 +225,12 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
       if (pT2) {
         tag += `, ${pT2}|${sT2 || '1'}`;
       }
-      tag += ']';
+      tag += '] ';
       resultado += tag;
     }
     
     if (observacionesTexto && observacionesTexto.trim()) {
-      resultado += ` ${observacionesTexto.trim()}`;
+      resultado += `${observacionesTexto.trim()}`;
     }
     
     return resultado.trim();
@@ -179,6 +254,7 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
     const fSimulada = localStorage.getItem('crin_fecha_trabajo_simulada');
     setFechaTrabajo(fSimulada || new Date().toISOString().split('T')[0]);
     cargarPrestadores();
+    cargarPacientesMaestro();
   }, []);
 
   // Carga inicial y cada vez que cambia la fecha de trabajo
@@ -186,6 +262,7 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
     if (fechaTrabajo) {
       cargarAuxiliares();
       cargarAsistenciasDia();
+      cargarAsistenciasPacientesFecha(fechaTrabajo);
     }
   }, [fechaTrabajo]);
 
@@ -298,6 +375,10 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
     setAuxiliarSeleccionadoAsist(auxiliar);
     setRegistroEdicion(registroExistente);
 
+    const fechaAUsar = registroExistente ? registroExistente.fecha : fechaTrabajo;
+    cargarAsistenciasPacientesFecha(fechaAUsar);
+
+    let pacsIds = [];
     if (registroExistente) {
       setTipoLiq(registroExistente.tipo_liq || 'HORA');
       setHoraEntradaM(registroExistente.hora_entrada_m ? registroExistente.hora_entrada_m.substring(0, 5) : '');
@@ -310,6 +391,7 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
       setValorSesion(registroExistente.valor_sesion ? String(registroExistente.valor_sesion) : '');
       
       const parsed = parsearPrestadoresObs(registroExistente.obs);
+      pacsIds = parsed.pacsIds || [];
       setPrestadorM1(parsed.prestadorM1);
       setShareM1(parsed.shareM1 || '1');
       setPrestadorM2(parsed.prestadorM2);
@@ -345,7 +427,15 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
       setObs('');
     }
 
+    setPacientesSeleccionadosSesion(pacsIds);
+    setBusquedaPacModal('');
+    setFiltroMatchPac('TODOS');
     setModalAsistenciaAbierto(true);
+
+    const esModoSesion = registroExistente ? (registroExistente.tipo_liq === 'SESION') : (auxiliar.tipo_liq === 'SESION');
+    if (esModoSesion) {
+      setModalSeleccionPacientesAbierto(true);
+    }
   };
 
   // Guardar asistencia en base de datos
@@ -394,7 +484,8 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
         obs: componerObsConPrestadores(
           prestadorM1, shareM1, prestadorM2, shareM2,
           prestadorT1, shareT1, prestadorT2, shareT2,
-          obs
+          obs,
+          tipoLiq === 'SESION' ? pacientesSeleccionadosSesion : []
         ) || null,
         fecha_registro: new Date().toISOString()
       };
@@ -528,6 +619,40 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
   asistenciasDia.forEach(a => {
     mapaAsistencias[a.id_auxiliar] = a;
   });
+
+  // Lógica de cálculo y filtrado para el modal de pacientes (cruce SESION)
+  const togglePacienteSeleccionado = (idPaciente) => {
+    setPacientesSeleccionadosSesion(prev => {
+      const exists = prev.includes(idPaciente);
+      const updated = exists ? prev.filter(id => id !== idPaciente) : [...prev, idPaciente];
+      setSesiones(String(updated.length));
+      return updated;
+    });
+  };
+
+  const listaFiltradaPacientesCruce = listaPacientesMaestro.filter(p => {
+    const q = busquedaPacModal.trim().toLowerCase();
+    const matchTexto = !q ||
+      (p.nombre_apellido && p.nombre_apellido.toLowerCase().includes(q)) ||
+      (p.dni && String(p.dni).includes(q));
+    
+    if (!matchTexto) return false;
+
+    const estAsist = asistenciasPacientesFecha[p.id_paciente];
+    const esMatch = estAsist === 'Presente';
+    const isSelected = pacientesSeleccionadosSesion.includes(p.id_paciente);
+
+    if (filtroMatchPac === 'MATCH') return esMatch;
+    if (filtroMatchPac === 'NOMATCH') return !esMatch;
+    if (filtroMatchPac === 'SELECCIONADOS') return isSelected;
+    return true;
+  });
+
+  const totalMatchCount = listaPacientesMaestro.filter(p => asistenciasPacientesFecha[p.id_paciente] === 'Presente').length;
+  const totalNoMatchCount = listaPacientesMaestro.length - totalMatchCount;
+
+  const seleccionadosMatchCount = pacientesSeleccionadosSesion.filter(id => asistenciasPacientesFecha[id] === 'Presente').length;
+  const seleccionadosNoMatchCount = pacientesSeleccionadosSesion.length - seleccionadosMatchCount;
 
   return (
     <div style={{ background: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b' }}>
@@ -711,6 +836,36 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                                 </td>
                                 <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 'bold', color: '#0f172a' }}>
                                   {asist.tipo_liq === 'HORA' ? `⏱️ ${asist.horas_trabajadas || 0} hs` : `📑 ${asist.sesiones || 0} ses`}
+                                  {asist.tipo_liq === 'SESION' && parsed.pacsIds && parsed.pacsIds.length > 0 && (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', justifyContent: 'center', marginTop: '4px', maxWidth: '240px' }}>
+                                      {parsed.pacsIds.map(id => {
+                                        const pac = mapaPacientes[id];
+                                        const estAsist = asistenciasPacientesFecha[id];
+                                        const esMatch = estAsist === 'Presente';
+                                        return (
+                                          <span
+                                            key={id}
+                                            title={pac ? `${pac.nombre_apellido} (DNI: ${pac.dni || 'S/D'}) - Asistencia: ${estAsist || 'Sin registro'}` : `ID: ${id}`}
+                                            style={{
+                                              fontSize: '10px',
+                                              padding: '2px 5px',
+                                              borderRadius: '4px',
+                                              fontWeight: 'bold',
+                                              background: esMatch ? '#dcfce7' : '#fee2e2',
+                                              color: esMatch ? '#166534' : '#991b1b',
+                                              border: `1px solid ${esMatch ? '#86efac' : '#fca5a5'}`,
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '3px'
+                                            }}
+                                          >
+                                            <span>{esMatch ? '🟢' : '🔴'}</span>
+                                            <span>{pac?.nombre_apellido ? pac.nombre_apellido.split(' ')[0] : `ID ${id}`}</span>
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
                                 </td>
                                 <td style={{ padding: '12px 10px', fontWeight: '600', color: '#15803d' }}>
                                   {asist.tipo_liq === 'HORA' ? `$${asist.valor_hora}/hs` : `$${asist.valor_sesion}/ses`}
@@ -898,6 +1053,32 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                         </td>
                         <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: '600' }}>
                           {reg.tipo_liq === 'HORA' ? `${reg.horas_trabajadas || 0} hs` : `${reg.sesiones || 0} ses`}
+                          {reg.tipo_liq === 'SESION' && parsed.pacsIds && parsed.pacsIds.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', justifyContent: 'center', marginTop: '4px', maxWidth: '200px' }}>
+                              {parsed.pacsIds.map(id => {
+                                const pac = mapaPacientes[id];
+                                return (
+                                  <span
+                                    key={id}
+                                    title={pac ? `${pac.nombre_apellido} (ID ${id})` : `ID ${id}`}
+                                    style={{
+                                      fontSize: '10px',
+                                      padding: '1px 5px',
+                                      borderRadius: '4px',
+                                      background: '#f1f5f9',
+                                      color: '#334155',
+                                      border: '1px solid #cbd5e1',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '2px'
+                                    }}
+                                  >
+                                    👤 {pac?.nombre_apellido ? pac.nombre_apellido.split(' ')[0] : `ID ${id}`}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '12px 10px', textAlign: 'right', color: '#64748b' }}>
                           ${tarifa.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
@@ -940,7 +1121,13 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>Tipo de Liquidación</label>
                 <select
                   value={tipoLiq}
-                  onChange={(e) => setTipoLiq(e.target.value)}
+                  onChange={(e) => {
+                    const nuevoTipo = e.target.value;
+                    setTipoLiq(nuevoTipo);
+                    if (nuevoTipo === 'SESION') {
+                      setModalSeleccionPacientesAbierto(true);
+                    }
+                  }}
                   style={{ width: '100%', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', background: '#fff' }}
                 >
                   <option value="HORA">Por Horas Trabajadas (HORA)</option>
@@ -1156,6 +1343,83 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                       />
                     </div>
                   </div>
+
+                  {/* Selector y Detalle de Pacientes con Cruce de Asistencia */}
+                  <div style={{ gridColumn: 'span 2', background: '#fff', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+                        👥 Pacientes atendidos ({pacientesSeleccionadosSesion.length}):
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setModalSeleccionPacientesAbierto(true)}
+                        style={{
+                          background: '#0284c7',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '5px 12px',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          fontWeight: 'bold',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        🔍 Abrir Selector de Pacientes
+                      </button>
+                    </div>
+
+                    {pacientesSeleccionadosSesion.length === 0 ? (
+                      <div 
+                        onClick={() => setModalSeleccionPacientesAbierto(true)}
+                        style={{ padding: '12px', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '6px', textAlign: 'center', cursor: 'pointer', color: '#64748b', fontSize: '12px' }}
+                      >
+                        👉 Haz clic para seleccionar qué pacientes atendió y cruzar con la asistencia de la fecha
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {pacientesSeleccionadosSesion.map(id => {
+                          const p = mapaPacientes[id];
+                          const estAsist = asistenciasPacientesFecha[id];
+                          const esMatch = estAsist === 'Presente';
+                          return (
+                            <span
+                              key={id}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                fontSize: '11px',
+                                fontWeight: '600',
+                                background: esMatch ? '#dcfce7' : '#fee2e2',
+                                color: esMatch ? '#166534' : '#991b1b',
+                                border: `1px solid ${esMatch ? '#86efac' : '#fca5a5'}`
+                              }}
+                            >
+                              <span>{esMatch ? '🟢' : '🔴'}</span>
+                              <span>{p?.nombre_apellido || `ID: ${id}`}</span>
+                              <span style={{ fontSize: '10px', opacity: 0.8 }}>({estAsist || 'Sin registro'})</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const filtered = pacientesSeleccionadosSesion.filter(x => x !== id);
+                                  setPacientesSeleccionadosSesion(filtered);
+                                  setSesiones(String(filtered.length));
+                                }}
+                                style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, fontWeight: 'bold', marginLeft: '3px' }}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -1187,6 +1451,199 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                 {guardandoAsist ? 'Guardando...' : 'Confirmar Asistencia'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== MODAL DE SELECCIÓN Y CRUCE DE PACIENTES (MODALIDAD SESIÓN) ==================== */}
+      {modalSeleccionPacientesAbierto && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(2px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1100, padding: '20px' }}>
+          <div style={{ background: '#ffffff', borderRadius: '16px', width: '100%', maxWidth: '780px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #cbd5e1', overflow: 'hidden' }}>
+            
+            {/* Cabecera Modal */}
+            <div style={{ padding: '16px 22px', background: '#0f172a', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', color: '#38bdf8', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  👥 Seleccionar Pacientes Atendidos por {auxiliarSeleccionadoAsist?.nombre || 'Auxiliar'}
+                </h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#94a3b8' }}>
+                  📅 Fecha Planilla: <strong>{registroEdicion?.fecha || fechaTrabajo}</strong> — Cruzando con la Asistencia de Pacientes de este día
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalSeleccionPacientesAbierto(false)}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '22px', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Panel de Estadísticas y KPIs de Match */}
+            <div style={{ padding: '12px 22px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#1e293b' }}>
+                  Seleccionados: <strong style={{ color: '#0284c7', fontSize: '15px' }}>{pacientesSeleccionadosSesion.length}</strong>
+                </span>
+                <span style={{ fontSize: '11px', background: '#dcfce7', color: '#166534', padding: '3px 8px', borderRadius: '12px', fontWeight: 'bold', border: '1px solid #86efac', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  🟢 {seleccionadosMatchCount} con Match (Presente)
+                </span>
+                <span style={{ fontSize: '11px', background: '#fee2e2', color: '#991b1b', padding: '3px 8px', borderRadius: '12px', fontWeight: 'bold', border: '1px solid #fca5a5', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  🔴 {seleccionadosNoMatchCount} sin Match (Ausente / Sin registro)
+                </span>
+              </div>
+
+              {pacientesSeleccionadosSesion.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPacientesSeleccionadosSesion([]);
+                    setSesiones('0');
+                  }}
+                  style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', color: '#64748b', fontWeight: '600' }}
+                >
+                  Desmarcar todos
+                </button>
+              )}
+            </div>
+
+            {/* Buscador y Pestañas de Filtro */}
+            <div style={{ padding: '12px 22px', borderBottom: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '10px', background: '#fff' }}>
+              <input
+                type="text"
+                placeholder="🔍 Buscar por nombre del paciente o DNI..."
+                value={busquedaPacModal}
+                onChange={(e) => setBusquedaPacModal(e.target.value)}
+                style={{ width: '100%', padding: '8px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
+              />
+
+              <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
+                {[
+                  { id: 'TODOS', label: `Todos (${listaPacientesMaestro.length})` },
+                  { id: 'MATCH', label: `🟢 Presentes / Match (${totalMatchCount})` },
+                  { id: 'NOMATCH', label: `🔴 Sin Match / Ausentes (${totalNoMatchCount})` },
+                  { id: 'SELECCIONADOS', label: `✓ Seleccionados (${pacientesSeleccionadosSesion.length})` }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setFiltroMatchPac(tab.id)}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: '20px',
+                      fontSize: '11px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      border: filtroMatchPac === tab.id ? '1px solid #0284c7' : '1px solid #e2e8f0',
+                      background: filtroMatchPac === tab.id ? '#e0f2fe' : '#f8fafc',
+                      color: filtroMatchPac === tab.id ? '#0369a1' : '#64748b',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Listado de Pacientes */}
+            <div style={{ flex: 1, overflowY: 'auto', maxHeight: '420px', padding: '12px 22px', background: '#f8fafc' }}>
+              {cargandoCrucePacientes ? (
+                <div style={{ padding: '30px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
+                  ⏳ Consultando asistencias de pacientes para la fecha...
+                </div>
+              ) : listaFiltradaPacientesCruce.length === 0 ? (
+                <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                  No se encontraron pacientes con los filtros seleccionados.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {listaFiltradaPacientesCruce.map(p => {
+                    const isSelected = pacientesSeleccionadosSesion.includes(p.id_paciente);
+                    const estadoAsist = asistenciasPacientesFecha[p.id_paciente];
+                    const esMatch = estadoAsist === 'Presente';
+
+                    return (
+                      <div
+                        key={p.id_paciente}
+                        onClick={() => togglePacienteSeleccionado(p.id_paciente)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '10px 14px',
+                          borderRadius: '8px',
+                          border: isSelected 
+                            ? (esMatch ? '2px solid #16a34a' : '2px solid #dc2626')
+                            : '1px solid #e2e8f0',
+                          background: isSelected 
+                            ? (esMatch ? '#dcfce7' : '#fee2e2')
+                            : '#ffffff',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {}} // Manejado por onClick del contenedor
+                            style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                          />
+                          <div>
+                            <span style={{ fontWeight: isSelected ? 'bold' : '600', color: '#0f172a', fontSize: '13px' }}>
+                              {p.nombre_apellido}
+                            </span>
+                            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '1px' }}>
+                              DNI: {p.dni || 'S/D'} • ID: {p.id_paciente}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          {esMatch ? (
+                            <span style={{ fontSize: '11px', fontWeight: 'bold', padding: '4px 10px', borderRadius: '6px', background: '#bbf7d0', color: '#166534', border: '1px solid #86efac', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                              🟢 Presente (Match)
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '11px', fontWeight: 'bold', padding: '4px 10px', borderRadius: '6px', background: '#fecaca', color: '#991b1b', border: '1px solid #fca5a5', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                              🔴 {estadoAsist || 'Sin registro'} (No Match)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Pie de Acciones */}
+            <div style={{ padding: '14px 22px', background: '#fff', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '12px', color: '#475569' }}>
+                Total de sesiones a liquidar: <strong style={{ color: '#0f172a', fontSize: '13px' }}>{pacientesSeleccionadosSesion.length}</strong>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setModalSeleccionPacientesAbierto(false)}
+                  style={{ padding: '8px 16px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSesiones(String(pacientesSeleccionadosSesion.length));
+                    setModalSeleccionPacientesAbierto(false);
+                  }}
+                  style={{ padding: '8px 20px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
+                >
+                  ✓ Confirmar Selección ({pacientesSeleccionadosSesion.length} sesiones)
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>
       )}
