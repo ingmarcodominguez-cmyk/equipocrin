@@ -73,6 +73,8 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
   const [busquedaPacModal, setBusquedaPacModal] = useState('');
   const [filtroMatchPac, setFiltroMatchPac] = useState('TODOS'); // 'TODOS', 'MATCH', 'NOMATCH', 'SELECCIONADOS'
   const [cargandoCrucePacientes, setCargandoCrucePacientes] = useState(false);
+  const [actualizandoAsistPacId, setActualizandoAsistPacId] = useState(null);
+  const [notificacionModalPac, setNotificacionModalPac] = useState(null);
 
   const cargarPrestadores = async () => {
     try {
@@ -124,6 +126,81 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
       console.error("Error al cargar asistencias de pacientes para fecha:", err);
     } finally {
       setCargandoCrucePacientes(false);
+    }
+  };
+
+  // Corregir la asistencia del paciente directamente en BD para que figure Presente
+  const marcarPacientePresenteEnBD = async (paciente, e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+
+    setActualizandoAsistPacId(paciente.id_paciente);
+    try {
+      const fechaAUsar = registroEdicion?.fecha || fechaTrabajo;
+
+      // 1. Verificar si ya existe registro en asistencia_pacientes_motor para esta fecha y paciente
+      const { data: existente, error: errCheck } = await supabase
+        .from('asistencia_pacientes_motor')
+        .select('id_asistencia')
+        .eq('fecha', fechaAUsar)
+        .eq('id_paciente', paciente.id_paciente)
+        .maybeSingle();
+
+      if (errCheck) throw errCheck;
+
+      if (existente && existente.id_asistencia) {
+        // Actualizar estado a Presente
+        const { error: errUpd } = await supabase
+          .from('asistencia_pacientes_motor')
+          .update({
+            estado: 'Presente',
+            fecha_registro: new Date().toISOString()
+          })
+          .eq('id_asistencia', existente.id_asistencia);
+        if (errUpd) throw errUpd;
+      } else {
+        // Insertar nuevo registro con estado Presente
+        const { error: errIns } = await supabase
+          .from('asistencia_pacientes_motor')
+          .insert([{
+            fecha: fechaAUsar,
+            id_paciente: paciente.id_paciente,
+            paciente_nombre: paciente.nombre_apellido,
+            estado: 'Presente',
+            obs: 'Presente confirmado desde Asistencia Auxiliares',
+            usuario: 'Coordinación',
+            fecha_registro: new Date().toISOString()
+          }]);
+        if (errIns) throw errIns;
+      }
+
+      // 2. Actualizar estado local inmediato del mapa de asistencias
+      setAsistenciasPacientesFecha(prev => ({
+        ...prev,
+        [paciente.id_paciente]: 'Presente'
+      }));
+
+      // 3. Tildar/seleccionar automáticamente al paciente para las sesiones del auxiliar
+      setPacientesSeleccionadosSesion(prev => {
+        if (!prev.includes(paciente.id_paciente)) {
+          const updated = [...prev, paciente.id_paciente];
+          setSesiones(String(updated.length));
+          return updated;
+        }
+        return prev;
+      });
+
+      setNotificacionModalPac({
+        texto: `✓ ¡Asistencia de ${paciente.nombre_apellido} guardada como PRESENTE en la planilla del día!`,
+        tipo: 'exito'
+      });
+      setTimeout(() => setNotificacionModalPac(null), 4000);
+
+      mostrarAlerta(`✓ Asistencia de ${paciente.nombre_apellido} actualizada a Presente en la fecha ${fechaAUsar}.`, "exito");
+    } catch (err) {
+      console.error("Error al actualizar asistencia del paciente:", err);
+      alert("Error al actualizar asistencia del paciente: " + err.message);
+    } finally {
+      setActualizandoAsistPacId(null);
     }
   };
 
@@ -1403,6 +1480,30 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                               <span>{esMatch ? '🟢' : '🔴'}</span>
                               <span>{p?.nombre_apellido || `ID: ${id}`}</span>
                               <span style={{ fontSize: '10px', opacity: 0.8 }}>({estAsist || 'Sin registro'})</span>
+                              {!esMatch && (
+                                <button
+                                  type="button"
+                                  disabled={actualizandoAsistPacId === id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    marcarPacientePresenteEnBD(p || { id_paciente: id, nombre_apellido: `ID ${id}` }, e);
+                                  }}
+                                  title="Corregir asistencia: Marcar como Presente en la planilla de pacientes"
+                                  style={{
+                                    background: '#16a34a',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '1px 6px',
+                                    fontSize: '10px',
+                                    fontWeight: 'bold',
+                                    cursor: actualizandoAsistPacId === id ? 'wait' : 'pointer',
+                                    marginLeft: '3px'
+                                  }}
+                                >
+                                  {actualizandoAsistPacId === id ? '⏳' : '✓ Presente'}
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1478,6 +1579,14 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                 &times;
               </button>
             </div>
+
+            {/* Notificación de corrección de asistencia en vivo */}
+            {notificacionModalPac && (
+              <div style={{ background: '#dcfce7', color: '#166534', borderBottom: '1px solid #86efac', padding: '10px 22px', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '16px' }}>✓</span>
+                <span>{notificacionModalPac.texto}</span>
+              </div>
+            )}
 
             {/* Panel de Estadísticas y KPIs de Match */}
             <div style={{ padding: '12px 22px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
@@ -1600,15 +1709,39 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                           </div>
                         </div>
 
-                        <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           {esMatch ? (
                             <span style={{ fontSize: '11px', fontWeight: 'bold', padding: '4px 10px', borderRadius: '6px', background: '#bbf7d0', color: '#166534', border: '1px solid #86efac', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
                               🟢 Presente (Match)
                             </span>
                           ) : (
-                            <span style={{ fontSize: '11px', fontWeight: 'bold', padding: '4px 10px', borderRadius: '6px', background: '#fecaca', color: '#991b1b', border: '1px solid #fca5a5', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                              🔴 {estadoAsist || 'Sin registro'} (No Match)
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontSize: '11px', fontWeight: 'bold', padding: '4px 8px', borderRadius: '6px', background: '#fecaca', color: '#991b1b', border: '1px solid #fca5a5', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                🔴 {estadoAsist || 'Sin registro'}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={actualizandoAsistPacId === p.id_paciente}
+                                onClick={(e) => marcarPacientePresenteEnBD(p, e)}
+                                title="Corregir asistencia: Marcar como Presente en la planilla de pacientes de esta fecha"
+                                style={{
+                                  padding: '5px 10px',
+                                  fontSize: '11px',
+                                  fontWeight: 'bold',
+                                  background: '#16a34a',
+                                  color: '#fff',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  cursor: actualizandoAsistPacId === p.id_paciente ? 'wait' : 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                                }}
+                              >
+                                {actualizandoAsistPacId === p.id_paciente ? '⏳ Guardando...' : '✓ Marcar Presente 🟢'}
+                              </button>
+                            </div>
                           )}
                         </div>
                       </div>
