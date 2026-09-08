@@ -664,24 +664,34 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
       if (campo === 'estado') {
         const nuevoEstado = String(valor).toUpperCase();
         if (nuevoEstado === 'FINALIZADO' || nuevoEstado === 'RESCINDIDO') {
-          if (pacienteSeleccionado?.id_paciente) {
-            await supabase
-              .from('pacientes_motor')
-              .update({ estado: 'INACTIVO' })
-              .eq('id_paciente', pacienteSeleccionado.id_paciente);
+          // Verificar si el paciente tiene OTROS acuerdos activos
+          const otrosAcuerdosActivos = acuerdos.filter(ac => ac.id_acuerdo !== idAcuerdo && String(ac.estado).toUpperCase() === 'ACTIVO');
 
-            const uuidPaciente = '00000000-0000-0000-0000-' + String(pacienteSeleccionado.id_paciente).padStart(12, '0');
-            await supabase
-              .from('sesiones_fijas')
-              .update({ estado: 'INACTIVO' })
-              .eq('paciente_id', uuidPaciente);
+          if (otrosAcuerdosActivos.length === 0) {
+            if (pacienteSeleccionado?.id_paciente) {
+              await supabase
+                .from('pacientes_motor')
+                .update({ estado: 'INACTIVO' })
+                .eq('id_paciente', pacienteSeleccionado.id_paciente);
 
-            setPacienteSeleccionado(prev => prev ? ({ ...prev, estado: 'INACTIVO' }) : null);
+              const uuidPaciente = '00000000-0000-0000-0000-' + String(pacienteSeleccionado.id_paciente).padStart(12, '0');
+              await supabase
+                .from('sesiones_fijas')
+                .update({ estado: 'INACTIVO' })
+                .eq('paciente_id', uuidPaciente);
+
+              setPacienteSeleccionado(prev => prev ? ({ ...prev, estado: 'INACTIVO' }) : null);
+            }
+            setAcuerdos(acuerdos.map(ac => ac.id_acuerdo === idAcuerdo ? { ...ac, [campo]: valor } : ac));
+            setMensaje({ texto: 'Acuerdo finalizado. Sin otros acuerdos activos, paciente y turnos pasados a INACTIVO.', tipo: 'exito' });
+            setTimeout(() => setMensaje({ texto: '', tipo: '' }), 3000);
+            return;
+          } else {
+            setAcuerdos(acuerdos.map(ac => ac.id_acuerdo === idAcuerdo ? { ...ac, [campo]: valor } : ac));
+            setMensaje({ texto: 'Acuerdo finalizado. El paciente permanece ACTIVO ya que posee otros acuerdos vigentes.', tipo: 'exito' });
+            setTimeout(() => setMensaje({ texto: '', tipo: '' }), 3000);
+            return;
           }
-          setAcuerdos(acuerdos.map(ac => ac.id_acuerdo === idAcuerdo ? { ...ac, [campo]: valor } : ac));
-          setMensaje({ texto: 'Acuerdo finalizado. Paciente y turnos pasados a INACTIVO en todo el sistema.', tipo: 'exito' });
-          setTimeout(() => setMensaje({ texto: '', tipo: '' }), 3000);
-          return;
         } else if (nuevoEstado === 'ACTIVO') {
           if (pacienteSeleccionado?.id_paciente) {
             await supabase
