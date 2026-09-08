@@ -7,6 +7,7 @@ import EstadosCuenta from './EstadosCuenta.jsx'
 import MovimientosPrestadores from './MovimientosPrestadores.jsx'
 import Documentos from './Documentos.jsx'
 import AsistenciaPacientes from './AsistenciaPacientes.jsx'
+import BotonPantallaCompleta from './BotonPantallaCompleta.jsx'
 import logo from '../assets/photo.jpg'
 
 function Layout({ userData, logout, actualizarMoraYCuotas }) {
@@ -34,9 +35,12 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
       
       {vista === 'hub' && (
         <div style={{ maxWidth: '600px', margin: 'auto', paddingTop: '5vh' }}>
-          <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '25px' }}>
              <img src={logo} alt="Logo" style={{ width: 120, borderRadius: '20px' }} />
-             <h2>Hola, {userData?.nombre || 'Usuario'}</h2>
+             <h2 style={{ margin: '10px 0' }}>Hola, {userData?.nombre || 'Usuario'}</h2>
+             <div style={{ marginTop: '8px' }}>
+               <BotonPantallaCompleta />
+             </div>
           </div>
           
           <div style={{ display: 'grid', gap: '20px' }}>
@@ -74,7 +78,10 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
 
       {['agenda', 'tareas', 'profesionales', 'pacientes', 'estados', 'movimientos', 'documentos', 'asistencia_pacientes'].includes(vista) && (
         <div style={{ maxWidth: '1200px', margin: 'auto' }}>
-          <button onClick={() => setVista('hub')} style={btnVolverStyle}>← VOLVER AL MENÚ</button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <button onClick={() => setVista('hub')} style={btnVolverStyle}>← VOLVER AL MENÚ</button>
+            <BotonPantallaCompleta />
+          </div>
           <div style={{ backgroundColor: '#111', padding: 20, borderRadius: 15, marginTop: 10 }}>
             {vista === 'agenda' && <AgendaMensualPro userData={userData} />}
             {vista === 'tareas' && <Tasks userData={userData} playNotification={playNotification} />}

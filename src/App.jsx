@@ -18,6 +18,7 @@ import ReporteCobranzas from './components/ReporteCobranzas.jsx'
 import Presupuesto from './components/Presupuesto.jsx'
 import PresupuestoPublico from './components/PresupuestoPublico.jsx'
 import PlanillaGastos from './components/PlanillaGastos.jsx'
+import BotonPantallaCompleta from './components/BotonPantallaCompleta.jsx'
 
 // Locks para evitar ejecuciones concurrentes de los motores
 let motorRecargosLock = false;
@@ -1233,7 +1234,11 @@ function App() {
             </div>
           )}
 
-          <button onClick={logout} style={{ marginTop: '25px', background: 'none', color: '#ff4444', border: '1px solid #ff4444', padding: '10px', width: '100%', cursor: 'pointer', borderRadius: '5px' }}>
+          <div style={{ marginTop: '20px' }}>
+            <BotonPantallaCompleta style={{ width: '100%', justifyContent: 'center', padding: '10px' }} />
+          </div>
+
+          <button onClick={logout} style={{ marginTop: '15px', background: 'none', color: '#ff4444', border: '1px solid #ff4444', padding: '10px', width: '100%', cursor: 'pointer', borderRadius: '5px' }}>
             Cerrar Sesión
           </button>
         </div>
@@ -1416,21 +1421,24 @@ function App() {
       <div style={{ backgroundColor: '#f0f4f8', minHeight: '100vh', color: '#333333', padding: '40px 20px', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         
         <div style={{ width: '100%', maxWidth: '700px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-          <button 
-            onClick={() => { 
-              if (pacienteSeleccionado) {
-                setPacienteSeleccionado(null)
-              } else if (crinAccion) {
-                setCrinAccion(null)
-                setListaPacientes([])
-              } else {
-                setModoSeleccionado(null)
-              }
-            }} 
-            style={{ background: '#ffffff', color: '#4a5568', border: '1px solid #cbd5e0', padding: '10px 18px', borderRadius: '10px', cursor: 'pointer', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', transition: 'all 0.2s' }}
-          >
-            ← Volver
-          </button>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button 
+              onClick={() => { 
+                if (pacienteSeleccionado) {
+                  setPacienteSeleccionado(null)
+                } else if (crinAccion) {
+                  setCrinAccion(null)
+                  setListaPacientes([])
+                } else {
+                  setModoSeleccionado(null)
+                }
+              }} 
+              style={{ background: '#ffffff', color: '#4a5568', border: '1px solid #cbd5e0', padding: '10px 18px', borderRadius: '10px', cursor: 'pointer', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', transition: 'all 0.2s' }}
+            >
+              ← Volver
+            </button>
+            <BotonPantallaCompleta style={{ padding: '9px 14px', borderRadius: '10px' }} />
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
             <h2 style={{ margin: 0, fontSize: '24px', color: '#1a365d', fontWeight: '800', letterSpacing: '0.5px' }}>✨ Sistema Crin</h2>
             <div style={{ fontSize: '12px', color: '#4a5568', background: '#edf2f7', padding: '4px 10px', borderRadius: '8px', display: 'flex', gap: '8px', alignItems: 'center', border: '1px solid #e2e8f0' }}>
@@ -2435,12 +2443,15 @@ function App() {
 
   return (
     <div style={{ width: '100vw', height: '100vh', margin: 0, padding: 0 }}>
-      <button 
-        onClick={() => setModoSeleccionado(null)} 
-        style={{ position: 'fixed', top: '10px', right: '10px', zIndex: 9999, background: '#222', color: '#aaa', border: '1px solid #444', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer', fontSize: '12px' }}
-      >
-        Cambiar Modo
-      </button>
+      <div style={{ position: 'fixed', top: '10px', right: '10px', zIndex: 9999, display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <BotonPantallaCompleta style={{ padding: '5px 10px', fontSize: '12px' }} />
+        <button 
+          onClick={() => setModoSeleccionado(null)} 
+          style={{ background: '#222', color: '#aaa', border: '1px solid #444', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer', fontSize: '12px' }}
+        >
+          Cambiar Modo
+        </button>
+      </div>
       <Layout userData={userData} logout={logout} actualizarMoraYCuotas={actualizarMoraYCuotas} />
     </div>
   )
