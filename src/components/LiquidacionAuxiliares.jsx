@@ -36,118 +36,633 @@ const parsearDecimal = (val) => {
   return isNaN(num) ? 0 : num;
 };
 
+const nombresMeses = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+];
+
+const formatearMesLabel = (periodoYYYYMM) => {
+  if (!periodoYYYYMM || !periodoYYYYMM.includes('-')) return periodoYYYYMM || '';
+  const [anio, mes] = periodoYYYYMM.split('-');
+  const idx = parseInt(mes, 10) - 1;
+  return `${nombresMeses[idx] || mes} ${anio}`;
+};
+
 export default function LiquidacionAuxiliares({ onVolver, usuario }) {
+  // Pestañas principales
+  const [subVista, setSubVista] = useState('cierre_mensual'); // 'cierre_mensual', 'cuenta_corriente', 'descuentos'
+
+  // Períodos y Cierre Mensual
+  const [periodosDisponibles, setPeriodosDisponibles] = useState([]);
+  const [mesSeleccionado, setMesSeleccionado] = useState('2026-08');
+  const [cargandoMes, setCargandoMes] = useState(false);
+  const [filasMes, setFilasMes] = useState([]);
+  const [procesandoAccion, setProcesandoAccion] = useState(false);
+  const [modalDetalleDias, setModalDetalleDias] = useState(null); // { auxiliar, asistencias }
+
+  // Cuenta Corriente por Auxiliar
   const [auxiliares, setAuxiliares] = useState([]);
   const [auxiliarSeleccionado, setAuxiliarSeleccionado] = useState(null);
   const [movimientos, setMovimientos] = useState([]);
   const [cargandoAuxiliares, setCargandoAuxiliares] = useState(false);
   const [cargandoMovimientos, setCargandoMovimientos] = useState(false);
 
-  // Estados para formularios
-  const [modalAbierto, setModalAbierto] = useState(null); // 'pago', 'ajuste', 'liquidar'
+  // Modales de transacción (Pagos y Ajustes)
+  const [modalAbierto, setModalAbierto] = useState(null); // 'pago', 'ajuste'
   const [fechaTx, setFechaTx] = useState('');
   const [montoTx, setMontoTx] = useState('');
   const [conceptoTx, setConceptoTx] = useState('');
-  const [periodoTx, setPeriodoTx] = useState(''); // ej: '07/2026'
-  const [tipoAjuste, setTipoAjuste] = useState('credito'); // 'credito' (debe) o 'debito' (haber)
+  const [periodoTx, setPeriodoTx] = useState('');
+  const [tipoAjuste, setTipoAjuste] = useState('credito');
   const [procesandoTx, setProcesandoTx] = useState(false);
 
-  // Lógica de Pre-liquidación automática basada en Asistencias
-  const [periodoLiquidar, setPeriodoLiquidar] = useState(''); // 'YYYY-MM'
-  const [cargandoPreliq, setCargandoPreliq] = useState(false);
-  const [asistenciasPreliq, setAsistenciasPreliq] = useState([]);
-  const [preliqTotal, setPreliqTotal] = useState(0);
-
-  const [mensaje, setMensaje] = useState({ texto: '', tipo: '' });
-  const [subVista, setSubVista] = useState('principal'); // 'principal', 'resumen', 'descuentos'
-
-  // Estados para Resumen Mensual Consolidado
-  const [periodosDisponibles, setPeriodosDisponibles] = useState([]);
-  const [periodoSeleccionadoResumen, setPeriodoSeleccionadoResumen] = useState('');
-  const [resumenMensual, setResumenMensual] = useState([]);
+  // Descuentos a Prestadores
   const [descuentosPrestadores, setDescuentosPrestadores] = useState([]);
-  const [cargandoResumen, setCargandoResumen] = useState(false);
+  const [cargandoDescuentos, setCargandoDescuentos] = useState(false);
 
+  // Notificaciones
+  const [mensaje, setMensaje] = useState({ texto: '', tipo: '' });
+
+  const mostrarAlerta = (texto, tipo = 'exito') => {
+    setMensaje({ texto, tipo });
+    setTimeout(() => setMensaje({ texto: '', tipo: '' }), 4500);
+  };
+
+  const fechaTrabajo = localStorage.getItem('crin_fecha_trabajo_simulada') || new Date().toISOString().split('T')[0];
+
+  // 1. Inicialización
   useEffect(() => {
-    cargarAuxiliares();
-    cargarPeriodosDisponibles();
+    inicializarDatos();
   }, []);
 
+  // 2. Al cambiar el mes seleccionado en Cierre Mensual o Descuentos
+  useEffect(() => {
+    if (mesSeleccionado) {
+      cargarCierreMensual(mesSeleccionado);
+      cargarDescuentosPrestadores(mesSeleccionado);
+    }
+  }, [mesSeleccionado]);
+
+  // 3. Al cambiar el auxiliar seleccionado en Cuenta Corriente
   useEffect(() => {
     if (auxiliarSeleccionado) {
       cargarMovimientos(auxiliarSeleccionado.id_auxiliar);
+    } else {
+      setMovimientos([]);
     }
   }, [auxiliarSeleccionado]);
 
-  useEffect(() => {
-    if (periodoSeleccionadoResumen && auxiliares.length > 0) {
-      cargarResumenMensual(periodoSeleccionadoResumen);
-    }
-  }, [periodoSeleccionadoResumen, auxiliares]);
+  const inicializarDatos = async () => {
+    await cargarAuxiliares();
+    await cargarPeriodosDisponibles();
+  };
 
+  // Cargar lista unificada de períodos
   const cargarPeriodosDisponibles = async () => {
     try {
-      const { data, error } = await supabase
+      // Períodos desde asistencias
+      const { data: asistData } = await supabase
+        .from('asistencia_auxiliares_motor')
+        .select('fecha');
+
+      const mesesAsist = (asistData || [])
+        .map(a => a.fecha ? a.fecha.substring(0, 7) : null)
+        .filter(Boolean);
+
+      // Períodos desde movimientos contables
+      const { data: movsData } = await supabase
         .from('movauxiliares_motor')
-        .select('periodo')
-        .not('periodo', 'is', null);
+        .select('periodo');
 
-      if (error) throw error;
+      const mesesMovs = (movsData || [])
+        .map(m => {
+          if (!m.periodo) return null;
+          if (m.periodo.includes('/')) {
+            const [mes, anio] = m.periodo.split('/');
+            return `${anio}-${mes.padStart(2, '0')}`;
+          }
+          return null;
+        })
+        .filter(Boolean);
 
-      const unicos = [...new Set((data || [])
-        .map(x => x.periodo)
-        .filter(p => p && p.trim() !== ''))];
-      
-      unicos.sort((a, b) => {
-        const [mesA, anioA] = a.split('/').map(Number);
-        const [mesB, anioB] = b.split('/').map(Number);
-        if (anioA !== anioB) return anioB - anioA;
-        return mesB - mesA;
-      });
+      // Mes simulado / actual
+      const mesActual = fechaTrabajo.substring(0, 7);
 
-      setPeriodosDisponibles(unicos);
-      if (unicos.length > 0 && !periodoSeleccionadoResumen) {
-        setPeriodoSeleccionadoResumen(unicos[0]);
+      const todos = [...new Set([...mesesAsist, ...mesesMovs, mesActual, '2026-08', '2026-09'])].filter(Boolean);
+      todos.sort().reverse();
+
+      setPeriodosDisponibles(todos);
+
+      if (!mesSeleccionado && todos.length > 0) {
+        setMesSeleccionado(todos[0]);
       }
     } catch (err) {
-      console.error("Error al cargar períodos de liquidación auxiliares:", err);
+      console.error("Error al cargar períodos disponibles:", err);
     }
   };
 
-  const cargarResumenMensual = async (periodo) => {
-    if (!periodo) return;
-    setCargandoResumen(true);
+  // Cargar auxiliares y sus saldos consolidados
+  const cargarAuxiliares = async () => {
+    setCargandoAuxiliares(true);
     try {
-      // 1. Cargar movimientos de ese período para el total por auxiliar
-      const { data: movsData, error: errM } = await supabase
-        .from('movauxiliares_motor')
-        .select('id_auxiliar, debe, concepto')
-        .eq('periodo', periodo);
+      const { data: listaAux, error: errA } = await supabase
+        .from('auxiliares_motor')
+        .select('*')
+        .order('nombre', { ascending: true });
 
-      if (errM) throw errM;
+      if (errA) throw errA;
 
-      const sumas = {};
-      (movsData || []).forEach(m => {
+      // Cargar movimientos para calcular saldos
+      let listaMovs = [];
+      let from = 0;
+      let to = 999;
+      let keepFetching = true;
+      
+      while (keepFetching) {
+        const { data, error } = await supabase
+          .from('movauxiliares_motor')
+          .select('id_auxiliar, debe, haber')
+          .range(from, to);
+          
+        if (error) throw error;
+        listaMovs = listaMovs.concat(data || []);
+        
+        if (!data || data.length < 1000) {
+          keepFetching = false;
+        } else {
+          from += 1000;
+          to += 1000;
+        }
+      }
+
+      const saldosMapa = {};
+      (listaMovs || []).forEach(m => {
         const id = m.id_auxiliar;
-        const debe = parsearDecimal(m.debe) || 0;
-        if (!sumas[id]) sumas[id] = 0;
-        sumas[id] += debe;
+        const debeVal = parsearDecimal(m.debe) || 0;
+        const haberVal = parsearDecimal(m.haber) || 0;
+        if (!saldosMapa[id]) saldosMapa[id] = 0;
+        saldosMapa[id] += (debeVal - haberVal);
       });
 
-      const resumenList = auxiliares.map(aux => {
-        const total = sumas[aux.id_auxiliar] || 0;
+      const auxiliaresConSaldos = (listaAux || []).map(a => ({
+        ...a,
+        saldoConsolidado: saldosMapa[a.id_auxiliar] || 0
+      }));
+
+      setAuxiliares(auxiliaresConSaldos);
+
+      if (auxiliarSeleccionado) {
+        const actualizado = auxiliaresConSaldos.find(x => x.id_auxiliar === auxiliarSeleccionado.id_auxiliar);
+        if (actualizado) setAuxiliarSeleccionado(actualizado);
+      }
+    } catch (error) {
+      console.error("Error al cargar auxiliares:", error);
+      mostrarAlerta("Error al cargar auxiliares: " + error.message, "error");
+    } finally {
+      setCargandoAuxiliares(false);
+    }
+  };
+
+  // Cargar extracto contable del auxiliar seleccionado
+  const cargarMovimientos = async (idAuxiliar) => {
+    setCargandoMovimientos(true);
+    try {
+      const { data, error } = await supabase
+        .from('movauxiliares_motor')
+        .select('*')
+        .eq('id_auxiliar', idAuxiliar)
+        .order('fecha', { ascending: true })
+        .order('id_mov', { ascending: true });
+
+      if (error) throw error;
+
+      let saldoAcumulado = 0;
+      const conSaldo = (data || []).map(m => {
+        const debe = parsearDecimal(m.debe) || 0;
+        const haber = parsearDecimal(m.haber) || 0;
+        saldoAcumulado += (debe - haber);
         return {
-          id_auxiliar: aux.id_auxiliar,
-          nombre: aux.nombre,
-          tipo_liq: aux.tipo_liq,
-          totalLiquidado: total
+          ...m,
+          saldoAcumulado
         };
-      }).filter(x => x.totalLiquidado > 0);
+      });
 
-      setResumenMensual(resumenList);
+      setMovimientos(conSaldo.reverse());
+    } catch (error) {
+      console.error("Error al cargar movimientos:", error);
+      mostrarAlerta("Error al cargar extracto contable.", "error");
+    } finally {
+      setCargandoMovimientos(false);
+    }
+  };
 
-      // 2. Cargar asistencias de ese período para calcular el descuento de cada prestador
-      const [mes, anio] = periodo.split('/');
+  // =========================================================================
+  // LOGICA PRINCIPAL: CIERRE Y LIQUIDACIÓN MENSUAL
+  // =========================================================================
+  const cargarCierreMensual = async (periodoYYYYMM) => {
+    if (!periodoYYYYMM) return;
+    setCargandoMes(true);
+    try {
+      const [anio, mes] = periodoYYYYMM.split('-');
+      const primerDia = `${anio}-${mes}-01`;
+      const ultimoDiaVal = new Date(parseInt(anio), parseInt(mes), 0).getDate();
+      const ultimoDia = `${anio}-${mes}-${String(ultimoDiaVal).padStart(2, '0')}`;
+      const periodoFormateado = `${mes}/${anio}`;
+
+      // 1. Obtener todas las asistencias del mes
+      const { data: asistencias, error: errAsist } = await supabase
+        .from('asistencia_auxiliares_motor')
+        .select('*')
+        .gte('fecha', primerDia)
+        .lte('fecha', ultimoDia)
+        .order('fecha', { ascending: true });
+
+      if (errAsist) throw errAsist;
+
+      // 2. Obtener las liquidaciones ya registradas para este período
+      const { data: liquidacionesRegistradas, error: errLiq } = await supabase
+        .from('movauxiliares_motor')
+        .select('*')
+        .eq('concepto', 'LIQUIDACION')
+        .eq('periodo', periodoFormateado);
+
+      if (errLiq) throw errLiq;
+
+      const mapaLiquidaciones = {};
+      (liquidacionesRegistradas || []).forEach(l => {
+        mapaLiquidaciones[l.id_auxiliar] = l;
+      });
+
+      // 3. Agrupar asistencias por auxiliar
+      const agrupado = {};
+      (asistencias || []).forEach(a => {
+        const id = a.id_auxiliar;
+        if (!agrupado[id]) {
+          agrupado[id] = {
+            id_auxiliar: id,
+            nombre: a.nombre || 'AUXILIAR',
+            tipo_liq: a.tipo_liq || 'HORA',
+            dias: 0,
+            totalHoras: 0,
+            totalSesiones: 0,
+            totalCalculado: 0,
+            tarifa: a.tipo_liq === 'HORA' ? parsearDecimal(a.valor_hora) : parsearDecimal(a.valor_sesion),
+            asistencias: []
+          };
+        }
+
+        agrupado[id].dias += 1;
+        agrupado[id].asistencias.push(a);
+
+        const tarifaFila = a.tipo_liq === 'HORA' ? parsearDecimal(a.valor_hora) || 0 : parsearDecimal(a.valor_sesion) || 0;
+        const cantFila = a.tipo_liq === 'HORA' ? parsearDecimal(a.horas_trabajadas) || 0 : parsearDecimal(a.sesiones) || 0;
+
+        if (a.tipo_liq === 'HORA') {
+          agrupado[id].totalHoras += cantFila;
+        } else {
+          agrupado[id].totalSesiones += cantFila;
+        }
+
+        agrupado[id].totalCalculado += (tarifaFila * cantFila);
+      });
+
+      // 4. Armar filas finales con estado de liquidación
+      const listaFilas = Object.values(agrupado).map(item => {
+        const movLiq = mapaLiquidaciones[item.id_auxiliar] || null;
+        return {
+          ...item,
+          liquidado: !!movLiq,
+          movLiquidacion: movLiq
+        };
+      });
+
+      // Ordenar alfabéticamente por nombre
+      listaFilas.sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+      setFilasMes(listaFilas);
+    } catch (err) {
+      console.error("Error al cargar cierre mensual:", err);
+      mostrarAlerta("Error al cargar asistencias del mes: " + err.message, "error");
+    } finally {
+      setCargandoMes(false);
+    }
+  };
+
+  // Obtener próximo ID de movimiento
+  const obtenerProximoIdMov = async () => {
+    const { data, error } = await supabase
+      .from('movauxiliares_motor')
+      .select('id_mov')
+      .order('id_mov', { ascending: false })
+      .limit(1);
+
+    if (error) throw error;
+    return (data && data[0]?.id_mov ? data[0].id_mov : 0) + 1;
+  };
+
+  // Liquidar un auxiliar individualmente
+  const liquidarAuxiliar = async (fila) => {
+    if (fila.liquidado) {
+      alert(`Este auxiliar ya fue liquidado para este período.`);
+      return;
+    }
+
+    if (fila.totalCalculado <= 0) {
+      alert(`El monto a liquidar debe ser mayor a cero.`);
+      return;
+    }
+
+    setProcesandoAccion(true);
+    try {
+      const [anio, mes] = mesSeleccionado.split('-');
+      const periodoFormateado = `${mes}/${anio}`;
+      const nextId = await obtenerProximoIdMov();
+
+      const nuevoMov = {
+        id_mov: nextId,
+        id_auxiliar: fila.id_auxiliar,
+        fecha: fechaTrabajo,
+        concepto: 'LIQUIDACION',
+        periodo: periodoFormateado,
+        debe: fila.totalCalculado,
+        haber: 0,
+        saldo: 0,
+        fecha_registro: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('movauxiliares_motor')
+        .insert([nuevoMov]);
+
+      if (error) throw error;
+
+      mostrarAlerta(`Liquidación de ${fila.nombre} ($${fila.totalCalculado.toLocaleString('es-AR')}) guardada con éxito.`, "exito");
+      await cargarCierreMensual(mesSeleccionado);
+      await cargarAuxiliares();
+      if (auxiliarSeleccionado && auxiliarSeleccionado.id_auxiliar === fila.id_auxiliar) {
+        await cargarMovimientos(fila.id_auxiliar);
+      }
+    } catch (err) {
+      console.error("Error al liquidar auxiliar:", err);
+      alert("Error al registrar liquidación: " + err.message);
+    } finally {
+      setProcesandoAccion(false);
+    }
+  };
+
+  // Anular liquidación de un auxiliar
+  const anularLiquidacion = async (fila) => {
+    if (!fila.movLiquidacion) return;
+
+    const confirmar = window.confirm(
+      `¿Está seguro de que desea anular la liquidación de "${fila.nombre}" para ${formatearMesLabel(mesSeleccionado)}?\n\n` +
+      `Se eliminará el movimiento contable de $${fila.totalCalculado.toLocaleString('es-AR')} de su cuenta corriente y quedará en estado PENDIENTE.`
+    );
+
+    if (!confirmar) return;
+
+    setProcesandoAccion(true);
+    try {
+      const { error } = await supabase
+        .from('movauxiliares_motor')
+        .delete()
+        .eq('id_mov', fila.movLiquidacion.id_mov);
+
+      if (error) throw error;
+
+      mostrarAlerta(`Liquidación de ${fila.nombre} anulada correctamente.`, "exito");
+      await cargarCierreMensual(mesSeleccionado);
+      await cargarAuxiliares();
+      if (auxiliarSeleccionado && auxiliarSeleccionado.id_auxiliar === fila.id_auxiliar) {
+        await cargarMovimientos(fila.id_auxiliar);
+      }
+    } catch (err) {
+      console.error("Error al anular liquidación:", err);
+      alert("Error al anular liquidación: " + err.message);
+    } finally {
+      setProcesandoAccion(false);
+    }
+  };
+
+  // Liquidar masivamente a todos los auxiliares pendientes del mes
+  const liquidarTodosPendientes = async () => {
+    const pendientes = filasMes.filter(f => !f.liquidado && f.totalCalculado > 0);
+
+    if (pendientes.length === 0) {
+      alert("No hay liquidaciones pendientes para el mes seleccionado.");
+      return;
+    }
+
+    const totalPendiente = pendientes.reduce((sum, f) => sum + f.totalCalculado, 0);
+
+    const confirmar = window.confirm(
+      `⚡ ¿Desea liquidar a los ${pendientes.length} auxiliares pendientes del mes ${formatearMesLabel(mesSeleccionado)}?\n\n` +
+      `Total a liquidar: $${totalPendiente.toLocaleString('es-AR', { minimumFractionDigits: 2 })}\n\n` +
+      `Se generará automáticamente un movimiento contable por cada uno en su respectiva cuenta corriente.`
+    );
+
+    if (!confirmar) return;
+
+    setProcesandoAccion(true);
+    try {
+      const [anio, mes] = mesSeleccionado.split('-');
+      const periodoFormateado = `${mes}/${anio}`;
+      let nextId = await obtenerProximoIdMov();
+
+      const inserts = pendientes.map(f => {
+        const obj = {
+          id_mov: nextId,
+          id_auxiliar: f.id_auxiliar,
+          fecha: fechaTrabajo,
+          concepto: 'LIQUIDACION',
+          periodo: periodoFormateado,
+          debe: f.totalCalculado,
+          haber: 0,
+          saldo: 0,
+          fecha_registro: new Date().toISOString()
+        };
+        nextId++;
+        return obj;
+      });
+
+      const { error } = await supabase
+        .from('movauxiliares_motor')
+        .insert(inserts);
+
+      if (error) throw error;
+
+      mostrarAlerta(`¡Éxito! Se liquidaron ${pendientes.length} auxiliares por un total de $${totalPendiente.toLocaleString('es-AR')}.`, "exito");
+      await cargarCierreMensual(mesSeleccionado);
+      await cargarAuxiliares();
+      if (auxiliarSeleccionado) {
+        await cargarMovimientos(auxiliarSeleccionado.id_auxiliar);
+      }
+    } catch (err) {
+      console.error("Error en liquidación masiva:", err);
+      alert("Error al liquidar masivamente: " + err.message);
+    } finally {
+      setProcesandoAccion(false);
+    }
+  };
+
+  // Anular todas las liquidaciones del mes seleccionado
+  const anularTodasLiquidacionesMes = async () => {
+    const liquidadas = filasMes.filter(f => f.liquidado);
+
+    if (liquidadas.length === 0) {
+      alert("No hay liquidaciones registradas para este mes.");
+      return;
+    }
+
+    const [anio, mes] = mesSeleccionado.split('-');
+    const periodoFormateado = `${mes}/${anio}`;
+
+    const confirmar = window.confirm(
+      `⚠️ ATENCIÓN: ¿Está seguro de que desea eliminar TODAS las liquidaciones de ${formatearMesLabel(mesSeleccionado)}?\n\n` +
+      `Se anularán los registros contables de ${liquidadas.length} auxiliares y volverán a estado PENDIENTE.`
+    );
+
+    if (!confirmar) return;
+
+    setProcesandoAccion(true);
+    try {
+      const { error } = await supabase
+        .from('movauxiliares_motor')
+        .delete()
+        .eq('periodo', periodoFormateado)
+        .eq('concepto', 'LIQUIDACION');
+
+      if (error) throw error;
+
+      mostrarAlerta(`Se anularon todas las liquidaciones del mes ${periodoFormateado}.`, "exito");
+      await cargarCierreMensual(mesSeleccionado);
+      await cargarAuxiliares();
+      if (auxiliarSeleccionado) {
+        await cargarMovimientos(auxiliarSeleccionado.id_auxiliar);
+      }
+    } catch (err) {
+      console.error("Error al anular liquidaciones del mes:", err);
+      alert("Error al anular liquidaciones: " + err.message);
+    } finally {
+      setProcesandoAccion(false);
+    }
+  };
+
+  // =========================================================================
+  // LOGICA DE CUENTA CORRIENTE, PAGOS Y AJUSTES
+  // =========================================================================
+  const abrirFormularioPago = () => {
+    setModalAbierto('pago');
+    setFechaTx(fechaTrabajo);
+    const saldoOdeb = totalDebe - totalHaber;
+    setMontoTx(saldoOdeb > 0 ? String(saldoOdeb) : '');
+    setConceptoTx('PAGO DE HABERES');
+    const [anio, mes] = mesSeleccionado.split('-');
+    setPeriodoTx(`${mes}/${anio}`);
+  };
+
+  const abrirFormularioAjuste = () => {
+    setModalAbierto('ajuste');
+    setFechaTx(fechaTrabajo);
+    setMontoTx('');
+    setConceptoTx('');
+    setTipoAjuste('credito');
+    const [anio, mes] = mesSeleccionado.split('-');
+    setPeriodoTx(`${mes}/${anio}`);
+  };
+
+  const guardarPagoOAjuste = async () => {
+    const montoNum = parsearDecimal(montoTx);
+    if (isNaN(montoNum) || montoNum <= 0) {
+      alert("Por favor ingrese un importe válido mayor a 0.");
+      return;
+    }
+
+    setProcesandoTx(true);
+    try {
+      let debeInsert = 0;
+      let haberInsert = 0;
+      let conceptoFinal = (conceptoTx || '').trim().toUpperCase();
+
+      if (modalAbierto === 'pago') {
+        haberInsert = montoNum;
+        conceptoFinal = conceptoFinal || 'PAGO';
+      } else if (modalAbierto === 'ajuste') {
+        if (tipoAjuste === 'credito') {
+          debeInsert = montoNum; // A favor del auxiliar
+          conceptoFinal = `AJUSTE CREDITO: ${conceptoFinal}`;
+        } else {
+          haberInsert = montoNum; // En contra del auxiliar
+          conceptoFinal = `AJUSTE DEBITO: ${conceptoFinal}`;
+        }
+      }
+
+      const nextId = await obtenerProximoIdMov();
+
+      const nuevoMov = {
+        id_mov: nextId,
+        id_auxiliar: auxiliarSeleccionado.id_auxiliar,
+        fecha: fechaTx,
+        concepto: conceptoFinal,
+        periodo: periodoTx ? periodoTx.trim() : null,
+        debe: debeInsert,
+        haber: haberInsert,
+        saldo: 0,
+        fecha_registro: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('movauxiliares_motor')
+        .insert([nuevoMov]);
+
+      if (error) throw error;
+
+      mostrarAlerta(modalAbierto === 'pago' ? "Pago registrado con éxito." : "Ajuste contable registrado.", "exito");
+      setModalAbierto(null);
+      await cargarAuxiliares();
+      await cargarMovimientos(auxiliarSeleccionado.id_auxiliar);
+    } catch (err) {
+      console.error("Error al registrar transacción:", err);
+      alert("Error: " + err.message);
+    } finally {
+      setProcesandoTx(false);
+    }
+  };
+
+  const eliminarMovimientoIndividual = async (idMov, concepto, periodo) => {
+    const confirmar = window.confirm(
+      `¿Está seguro de eliminar el movimiento "${concepto}" (${periodo || 'Sin período'})?\n\nEsta acción recalculará automáticamente el saldo de la cuenta corriente.`
+    );
+    if (!confirmar) return;
+
+    try {
+      const { error } = await supabase
+        .from('movauxiliares_motor')
+        .delete()
+        .eq('id_mov', idMov);
+
+      if (error) throw error;
+
+      mostrarAlerta("Movimiento eliminado con éxito.", "exito");
+      await cargarAuxiliares();
+      if (auxiliarSeleccionado) {
+        await cargarMovimientos(auxiliarSeleccionado.id_auxiliar);
+      }
+      await cargarCierreMensual(mesSeleccionado);
+    } catch (err) {
+      console.error("Error al eliminar movimiento:", err);
+      alert("Error al eliminar movimiento: " + err.message);
+    }
+  };
+
+  // =========================================================================
+  // LOGICA DE DESCUENTOS POR PRESTADOR
+  // =========================================================================
+  const cargarDescuentosPrestadores = async (periodoYYYYMM) => {
+    if (!periodoYYYYMM) return;
+    setCargandoDescuentos(true);
+    try {
+      const [anio, mes] = periodoYYYYMM.split('-');
       const primerDia = `${anio}-${mes}-01`;
       const ultimoDiaVal = new Date(parseInt(anio), parseInt(mes), 0).getDate();
       const ultimoDia = `${anio}-${mes}-${String(ultimoDiaVal).padStart(2, '0')}`;
@@ -160,30 +675,21 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
 
       if (errAsist) throw errAsist;
 
-      // Utilidades locales de parseo
       const parsearPrestadoresObs = (obsText) => {
-        let pM1 = '';
-        let sM1 = '1';
-        let pM2 = '';
-        let sM2 = '';
-        let pT1 = '';
-        let sT1 = '1';
-        let pT2 = '';
-        let sT2 = '';
-        let limpiaObs = obsText || '';
+        let pM1 = ''; let sM1 = '1'; let pM2 = ''; let sM2 = '';
+        let pT1 = ''; let sT1 = '1'; let pT2 = ''; let sT2 = '';
+        const limpiaObs = obsText || '';
         if (limpiaObs) {
           const matchM = limpiaObs.match(/\[P_M:\s*([^\]]+)\]/);
           if (matchM) {
             const parts = matchM[1].split(',').map(p => p.trim());
             if (parts[0]) {
               const [name, share] = parts[0].split('|');
-              pM1 = name || '';
-              sM1 = share || '1';
+              pM1 = name || ''; sM1 = share || '1';
             }
             if (parts[1]) {
               const [name, share] = parts[1].split('|');
-              pM2 = name || '';
-              sM2 = share || '1';
+              pM2 = name || ''; sM2 = share || '1';
             }
           }
           const matchT = limpiaObs.match(/\[P_T:\s*([^\]]+)\]/);
@@ -191,13 +697,11 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
             const parts = matchT[1].split(',').map(p => p.trim());
             if (parts[0]) {
               const [name, share] = parts[0].split('|');
-              pT1 = name || '';
-              sT1 = share || '1';
+              pT1 = name || ''; sT1 = share || '1';
             }
             if (parts[1]) {
               const [name, share] = parts[1].split('|');
-              pT2 = name || '';
-              sT2 = share || '1';
+              pT2 = name || ''; sT2 = share || '1';
             }
           }
         }
@@ -215,8 +719,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
         return Math.max(0, (hSal * 60 + mSal) - (hEnt * 60 + mEnt));
       };
 
-      const deudas = {}; // key: prestadorName, value: { total: 0, desglose: { [auxiliarName]: 0 } }
-
+      const deudas = {};
       const acumularDeuda = (prestador, auxiliarNombre, monto) => {
         const nombreLimpio = (prestador || 'VIVIANA JIMENEZ').trim().toUpperCase();
         if (!deudas[nombreLimpio]) {
@@ -251,17 +754,15 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
             costoM = (diffM / totalDiff) * costoFila;
             costoT = (diffT / totalDiff) * costoFila;
           } else {
-            // Si no hay horarios detallados, vemos cuál turno tiene entradas cargadas
             if (asist.hora_entrada_m || asist.hora_salida_m) {
               costoM = costoFila;
             } else if (asist.hora_entrada_t || asist.hora_salida_t) {
               costoT = costoFila;
             } else {
-              costoM = costoFila; // Por defecto mañana
+              costoM = costoFila;
             }
           }
 
-          // Distribuir mañana
           if (costoM > 0) {
             if (parsed.prestadorM1) {
               const s1 = parseFloat(parsed.shareM1) || 1;
@@ -277,7 +778,6 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
             }
           }
 
-          // Distribuir tarde
           if (costoT > 0) {
             if (parsed.prestadorT1) {
               const s1 = parseFloat(parsed.shareT1) || 1;
@@ -293,7 +793,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
             }
           }
         } else {
-          // Tipo SESION
+          // SESION
           if (parsed.prestadorM1) {
             const s1 = parseFloat(parsed.shareM1) || 1;
             const s2 = parseFloat(parsed.shareM2) || 0;
@@ -317,262 +817,18 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
 
       setDescuentosPrestadores(descuentosList);
     } catch (err) {
-      console.error("Error al calcular resumen mensual y descuentos prestadores:", err);
+      console.error("Error al calcular descuentos:", err);
     } finally {
-      setCargandoResumen(false);
+      setCargandoDescuentos(false);
     }
   };
 
-  // Buscar auxiliares y saldos consolidados
-  const cargarAuxiliares = async () => {
-    setCargandoAuxiliares(true);
-    try {
-      const { data: listaAux, error: errA } = await supabase
-        .from('auxiliares_motor')
-        .select('*')
-        .order('nombre', { ascending: true });
+  // Métricas de Cierre Mensual
+  const totalMesCalculado = filasMes.reduce((acc, f) => acc + f.totalCalculado, 0);
+  const totalMesLiquidado = filasMes.filter(f => f.liquidado).reduce((acc, f) => acc + f.totalCalculado, 0);
+  const totalMesPendiente = filasMes.filter(f => !f.liquidado).reduce((acc, f) => acc + f.totalCalculado, 0);
 
-      if (errA) throw errA;
-
-      let listaMovs = [];
-      let from = 0;
-      let to = 999;
-      let keepFetching = true;
-      
-      while (keepFetching) {
-        const { data, error } = await supabase
-          .from('movauxiliares_motor')
-          .select('id_auxiliar, debe, haber')
-          .range(from, to);
-          
-        if (error) throw error;
-        listaMovs = listaMovs.concat(data || []);
-        
-        if (!data || data.length < 1000) {
-          keepFetching = false;
-        } else {
-          from += 1000;
-          to += 1000;
-        }
-      }
-
-      const saldosMapa = {};
-      (listaMovs || []).forEach(m => {
-        const id = m.id_auxiliar;
-        const debeVal = parsearDecimal(m.debe) || 0;
-        const haberVal = parsearDecimal(m.haber) || 0;
-        if (!saldosMapa[id]) {
-          saldosMapa[id] = 0;
-        }
-        saldosMapa[id] += (debeVal - haberVal);
-      });
-
-      const auxiliaresConSaldos = (listaAux || []).map(a => ({
-        ...a,
-        saldoConsolidado: saldosMapa[a.id_auxiliar] || 0
-      }));
-
-      setAuxiliares(auxiliaresConSaldos);
-
-      if (auxiliarSeleccionado) {
-        const actualizado = auxiliaresConSaldos.find(x => x.id_auxiliar === auxiliarSeleccionado.id_auxiliar);
-        if (actualizado) setAuxiliarSeleccionado(actualizado);
-      }
-    } catch (error) {
-      console.error("Error al cargar auxiliares:", error);
-      mostrarAlerta("Error al cargar auxiliares: " + error.message, "error");
-    } finally {
-      setCargandoAuxiliares(false);
-    }
-  };
-
-  // Cargar extracto de movimientos
-  const cargarMovimientos = async (idAuxiliar) => {
-    setCargandoMovimientos(true);
-    try {
-      const { data, error } = await supabase
-        .from('movauxiliares_motor')
-        .select('*')
-        .eq('id_auxiliar', idAuxiliar)
-        .order('fecha', { ascending: true });
-
-      if (error) throw error;
-
-      let saldoAcumulado = 0;
-      const conSaldo = (data || []).map(m => {
-        const debe = parsearDecimal(m.debe) || 0;
-        const haber = parsearDecimal(m.haber) || 0;
-        saldoAcumulado += (debe - haber);
-        return {
-          ...m,
-          saldoAcumulado: saldoAcumulado
-        };
-      });
-
-      setMovimientos(conSaldo.reverse());
-    } catch (error) {
-      console.error("Error al cargar extracto:", error);
-      mostrarAlerta("Error al cargar extracto de cuenta corriente.", "error");
-    } finally {
-      setCargandoMovimientos(false);
-    }
-  };
-
-  const mostrarAlerta = (texto, tipo) => {
-    setMensaje({ texto, tipo });
-    setTimeout(() => setMensaje({ texto: '', tipo: '' }), 4000);
-  };
-
-  const abrirFormulario = (tipo) => {
-    setModalAbierto(tipo);
-    setFechaTx(localStorage.getItem('crin_fecha_trabajo_simulada') || new Date().toISOString().split('T')[0]);
-    setMontoTx('');
-    setObservacionTx('');
-    setPeriodoTx('');
-    
-    if (tipo === 'pago') {
-      setConceptoTx('PAGO');
-      setMontoTx(saldoFinal > 0 ? String(saldoFinal) : '');
-    } else if (tipo === 'ajuste') {
-      setConceptoTx('AJUSTE');
-      setTipoAjuste('credito');
-    } else if (tipo === 'liquidar') {
-      const hoy = new Date();
-      const mes = String(hoy.getMonth() + 1).padStart(2, '0');
-      const anio = hoy.getFullYear();
-      setPeriodoLiquidar(`${anio}-${mes}`);
-      setAsistenciasPreliq([]);
-      setPreliqTotal(0);
-    }
-  };
-
-  // Calcular pre-liquidación automática del período
-  const calcularPreliquidacion = async () => {
-    if (!periodoLiquidar) {
-      alert("Por favor seleccione un período.");
-      return;
-    }
-    setCargandoPreliq(true);
-    try {
-      const [anio, mes] = periodoLiquidar.split('-');
-      const primerDia = `${anio}-${mes}-01`;
-      const ultimoDiaVal = new Date(parseInt(anio), parseInt(mes), 0).getDate();
-      const ultimoDia = `${anio}-${mes}-${String(ultimoDiaVal).padStart(2, '0')}`;
-
-      const { data, error } = await supabase
-        .from('asistencia_auxiliares_motor')
-        .select('*')
-        .eq('id_auxiliar', auxiliarSeleccionado.id_auxiliar)
-        .gte('fecha', primerDia)
-        .lte('fecha', ultimoDia);
-
-      if (error) throw error;
-
-      let acumuladorTotal = 0;
-      const enriquecidas = (data || []).map(asist => {
-        const tarifa = asist.tipo_liq === 'HORA' ? parsearDecimal(asist.valor_hora) || 0 : parsearDecimal(asist.valor_sesion) || 0;
-        const cantidad = asist.tipo_liq === 'HORA' ? parsearDecimal(asist.horas_trabajadas) || 0 : parsearDecimal(asist.sesiones) || 0;
-        const totalFila = tarifa * cantidad;
-        acumuladorTotal += totalFila;
-
-        return {
-          ...asist,
-          tarifa,
-          cantidad,
-          totalFila
-        };
-      });
-
-      setAsistenciasPreliq(enriquecidas);
-      setPreliqTotal(acumuladorTotal);
-    } catch (error) {
-      console.error("Error al calcular pre-liquidación:", error);
-      alert("Error al cargar asistencias del período.");
-    } finally {
-      setCargandoPreliq(false);
-    }
-  };
-
-  // Confirmar y guardar la transacción en movauxiliares_motor
-  const confirmarTransaccion = async () => {
-    let montoNum = parsearDecimal(montoTx);
-    
-    if (modalAbierto === 'liquidar') {
-      montoNum = preliqTotal;
-    }
-
-    if (isNaN(montoNum) || montoNum <= 0) {
-      alert("Por favor ingrese un importe válido mayor a 0.");
-      return;
-    }
-
-    setProcesandoTx(true);
-    try {
-      let debeInsert = 0;
-      let haberInsert = 0;
-      let conceptoFinal = conceptoTx.toUpperCase();
-      let periodoFinal = periodoTx || null;
-
-      if (modalAbierto === 'pago') {
-        haberInsert = montoNum;
-        conceptoFinal = 'PAGO';
-      } else if (modalAbierto === 'liquidar') {
-        debeInsert = montoNum;
-        conceptoFinal = 'LIQUIDACION';
-        const [anio, mes] = periodoLiquidar.split('-');
-        periodoFinal = `${mes}/${anio}`;
-      } else if (modalAbierto === 'ajuste') {
-        if (tipoAjuste === 'credito') {
-          debeInsert = montoNum; // Crédito a favor -> Debe
-          conceptoFinal = `AJUSTE CREDITO: ${conceptoTx}`;
-        } else {
-          haberInsert = montoNum; // Débito en contra -> Haber
-          conceptoFinal = `AJUSTE DEBITO: ${conceptoTx}`;
-        }
-      }
-
-      // Obtener el próximo id_movimiento consultando movauxiliares_motor
-      const { data: maxMovData, error: errMaxMov } = await supabase
-        .from('movauxiliares_motor')
-        .select('id_mov')
-        .order('id_mov', { ascending: false })
-        .limit(1);
-
-      if (errMaxMov) throw errMaxMov;
-      const nextIdMov = (maxMovData && maxMovData[0]?.id_mov ? maxMovData[0].id_mov : 0) + 1;
-
-      const nuevoMov = {
-        id_mov: nextIdMov,
-        id_auxiliar: auxiliarSeleccionado.id_auxiliar,
-        fecha: fechaTx,
-        concepto: conceptoFinal,
-        periodo: periodoFinal,
-        debe: debeInsert,
-        haber: haberInsert,
-        saldo: 0, // Campo requerido por base de datos, lo enviamos en 0
-        fecha_registro: new Date().toISOString()
-      };
-
-      const { error } = await supabase
-        .from('movauxiliares_motor')
-        .insert([nuevoMov]);
-
-      if (error) throw error;
-
-      mostrarAlerta("Transacción contable registrada con éxito.", "exito");
-      setModalAbierto(null);
-      await cargarAuxiliares();
-      await cargarPeriodosDisponibles();
-      await cargarMovimientos(auxiliarSeleccionado.id_auxiliar);
-    } catch (error) {
-      console.error("Error al registrar movimiento contable:", error);
-      alert("Error al registrar movimiento: " + error.message);
-    } finally {
-      setProcesandoTx(false);
-    }
-  };
-
-  // Calcular totales
+  // Totales de Cuenta Corriente del auxiliar seleccionado
   const totalDebe = movimientos.reduce((acc, m) => acc + (parsearDecimal(m.debe) || 0), 0);
   const totalHaber = movimientos.reduce((acc, m) => acc + (parsearDecimal(m.haber) || 0), 0);
   const saldoFinal = totalDebe - totalHaber;
@@ -580,55 +836,93 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
   return (
     <div style={{ background: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b' }}>
       
-      {/* Cabecera */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '18px', marginBottom: '25px' }}>
+      {/* Cabecera Principal */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '18px', marginBottom: '20px' }}>
         <div>
-          <h2 style={{ color: '#0f172a', margin: 0, fontSize: '22px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h2 style={{ color: '#0f172a', margin: 0, fontSize: '22px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '10px' }}>
             💰 Planilla de Liquidación de Auxiliares
           </h2>
-          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>Consultá saldos, liquidá asistencias mensuales y cargá pagos o ajustes contables.</p>
+          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
+            Cierre mensual de haberes, cuentas corrientes individuales y cálculo de descuentos por prestador.
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          {subVista === 'principal' ? (
-            <>
-              <button
-                onClick={() => setSubVista('resumen')}
-                style={{ background: '#3b82f6', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#fff', transition: 'background 0.2s' }}
-                onMouseOver={(e) => e.target.style.background = '#2563eb'}
-                onMouseOut={(e) => e.target.style.background = '#3b82f6'}
-              >
-                📊 Resumen Mensual
-              </button>
-              <button
-                onClick={() => setSubVista('descuentos')}
-                style={{ background: '#0ea5e9', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#fff', transition: 'background 0.2s' }}
-                onMouseOver={(e) => e.target.style.background = '#0284c7'}
-                onMouseOut={(e) => e.target.style.background = '#0ea5e9'}
-              >
-                📋 Descuentos por Prestador
-              </button>
-              <button
-                onClick={onVolver}
-                style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#475569', transition: 'background 0.2s' }}
-                onMouseOver={(e) => e.target.style.background = '#e2e8f0'}
-                onMouseOut={(e) => e.target.style.background = '#f1f5f9'}
-              >
-                ← Volver al Menú
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => setSubVista('principal')}
-              style={{ background: '#475569', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#fff', transition: 'background 0.2s' }}
-              onMouseOver={(e) => e.target.style.background = '#334155'}
-              onMouseOut={(e) => e.target.style.background = '#475569'}
-            >
-              ← Volver a la Planilla
-            </button>
-          )}
-        </div>
+        <button
+          onClick={onVolver}
+          style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '9px 18px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#475569', transition: 'all 0.2s' }}
+          onMouseOver={(e) => e.target.style.background = '#e2e8f0'}
+          onMouseOut={(e) => e.target.style.background = '#f1f5f9'}
+        >
+          ← Volver al Menú
+        </button>
       </div>
 
+      {/* Selector de Pestañas de Navegación */}
+      <div style={{ display: 'flex', gap: '10px', borderBottom: '2px solid #e2e8f0', marginBottom: '25px' }}>
+        <button
+          onClick={() => setSubVista('cierre_mensual')}
+          style={{
+            padding: '12px 20px',
+            border: 'none',
+            borderBottom: subVista === 'cierre_mensual' ? '3px solid #2563eb' : '3px solid transparent',
+            background: 'none',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: subVista === 'cierre_mensual' ? 'bold' : '600',
+            color: subVista === 'cierre_mensual' ? '#2563eb' : '#64748b',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginBottom: '-2px',
+            transition: 'all 0.2s'
+          }}
+        >
+          📅 Cierre y Liquidación Mensual
+        </button>
+
+        <button
+          onClick={() => setSubVista('cuenta_corriente')}
+          style={{
+            padding: '12px 20px',
+            border: 'none',
+            borderBottom: subVista === 'cuenta_corriente' ? '3px solid #2563eb' : '3px solid transparent',
+            background: 'none',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: subVista === 'cuenta_corriente' ? 'bold' : '600',
+            color: subVista === 'cuenta_corriente' ? '#2563eb' : '#64748b',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginBottom: '-2px',
+            transition: 'all 0.2s'
+          }}
+        >
+          👤 Cuenta Corriente y Pagos
+        </button>
+
+        <button
+          onClick={() => setSubVista('descuentos')}
+          style={{
+            padding: '12px 20px',
+            border: 'none',
+            borderBottom: subVista === 'descuentos' ? '3px solid #2563eb' : '3px solid transparent',
+            background: 'none',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: subVista === 'descuentos' ? 'bold' : '600',
+            color: subVista === 'descuentos' ? '#2563eb' : '#64748b',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginBottom: '-2px',
+            transition: 'all 0.2s'
+          }}
+        >
+          📋 Descuentos por Prestador
+        </button>
+      </div>
+
+      {/* Alerta flotante de mensajes */}
       {mensaje.texto && (
         <div style={{
           padding: '12px 20px',
@@ -644,375 +938,372 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
         </div>
       )}
 
-      {/* Selector de Auxiliar */}
-      {subVista === 'principal' && (
-        <div style={{ marginBottom: '25px', background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-          <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#475569', marginBottom: '8px' }}>
-            Seleccione un Auxiliar para ver su Cuenta Corriente:
-          </label>
-          {cargandoAuxiliares ? (
-            <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Cargando auxiliares...</p>
-          ) : (
-            <select
-              value={auxiliarSeleccionado?.id_auxiliar || ''}
-              onChange={(e) => {
-                const p = auxiliares.find(x => String(x.id_auxiliar) === String(e.target.value));
-                setAuxiliarSeleccionado(p || null);
-              }}
-              style={{ width: '100%', padding: '12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '15px', background: '#fff', fontWeight: '600', color: '#0f172a' }}
-            >
-              <option value="">-- Seleccionar Auxiliar --</option>
-              {auxiliares.map(p => (
-                <option key={p.id_auxiliar} value={p.id_auxiliar}>
-                  👤 {p.nombre} ({p.tipo_liq}) - Saldo Pendiente: ${p.saldoConsolidado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-      )}
-
-      {/* Resumen Mensual Consolidado */}
-      {subVista === 'resumen' && (
-        <div style={{ marginBottom: '25px', background: '#fff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <h3 style={{ margin: 0, color: '#0f172a', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              📊 Resumen Mensual por Auxiliar
-            </h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>Seleccionar Mes:</span>
-              <select
-                value={periodoSeleccionadoResumen}
-                onChange={(e) => setPeriodoSeleccionadoResumen(e.target.value)}
-                style={{ padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13.5px', background: '#fff', fontWeight: 'bold', color: '#0f172a' }}
-              >
-                {periodosDisponibles.length === 0 ? (
-                  <option value="">Sin períodos</option>
-                ) : (
-                  periodosDisponibles.map(p => (
-                    <option key={p} value={p}>{p}</option>
-                  ))
-                )}
-              </select>
-            </div>
-          </div>
-
-          {cargandoResumen ? (
-            <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Cargando resumen del mes...</p>
-          ) : resumenMensual.length === 0 ? (
-            <p style={{ margin: 0, fontSize: '13px', color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
-              No se registran liquidaciones para el período seleccionado.
-            </p>
-          ) : (
-            <div>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px', textAlign: 'left' }}>
-                  <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1' }}>
-                      <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Auxiliar</th>
-                      <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Tipo Liq.</th>
-                      <th style={{ padding: '10px', color: '#475569', fontWeight: '600', textAlign: 'right' }}>Total Liquidado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {resumenMensual.map(row => (
-                      <tr key={row.id_auxiliar} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                        <td style={{ padding: '10px', fontWeight: '600', color: '#1e293b' }}>{row.nombre}</td>
-                        <td style={{ padding: '10px', color: '#64748b' }}>{row.tipo_liq}</td>
-                        <td style={{ padding: '10px', fontWeight: 'bold', color: '#0f172a', textAlign: 'right' }}>
-                          ${row.totalLiquidado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                    ))}
-                    <tr style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1', fontWeight: 'bold' }}>
-                      <td colSpan="2" style={{ padding: '12px 10px', color: '#0f172a' }}>TOTAL GENERAL A PAGAR</td>
-                      <td style={{ padding: '12px 10px', color: '#2563eb', fontSize: '15px', fontWeight: '800', textAlign: 'right' }}>
-                        ${resumenMensual.reduce((sum, r) => sum + r.totalLiquidado, 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Descuentos por Prestador */}
-      {subVista === 'descuentos' && (
-        <div style={{ marginBottom: '25px', background: '#fff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <h3 style={{ margin: 0, color: '#0f172a', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              📋 Descuentos por Prestador (Costo Auxiliares)
-            </h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>Seleccionar Mes:</span>
-              <select
-                value={periodoSeleccionadoResumen}
-                onChange={(e) => setPeriodoSeleccionadoResumen(e.target.value)}
-                style={{ padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13.5px', background: '#fff', fontWeight: 'bold', color: '#0f172a' }}
-              >
-                {periodosDisponibles.length === 0 ? (
-                  <option value="">Sin períodos</option>
-                ) : (
-                  periodosDisponibles.map(p => (
-                    <option key={p} value={p}>{p}</option>
-                  ))
-                )}
-              </select>
-            </div>
-          </div>
-          
-          {cargandoResumen ? (
-            <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Calculando descuentos...</p>
-          ) : descuentosPrestadores.length === 0 ? (
-            <p style={{ margin: 0, fontSize: '13px', color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
-              No se registran horas trabajadas ni asignaciones de prestadores para el período seleccionado.
-            </p>
-          ) : (
-            <div>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px', textAlign: 'left' }}>
-                  <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1' }}>
-                      <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Prestador</th>
-                      <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Desglose por Auxiliar</th>
-                      <th style={{ padding: '10px', color: '#475569', fontWeight: '600', textAlign: 'right' }}>Total a Descontar</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {descuentosPrestadores.map(row => (
-                      <tr key={row.nombre} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                        <td style={{ padding: '10px', fontWeight: 'bold', color: '#1e293b' }}>👤 {row.nombre}</td>
-                        <td style={{ padding: '10px', color: '#64748b', fontSize: '12.5px' }}>
-                          {Object.keys(row.desglose).map(aux => (
-                            <span key={aux} style={{ display: 'inline-block', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', marginRight: '6px', marginBottom: '2px' }}>
-                              {aux}: ${row.desglose[aux].toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                            </span>
-                          ))}
-                        </td>
-                        <td style={{ padding: '10px', fontWeight: 'bold', color: '#b91c1c', textAlign: 'right' }}>
-                          -${row.total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                    ))}
-                    <tr style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1', fontWeight: 'bold' }}>
-                      <td colSpan="2" style={{ padding: '12px 10px', color: '#0f172a' }}>TOTAL GENERAL A DESCONTAR</td>
-                      <td style={{ padding: '12px 10px', color: '#b91c1c', fontSize: '15px', fontWeight: '800', textAlign: 'right' }}>
-                        -${descuentosPrestadores.reduce((sum, r) => sum + r.total, 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <p style={{ margin: '12px 0 0 0', fontSize: '11px', color: '#64748b', fontStyle: 'italic' }}>
-                💡 Nota: Cualquier día trabajado que no tenga una distribución de prestador explícita se asigna automáticamente a <b>VIVIANA JIMENEZ</b> de forma predeterminada.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {subVista === 'principal' && auxiliarSeleccionado && (
+      {/* ================================================================= */}
+      {/* VISTA 1: CIERRE Y LIQUIDACIÓN MENSUAL */}
+      {/* ================================================================= */}
+      {subVista === 'cierre_mensual' && (
         <div>
-          {/* Tarjetas de Balance */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '25px' }}>
-            
-            <div style={{ padding: '20px', borderRadius: '12px', background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '1px solid #bfdbfe', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Saldo Final a Pagar
+          {/* Barra superior de selección de mes y acciones masivas */}
+          <div style={{ background: '#f8fafc', padding: '18px 22px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#334155' }}>Seleccionar Período:</span>
+              <select
+                value={mesSeleccionado}
+                onChange={(e) => setMesSeleccionado(e.target.value)}
+                style={{ padding: '8px 16px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', background: '#fff', color: '#0f172a', cursor: 'pointer' }}
+              >
+                {periodosDisponibles.map(p => (
+                  <option key={p} value={p}>{formatearMesLabel(p)} ({p})</option>
+                ))}
+              </select>
+              <button
+                onClick={() => cargarCierreMensual(mesSeleccionado)}
+                disabled={cargandoMes}
+                title="Actualizar datos del mes"
+                style={{ padding: '8px 14px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
+              >
+                {cargandoMes ? 'Cargando...' : '🔄 Actualizar'}
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={liquidarTodosPendientes}
+                disabled={procesandoAccion || cargandoMes || totalMesPendiente <= 0}
+                style={{
+                  background: totalMesPendiente > 0 ? '#10b981' : '#cbd5e1',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '9px 18px',
+                  borderRadius: '8px',
+                  cursor: totalMesPendiente > 0 ? 'pointer' : 'not-allowed',
+                  fontSize: '13.5px',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: totalMesPendiente > 0 ? '0 2px 4px rgba(16,185,129,0.2)' : 'none'
+                }}
+              >
+                ⚡ Liquidar Todos los Pendientes ({filasMes.filter(f => !f.liquidado).length})
+              </button>
+
+              <button
+                onClick={anularTodasLiquidacionesMes}
+                disabled={procesandoAccion || cargandoMes || totalMesLiquidado <= 0}
+                style={{
+                  background: totalMesLiquidado > 0 ? '#ef4444' : '#f1f5f9',
+                  color: totalMesLiquidado > 0 ? '#fff' : '#94a3b8',
+                  border: 'none',
+                  padding: '9px 18px',
+                  borderRadius: '8px',
+                  cursor: totalMesLiquidado > 0 ? 'pointer' : 'not-allowed',
+                  fontSize: '13.5px',
+                  fontWeight: '600'
+                }}
+              >
+                🗑️ Anular Todo el Mes
+              </button>
+            </div>
+          </div>
+
+          {/* Tarjetas de Métricas del Mes */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', marginBottom: '25px' }}>
+            <div style={{ background: '#eff6ff', padding: '16px 20px', borderRadius: '12px', border: '1px solid #bfdbfe' }}>
+              <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e40af', textTransform: 'uppercase' }}>
+                Total Devengado del Mes
               </span>
-              <span style={{ fontSize: '24px', fontWeight: '800', color: saldoFinal >= 0 ? '#15803d' : '#b91c1c', marginTop: '6px' }}>
-                ${saldoFinal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-              </span>
-              <span style={{ fontSize: '11px', color: '#60a5fa', marginTop: '4px' }}>
-                Devengado (Debe) - Pagado (Haber)
+              <div style={{ fontSize: '22px', fontWeight: '800', color: '#1e3a8a', marginTop: '4px' }}>
+                ${totalMesCalculado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+              </div>
+              <span style={{ fontSize: '11px', color: '#3b82f6' }}>
+                {filasMes.length} auxiliares con asistencias
               </span>
             </div>
 
-            <div style={{ padding: '20px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>
-                Total Devengado (Debe)
+            <div style={{ background: '#f0fdf4', padding: '16px 20px', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
+              <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#166534', textTransform: 'uppercase' }}>
+                Total Ya Liquidado
               </span>
-              <span style={{ display: 'block', fontSize: '20px', fontWeight: 'bold', color: '#0f172a', marginTop: '6px' }}>
-                ${totalDebe.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-              </span>
-              <span style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginTop: '4px' }}>
-                Liquidaciones mensuales + Créditos extras
+              <div style={{ fontSize: '22px', fontWeight: '800', color: '#15803d', marginTop: '4px' }}>
+                ${totalMesLiquidado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+              </div>
+              <span style={{ fontSize: '11px', color: '#16a34a' }}>
+                {filasMes.filter(f => f.liquidado).length} de {filasMes.length} liquidados
               </span>
             </div>
 
-            <div style={{ padding: '20px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>
-                Total Pagado (Haber)
+            <div style={{ background: totalMesPendiente > 0 ? '#fffbeb' : '#f8fafc', padding: '16px 20px', borderRadius: '12px', border: totalMesPendiente > 0 ? '1px solid #fde68a' : '1px solid #e2e8f0' }}>
+              <span style={{ fontSize: '12px', fontWeight: 'bold', color: totalMesPendiente > 0 ? '#92400e' : '#64748b', textTransform: 'uppercase' }}>
+                Total Pendiente
               </span>
-              <span style={{ display: 'block', fontSize: '20px', fontWeight: 'bold', color: '#0f172a', marginTop: '6px' }}>
-                ${totalHaber.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+              <div style={{ fontSize: '22px', fontWeight: '800', color: totalMesPendiente > 0 ? '#b45309' : '#64748b', marginTop: '4px' }}>
+                ${totalMesPendiente.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+              </div>
+              <span style={{ fontSize: '11px', color: totalMesPendiente > 0 ? '#d97706' : '#94a3b8' }}>
+                {filasMes.filter(f => !f.liquidado).length} auxiliares por liquidar
               </span>
-              <span style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginTop: '4px' }}>
-                Pagos acreditados + Débitos extras
+            </div>
+
+            <div style={{ background: '#f8fafc', padding: '16px 20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>
+                Estado General
+              </span>
+              <div style={{ fontSize: '16px', fontWeight: 'bold', color: totalMesPendiente === 0 && filasMes.length > 0 ? '#15803d' : '#0f172a', marginTop: '8px' }}>
+                {filasMes.length === 0 ? 'Sin Asistencias' : totalMesPendiente === 0 ? '✅ Mes 100% Liquidado' : '🟡 Liquidación en Curso'}
+              </div>
+              <span style={{ fontSize: '11px', color: '#64748b' }}>
+                Período: {formatearMesLabel(mesSeleccionado)}
               </span>
             </div>
           </div>
 
-          {/* Panel de Botones de Transacción */}
-          <div style={{ display: 'flex', gap: '15px', marginBottom: '30px', background: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-            <button
-              onClick={() => abrirFormulario('liquidar')}
-              style={{ flex: 1, padding: '12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'background 0.2s' }}
-              onMouseOver={(e) => e.target.style.background = '#2563eb'}
-              onMouseOut={(e) => e.target.style.background = '#3b82f6'}
-            >
-              📅 Liquidar Período desde Asistencia
-            </button>
+          {/* Tabla de Auxiliares del Mes */}
+          <div style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '12px', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold', color: '#0f172a' }}>
+                📋 Auxiliares con Asistencias en {formatearMesLabel(mesSeleccionado)}
+              </h3>
+              <span style={{ fontSize: '12px', color: '#64748b' }}>
+                Hacé clic en <b>"👁️ Ver Días"</b> para verificar los días y horarios trabajados antes de confirmar.
+              </span>
+            </div>
 
-            <button
-              onClick={() => abrirFormulario('pago')}
-              style={{ flex: 1, padding: '12px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'background 0.2s' }}
-              onMouseOver={(e) => e.target.style.background = '#059669'}
-              onMouseOut={(e) => e.target.style.background = '#10b981'}
-            >
-              💵 Registrar Pago (al Haber)
-            </button>
+            {cargandoMes ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                Cargando datos del período {formatearMesLabel(mesSeleccionado)}...
+              </div>
+            ) : filasMes.length === 0 ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', fontStyle: 'italic' }}>
+                No se registraron jornadas de asistencia para los auxiliares en {formatearMesLabel(mesSeleccionado)}.
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1', color: '#475569' }}>
+                      <th style={{ padding: '12px 14px' }}>Auxiliar</th>
+                      <th style={{ padding: '12px 14px' }}>Modalidad</th>
+                      <th style={{ padding: '12px 14px' }}>Jornadas / Asistencias</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right' }}>Tarifa Unit.</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right' }}>Total del Mes</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'center' }}>Estado</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'center' }}>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filasMes.map(fila => (
+                      <tr key={fila.id_auxiliar} style={{ borderBottom: '1px solid #e2e8f0', background: fila.liquidado ? '#f0fdf4' : '#fff' }}>
+                        <td style={{ padding: '12px 14px', fontWeight: 'bold', color: '#0f172a' }}>
+                          👤 {fila.nombre}
+                        </td>
+                        <td style={{ padding: '12px 14px' }}>
+                          <span style={{ fontSize: '11.5px', fontWeight: 'bold', padding: '3px 8px', borderRadius: '4px', background: fila.tipo_liq === 'HORA' ? '#e0f2fe' : '#fef3c7', color: fila.tipo_liq === 'HORA' ? '#0369a1' : '#b45309' }}>
+                            {fila.tipo_liq}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 14px', color: '#334155' }}>
+                          {fila.dias} días trabajados • {fila.tipo_liq === 'HORA' ? `${fila.totalHoras.toFixed(2)} hs` : `${fila.totalSesiones} sesiones`}
+                        </td>
+                        <td style={{ padding: '12px 14px', textAlign: 'right', color: '#64748b' }}>
+                          ${fila.tarifa ? fila.tarifa.toLocaleString('es-AR') : 0}
+                        </td>
+                        <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 'bold', fontSize: '14.5px', color: '#0f172a' }}>
+                          ${fila.totalCalculado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                          {fila.liquidado ? (
+                            <span style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0', padding: '4px 10px', borderRadius: '12px', fontSize: '11.5px', fontWeight: 'bold' }}>
+                              ✅ LIQUIDADO
+                            </span>
+                          ) : (
+                            <span style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', padding: '4px 10px', borderRadius: '12px', fontSize: '11.5px', fontWeight: 'bold' }}>
+                              🟡 PENDIENTE
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                            <button
+                              onClick={() => setModalDetalleDias({ auxiliar: fila, asistencias: fila.asistencias })}
+                              style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '5px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
+                              title="Ver desglose día por día"
+                            >
+                              👁️ Ver Días
+                            </button>
 
-            <button
-              onClick={() => abrirFormulario('ajuste')}
-              style={{ flex: 1, padding: '12px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'background 0.2s' }}
-              onMouseOver={(e) => e.target.style.background = '#d97706'}
-              onMouseOut={(e) => e.target.style.background = '#f59e0b'}
-            >
-              ⚙️ Registrar Ajuste Contable
-            </button>
+                            {fila.liquidado ? (
+                              <button
+                                onClick={() => anularLiquidacion(fila)}
+                                disabled={procesandoAccion}
+                                style={{ background: '#fee2e2', border: '1px solid #fca5a5', color: '#dc2626', padding: '5px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                                title="Anular liquidación de este auxiliar"
+                              >
+                                ❌ Anular
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => liquidarAuxiliar(fila)}
+                                disabled={procesandoAccion}
+                                style={{ background: '#10b981', border: 'none', color: '#fff', padding: '5px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                                title="Confirmar liquidación en cuenta corriente"
+                              >
+                                ⚡ Liquidar
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* VISTA 2: CUENTA CORRIENTE Y PAGOS */}
+      {/* ================================================================= */}
+      {subVista === 'cuenta_corriente' && (
+        <div>
+          {/* Selector de Auxiliar */}
+          <div style={{ marginBottom: '25px', background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#475569', marginBottom: '8px' }}>
+              Seleccione un Auxiliar para ver su Cuenta Corriente e imputar Pagos:
+            </label>
+            {cargandoAuxiliares ? (
+              <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Cargando auxiliares...</p>
+            ) : (
+              <select
+                value={auxiliarSeleccionado?.id_auxiliar || ''}
+                onChange={(e) => {
+                  const p = auxiliares.find(x => String(x.id_auxiliar) === String(e.target.value));
+                  setAuxiliarSeleccionado(p || null);
+                }}
+                style={{ width: '100%', padding: '12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '15px', background: '#fff', fontWeight: '600', color: '#0f172a' }}
+              >
+                <option value="">-- Seleccionar Auxiliar --</option>
+                {auxiliares.map(p => (
+                  <option key={p.id_auxiliar} value={p.id_auxiliar}>
+                    👤 {p.nombre} ({p.tipo_liq}) - Saldo Pendiente: ${p.saldoConsolidado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
-          {/* Formulario de Transacción Inline / Modal */}
-          {modalAbierto && (
-            <div style={{ background: '#f8fafc', padding: '25px', borderRadius: '12px', border: '1px solid #cbd5e1', marginBottom: '30px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #cbd5e1', paddingBottom: '10px', marginBottom: '15px' }}>
-                <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold', color: '#0f172a' }}>
-                  {modalAbierto === 'pago' && '💵 Registrar Pago a Auxiliar'}
-                  {modalAbierto === 'ajuste' && '⚙️ Registrar Ajuste Manual (Crédito/Débito)'}
-                  {modalAbierto === 'liquidar' && '📅 Liquidar Asistencias del Mes'}
-                </h4>
-                <button onClick={() => setModalAbierto(null)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#94a3b8' }}>&times;</button>
+          {auxiliarSeleccionado && (
+            <div>
+              {/* Tarjetas de Saldo Individual */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '25px' }}>
+                <div style={{ padding: '20px', borderRadius: '12px', background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '1px solid #bfdbfe' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e40af', textTransform: 'uppercase' }}>
+                    Saldo Pendiente a Pagar
+                  </span>
+                  <div style={{ fontSize: '26px', fontWeight: '800', color: saldoFinal > 0 ? '#b91c1c' : '#15803d', marginTop: '6px' }}>
+                    ${saldoFinal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                  </div>
+                  <span style={{ fontSize: '11px', color: '#3b82f6', marginTop: '4px', display: 'block' }}>
+                    {saldoFinal > 0 ? 'Deuda pendiente a favor del auxiliar' : saldoFinal === 0 ? 'Cuenta al día (Saldo $0)' : 'Saldo a favor del consultorio'}
+                  </span>
+                </div>
+
+                <div style={{ padding: '20px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>
+                    Total Devengado (Debe)
+                  </span>
+                  <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#0f172a', marginTop: '6px' }}>
+                    ${totalDebe.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                  </div>
+                  <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', display: 'block' }}>
+                    Liquidaciones mensuales acumuladas + Créditos
+                  </span>
+                </div>
+
+                <div style={{ padding: '20px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>
+                    Total Pagado (Haber)
+                  </span>
+                  <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#0f172a', marginTop: '6px' }}>
+                    ${totalHaber.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                  </div>
+                  <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', display: 'block' }}>
+                    Pagos abonados y transferencias + Débitos
+                  </span>
+                </div>
               </div>
 
-              {/* FLUJO A: LIQUIDACIÓN DESDE ASISTENCIAS */}
-              {modalAbierto === 'liquidar' && (
-                <div>
-                  <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', marginBottom: '20px' }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>Seleccione Período (Año y Mes) *</label>
-                      <input
-                        type="month"
-                        value={periodoLiquidar}
-                        onChange={(e) => setPeriodoLiquidar(e.target.value)}
-                        style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px' }}
-                      />
-                    </div>
-                    <button
-                      onClick={calcularPreliquidacion}
-                      disabled={cargandoPreliq}
-                      style={{ padding: '11px 20px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
-                    >
-                      {cargandoPreliq ? 'Calculando...' : '🔍 Calcular Total'}
-                    </button>
+              {/* Botones de Transacción */}
+              <div style={{ display: 'flex', gap: '15px', marginBottom: '25px' }}>
+                <button
+                  onClick={abrirFormularioPago}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    background: '#10b981',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  💵 Registrar Pago (al Haber)
+                </button>
+
+                <button
+                  onClick={abrirFormularioAjuste}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    background: '#f59e0b',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  ⚙️ Registrar Ajuste Manual (Crédito/Débito)
+                </button>
+              </div>
+
+              {/* Modal de Transacción Inline (Pagos y Ajustes) */}
+              {modalAbierto && (
+                <div style={{ background: '#f8fafc', padding: '22px', borderRadius: '12px', border: '1px solid #cbd5e1', marginBottom: '25px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #cbd5e1', paddingBottom: '10px', marginBottom: '15px' }}>
+                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold', color: '#0f172a' }}>
+                      {modalAbierto === 'pago' ? '💵 Registrar Pago a Auxiliar' : '⚙️ Registrar Ajuste Contable'}
+                    </h4>
+                    <button onClick={() => setModalAbierto(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8' }}>&times;</button>
                   </div>
 
-                  {asistenciasPreliq.length > 0 && (
-                    <div style={{ background: '#fff', border: '1px solid #e2e8f0', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
-                      <h5 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#1e3a8a', fontWeight: 'bold' }}>
-                        📋 Resumen de Asistencias del Período
-                      </h5>
-                      <div style={{ maxHeight: '150px', overflowY: 'auto', marginBottom: '15px', border: '1px solid #edf2f7', borderRadius: '6px' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
-                          <thead>
-                            <tr style={{ background: '#f7fafc', borderBottom: '1px solid #e2e8f0' }}>
-                              <th style={{ padding: '6px 8px' }}>Fecha</th>
-                              <th style={{ padding: '6px 8px' }}>Tipo</th>
-                              <th style={{ padding: '6px 8px', textAlign: 'center' }}>Cantidad</th>
-                              <th style={{ padding: '6px 8px', textAlign: 'right' }}>Tarifa</th>
-                              <th style={{ padding: '6px 8px', textAlign: 'right' }}>Subtotal</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {asistenciasPreliq.map((asist, idx) => (
-                              <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                <td style={{ padding: '6px 8px' }}>{new Date(asist.fecha + 'T00:00:00').toLocaleDateString('es-AR')}</td>
-                                <td style={{ padding: '6px 8px' }}>{asist.tipo_liq}</td>
-                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>{asist.cantidad} {asist.tipo_liq === 'HORA' ? 'hs' : 'ses'}</td>
-                                <td style={{ padding: '6px 8px', textAlign: 'right' }}>${asist.tarifa}</td>
-                                <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 'bold' }}>${asist.totalFila.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#eff6ff', padding: '15px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#475569' }}>
-                          <span>Saldo Anterior en Cuenta Corriente:</span>
-                          <span style={{ fontWeight: '600', color: saldoFinal >= 0 ? '#15803d' : '#b91c1c' }}>
-                            ${saldoFinal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#475569' }}>
-                          <span>Trabajado en el Período:</span>
-                          <span style={{ fontWeight: '600', color: '#1e293b' }}>
-                            ${preliqTotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                        <div style={{ borderTop: '1px solid #bfdbfe', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 'bold', color: '#1e3a8a' }}>
-                          <span>NUEVO SALDO TOTAL A PAGAR (NETO):</span>
-                          <span>${(saldoFinal + preliqTotal).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {asistenciasPreliq.length === 0 && !cargandoPreliq && (
-                    <p style={{ color: '#64748b', fontSize: '13px', fontStyle: 'italic', textAlign: 'center', margin: '20px 0' }}>
-                      No se encontraron registros de asistencias para este período.
-                    </p>
-                  )}
-
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                    <button
-                      onClick={() => setModalAbierto(null)}
-                      style={{ padding: '8px 16px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
-                    >
-                      Cancelar
-                    </button>
-                    {asistenciasPreliq.length > 0 && (
-                      <button
-                        onClick={confirmarTransaccion}
-                        disabled={procesandoTx}
-                        style={{ padding: '8px 20px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
-                      >
-                        {procesandoTx ? 'Procesando...' : 'Confirmar y Guardar Liquidación'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* FLUJO B: PAGOS Y AJUSTES MANUALES */}
-              {modalAbierto !== 'liquidar' && (
-                <div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>Monto ($) *</label>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>Importe ($) *</label>
                       <input
                         type="number"
                         value={montoTx}
                         onChange={(e) => setMontoTx(e.target.value)}
-                        placeholder="Ej: 45000"
+                        placeholder="Ej: 50000"
                         style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px' }}
                       />
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>Fecha *</label>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>Fecha de Pago *</label>
                       <input
                         type="date"
                         value={fechaTx}
@@ -1037,12 +1328,12 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: '12px', color: '#475569', marginBottom: '6px' }}>Período Asociado (Opcional)</label>
+                        <label style={{ display: 'block', fontSize: '12px', color: '#475569', marginBottom: '6px' }}>Período Imputado (Opcional)</label>
                         <input
                           type="text"
                           value={periodoTx}
                           onChange={(e) => setPeriodoTx(e.target.value)}
-                          placeholder="Ej: 07/2026"
+                          placeholder="Ej: 08/2026"
                           style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px' }}
                         />
                       </div>
@@ -1051,12 +1342,12 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
 
                   {modalAbierto === 'pago' && (
                     <div style={{ marginBottom: '15px' }}>
-                      <label style={{ display: 'block', fontSize: '12px', color: '#475569', marginBottom: '6px' }}>Período Imputado (Opcional)</label>
+                      <label style={{ display: 'block', fontSize: '12px', color: '#475569', marginBottom: '6px' }}>Período Imputado (Ej: 08/2026)</label>
                       <input
                         type="text"
                         value={periodoTx}
                         onChange={(e) => setPeriodoTx(e.target.value)}
-                        placeholder="Ej: 07/2026"
+                        placeholder="Ej: 08/2026"
                         style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px' }}
                       />
                     </div>
@@ -1068,7 +1359,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
                       type="text"
                       value={conceptoTx}
                       onChange={(e) => setConceptoTx(e.target.value)}
-                      placeholder="Ej: Pago quincenal de haberes, Descuento materiales, etc."
+                      placeholder="Ej: Transferencia bancaria haberes de agosto"
                       style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px' }}
                     />
                   </div>
@@ -1082,7 +1373,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
                       Cancelar
                     </button>
                     <button
-                      onClick={confirmarTransaccion}
+                      onClick={guardarPagoOAjuste}
                       disabled={procesandoTx}
                       style={{
                         padding: '8px 20px',
@@ -1092,7 +1383,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
                         borderRadius: '6px',
                         cursor: 'pointer',
                         fontSize: '13px',
-                        fontWeight: '600'
+                        fontWeight: 'bold'
                       }}
                     >
                       {procesandoTx ? 'Procesando...' : 'Confirmar Registro'}
@@ -1101,66 +1392,260 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
                 </div>
               )}
 
+              {/* Extracto Contable */}
+              <div>
+                <h3 style={{ fontSize: '16px', color: '#0f172a', fontWeight: 'bold', margin: '0 0 15px 0' }}>
+                  📋 Historial de Cuenta Corriente (Extracto)
+                </h3>
+                {cargandoMovimientos ? (
+                  <p style={{ fontSize: '14px', color: '#64748b' }}>Cargando extracto...</p>
+                ) : movimientos.length === 0 ? (
+                  <p style={{ color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '20px', borderRadius: '8px', textAlign: 'center' }}>
+                    Este auxiliar no registra movimientos contables en su cuenta corriente.
+                  </p>
+                ) : (
+                  <div style={{ overflowX: 'auto', border: '1px solid #cbd5e1', borderRadius: '12px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left', background: '#fff' }}>
+                      <thead>
+                        <tr style={{ background: '#f1f5f9', color: '#475569', borderBottom: '2px solid #cbd5e1' }}>
+                          <th style={{ padding: '12px 10px' }}>Fecha</th>
+                          <th style={{ padding: '12px 10px' }}>Concepto</th>
+                          <th style={{ padding: '12px 10px', textAlign: 'center' }}>Período</th>
+                          <th style={{ padding: '12px 10px', textAlign: 'right' }}>Debe (+) (Devengado)</th>
+                          <th style={{ padding: '12px 10px', textAlign: 'right' }}>Haber (-) (Pagado)</th>
+                          <th style={{ padding: '12px 10px', textAlign: 'right' }}>Saldo Acumulado</th>
+                          <th style={{ padding: '12px 10px', textAlign: 'center' }}>Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {movimientos.map((m, idx) => {
+                          const valDebe = parsearDecimal(m.debe) || 0;
+                          const valHaber = parsearDecimal(m.haber) || 0;
+                          return (
+                            <tr key={m.id_mov || idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                              <td style={{ padding: '10px', whiteSpace: 'nowrap', color: '#475569' }}>
+                                {m.fecha ? new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/F'}
+                              </td>
+                              <td style={{ padding: '10px', color: '#1e293b', fontWeight: 'bold' }}>
+                                {m.concepto || 'S/D'}
+                              </td>
+                              <td style={{ padding: '10px', textAlign: 'center', color: '#64748b' }}>
+                                <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>
+                                  {m.periodo || '-'}
+                                </span>
+                              </td>
+                              <td style={{ padding: '10px', textAlign: 'right', color: valDebe > 0 ? '#15803d' : '#94a3b8', fontWeight: '600' }}>
+                                {valDebe > 0 ? `$${valDebe.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
+                              </td>
+                              <td style={{ padding: '10px', textAlign: 'right', color: valHaber > 0 ? '#b91c1c' : '#94a3b8', fontWeight: '600' }}>
+                                {valHaber > 0 ? `$${valHaber.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
+                              </td>
+                              <td style={{ padding: '10px', textAlign: 'right', color: m.saldoAcumulado > 0 ? '#b91c1c' : '#15803d', fontWeight: 'bold' }}>
+                                ${m.saldoAcumulado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                              </td>
+                              <td style={{ padding: '10px', textAlign: 'center' }}>
+                                <button
+                                  onClick={() => eliminarMovimientoIndividual(m.id_mov, m.concepto, m.periodo)}
+                                  title="Eliminar este movimiento"
+                                  style={{ background: '#fee2e2', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px' }}
+                                >
+                                  🗑️
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
+        </div>
+      )}
 
-          {/* Tabla de extracto contable */}
-          <div>
-            <h3 style={{ fontSize: '16px', color: '#0f172a', fontWeight: 'bold', margin: '0 0 15px 0' }}>
-              📋 Historial de Cuenta Corriente (Extracto)
-            </h3>
-            {cargandoMovimientos ? (
-              <p style={{ fontSize: '14px', color: '#64748b' }}>Cargando extracto contable...</p>
-            ) : movimientos.length === 0 ? (
-              <p style={{ color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '20px', borderRadius: '8px', textAlign: 'center' }}>
-                Este auxiliar no registra movimientos en su cuenta corriente.
+      {/* ================================================================= */}
+      {/* VISTA 3: DESCUENTOS POR PRESTADOR */}
+      {/* ================================================================= */}
+      {subVista === 'descuentos' && (
+        <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+            <div>
+              <h3 style={{ margin: 0, color: '#0f172a', fontSize: '16px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                📋 Descuentos por Prestador (Costo de Auxiliares)
+              </h3>
+              <p style={{ margin: '4px 0 0 0', fontSize: '12.5px', color: '#64748b' }}>
+                Monto que corresponde descontar a cada profesional según las asistencias registradas en el mes.
               </p>
-            ) : (
-              <div style={{ overflowX: 'auto', border: '1px solid #cbd5e1', borderRadius: '12px' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left', background: '#fff' }}>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569' }}>Mes:</span>
+              <select
+                value={mesSeleccionado}
+                onChange={(e) => setMesSeleccionado(e.target.value)}
+                style={{ padding: '6px 14px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13.5px', background: '#fff', fontWeight: 'bold', color: '#0f172a' }}
+              >
+                {periodosDisponibles.map(p => (
+                  <option key={p} value={p}>{formatearMesLabel(p)}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {cargandoDescuentos ? (
+            <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Calculando distribución de costos por prestador...</p>
+          ) : descuentosPrestadores.length === 0 ? (
+            <p style={{ margin: 0, fontSize: '13px', color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '20px', borderRadius: '8px', textAlign: 'center' }}>
+              No se registran asistencias ni prestadores asignados para el período seleccionado.
+            </p>
+          ) : (
+            <div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px', textAlign: 'left' }}>
                   <thead>
-                    <tr style={{ background: '#f1f5f9', color: '#475569', borderBottom: '2px solid #cbd5e1' }}>
-                      <th style={{ padding: '12px 10px' }}>Fecha</th>
-                      <th style={{ padding: '12px 10px' }}>Concepto</th>
-                      <th style={{ padding: '12px 10px', textAlign: 'center' }}>Período</th>
-                      <th style={{ padding: '12px 10px', textAlign: 'right' }}>Debe (+) (Devengado)</th>
-                      <th style={{ padding: '12px 10px', textAlign: 'right' }}>Haber (-) (Pagado)</th>
-                      <th style={{ padding: '12px 10px', textAlign: 'right' }}>Saldo Acumulado</th>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1' }}>
+                      <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Prestador</th>
+                      <th style={{ padding: '10px', color: '#475569', fontWeight: '600' }}>Desglose por Auxiliar</th>
+                      <th style={{ padding: '10px', color: '#475569', fontWeight: '600', textAlign: 'right' }}>Total a Descontar</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {movimientos.map((m, idx) => {
-                      const valDebe = parsearDecimal(m.debe) || 0;
-                      const valHaber = parsearDecimal(m.haber) || 0;
-                      return (
-                        <tr key={m.id_mov || idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                          <td style={{ padding: '10px', whiteSpace: 'nowrap', color: '#475569' }}>
-                            {m.fecha ? new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/F'}
-                          </td>
-                          <td style={{ padding: '10px', color: '#1e293b', fontWeight: 'bold' }}>
-                            {m.concepto || 'S/D'}
-                          </td>
-                          <td style={{ padding: '10px', textAlign: 'center', color: '#64748b' }}>
-                            <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>
-                              {m.periodo || '-'}
+                    {descuentosPrestadores.map(row => (
+                      <tr key={row.nombre} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                        <td style={{ padding: '12px 10px', fontWeight: 'bold', color: '#1e293b' }}>👤 {row.nombre}</td>
+                        <td style={{ padding: '12px 10px', color: '#64748b', fontSize: '12.5px' }}>
+                          {Object.keys(row.desglose).map(aux => (
+                            <span key={aux} style={{ display: 'inline-block', background: '#f1f5f9', padding: '3px 8px', borderRadius: '4px', marginRight: '6px', marginBottom: '3px' }}>
+                              {aux}: ${row.desglose[aux].toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                             </span>
-                          </td>
-                          <td style={{ padding: '10px', textAlign: 'right', color: valDebe > 0 ? '#15803d' : '#94a3b8', fontWeight: '600' }}>
-                            {valDebe > 0 ? `$${valDebe.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
-                          </td>
-                          <td style={{ padding: '10px', textAlign: 'right', color: valHaber > 0 ? '#b91c1c' : '#94a3b8', fontWeight: '600' }}>
-                            {valHaber > 0 ? `$${valHaber.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
-                          </td>
-                          <td style={{ padding: '10px', textAlign: 'right', color: m.saldoAcumulado >= 0 ? '#15803d' : '#b91c1c', fontWeight: 'bold' }}>
-                            ${m.saldoAcumulado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                          ))}
+                        </td>
+                        <td style={{ padding: '12px 10px', fontWeight: 'bold', color: '#b91c1c', textAlign: 'right', fontSize: '14.5px' }}>
+                          -${row.total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1', fontWeight: 'bold' }}>
+                      <td colSpan="2" style={{ padding: '14px 10px', color: '#0f172a' }}>TOTAL GENERAL A DESCONTAR</td>
+                      <td style={{ padding: '14px 10px', color: '#b91c1c', fontSize: '16px', fontWeight: '800', textAlign: 'right' }}>
+                        -${descuentosPrestadores.reduce((sum, r) => sum + r.total, 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
-            )}
+              <p style={{ margin: '12px 0 0 0', fontSize: '11px', color: '#64748b', fontStyle: 'italic' }}>
+                💡 Nota: Los días trabajados que no tengan prestador explícito se asignan de forma predeterminada a <b>VIVIANA JIMENEZ</b>.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* MODAL DESPLEGABLE: VER DETALLE DE DÍAS TRABAJADOS */}
+      {/* ================================================================= */}
+      {modalDetalleDias && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 99999
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: '16px',
+            width: '90%',
+            maxWidth: '850px',
+            maxHeight: '90vh',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
+          }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 'bold', color: '#0f172a' }}>
+                  📅 Detalle de Asistencias - {modalDetalleDias.auxiliar.nombre}
+                </h3>
+                <span style={{ fontSize: '13px', color: '#64748b' }}>
+                  Período: {formatearMesLabel(mesSeleccionado)} • Modalidad: {modalDetalleDias.auxiliar.tipo_liq}
+                </span>
+              </div>
+              <button
+                onClick={() => setModalDetalleDias(null)}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#94a3b8' }}
+              >
+                &times;
+              </button>
+            </div>
+
+            <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1', color: '#475569' }}>
+                    <th style={{ padding: '10px' }}>Fecha</th>
+                    <th style={{ padding: '10px' }}>Turno Mañana</th>
+                    <th style={{ padding: '10px' }}>Turno Tarde</th>
+                    <th style={{ padding: '10px', textAlign: 'center' }}>Cantidad</th>
+                    <th style={{ padding: '10px', textAlign: 'right' }}>Tarifa</th>
+                    <th style={{ padding: '10px', textAlign: 'right' }}>Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {modalDetalleDias.asistencias.map((asist, idx) => {
+                    const tarifa = asist.tipo_liq === 'HORA' ? parsearDecimal(asist.valor_hora) || 0 : parsearDecimal(asist.valor_sesion) || 0;
+                    const cantidad = asist.tipo_liq === 'HORA' ? parsearDecimal(asist.horas_trabajadas) || 0 : parsearDecimal(asist.sesiones) || 0;
+                    const subtotal = tarifa * cantidad;
+
+                    return (
+                      <tr key={asist.id_registro || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '10px', fontWeight: '600', color: '#1e293b', whiteSpace: 'nowrap' }}>
+                          {asist.fecha ? new Date(asist.fecha + 'T00:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' }) : '-'}
+                        </td>
+                        <td style={{ padding: '10px', color: '#64748b' }}>
+                          {asist.hora_entrada_m ? `${asist.hora_entrada_m.slice(0, 5)} a ${asist.hora_salida_m?.slice(0, 5) || ''}` : '-'}
+                        </td>
+                        <td style={{ padding: '10px', color: '#64748b' }}>
+                          {asist.hora_entrada_t ? `${asist.hora_entrada_t.slice(0, 5)} a ${asist.hora_salida_t?.slice(0, 5) || ''}` : '-'}
+                        </td>
+                        <td style={{ padding: '10px', textAlign: 'center', fontWeight: 'bold' }}>
+                          {cantidad} {asist.tipo_liq === 'HORA' ? 'hs' : 'ses'}
+                        </td>
+                        <td style={{ padding: '10px', textAlign: 'right', color: '#64748b' }}>
+                          ${tarifa.toLocaleString('es-AR')}
+                        </td>
+                        <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: '#0f172a' }}>
+                          ${subtotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <span style={{ fontSize: '13px', color: '#64748b' }}>Total acumulado del mes: </span>
+                <strong style={{ fontSize: '16px', color: '#15803d' }}>
+                  ${modalDetalleDias.auxiliar.totalCalculado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                </strong>
+              </div>
+              <button
+                onClick={() => setModalDetalleDias(null)}
+                style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '8px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
+              >
+                Cerrar Detalle
+              </button>
+            </div>
           </div>
         </div>
       )}
