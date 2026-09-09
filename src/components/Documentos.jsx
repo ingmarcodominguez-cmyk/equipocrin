@@ -880,8 +880,8 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                           👁️ Ver
                         </button>
 
-                        {/* BOTÓN ADOSAR HOJA (Solo si es PDF) */}
-                        {esPdf && (
+                        {/* BOTÓN ADOSAR HOJA (Para PDF) o Indicador (para Word/otros) */}
+                        {esPdf ? (
                           <button
                             type="button"
                             onClick={() => {
@@ -907,10 +907,24 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                               gap: '5px',
                               boxShadow: '0 2px 6px rgba(124,58,237,0.3)'
                             }}
-                            title="Anexar una o más hojas a este documento"
+                            title="Anexar una o más hojas o fotos a este documento PDF"
                           >
                             <span>➕</span> Adosar Hoja
                           </button>
+                        ) : (
+                          <span
+                            title="El motor de adosado de hojas funciona sobre documentos PDF (Historias Clínicas). Los archivos de Word (.docx) se editan directamente en Word."
+                            style={{
+                              color: '#64748b',
+                              fontSize: '11px',
+                              padding: '4px 8px',
+                              borderRadius: '6px',
+                              border: '1px dashed #334155',
+                              cursor: 'help'
+                            }}
+                          >
+                            ℹ️ Adosado disponible en PDF
+                          </span>
                         )}
 
                         {/* Descargar */}
