@@ -22,6 +22,7 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
   const [mensajeEstado, setMensajeEstado] = useState(null); // { tipo: 'exito' | 'error', texto: '' }
   const [arrastrando, setArrastrando] = useState(false);
   const fileInputRef = useRef(null);
+  const listaDocsRef = useRef(null);
 
   // Estados para Modal de Previsualización y Eliminación
   const [modalPreview, setModalPreview] = useState(null); // { url, nombre, tipo }
@@ -473,29 +474,29 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
       margin: '0 auto',
       padding: esEmbebido ? '10px 0' : '20px'
     }}>
-      {/* Header superior */}
+      {/* Header superior compacto */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         background: '#0f172a',
-        padding: '16px 20px',
-        borderRadius: '16px',
+        padding: '10px 16px',
+        borderRadius: '12px',
         border: '1px solid #1e293b',
-        marginBottom: '20px',
+        marginBottom: '10px',
         flexWrap: 'wrap',
-        gap: '12px'
+        gap: '8px'
       }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '20px', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <h2 style={{ margin: 0, fontSize: '18px', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span>📁</span> Gestión de Documentos de Pacientes
           </h2>
-          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
-            Historias clínicas, certificados CUD, órdenes médicas, estudios y adosado de hojas
+          <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#94a3b8' }}>
+            Historias clínicas, CUD, órdenes médicas y adosado de hojas
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {onVolver && (
             <button
               onClick={onVolver}
@@ -503,11 +504,11 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                 background: '#334155',
                 color: '#fff',
                 border: 'none',
-                padding: '8px 16px',
-                borderRadius: '8px',
+                padding: '6px 12px',
+                borderRadius: '6px',
                 cursor: 'pointer',
                 fontWeight: 'bold',
-                fontSize: '13px'
+                fontSize: '12px'
               }}
             >
               ← Volver
@@ -521,11 +522,11 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                 background: '#0284c7',
                 color: '#fff',
                 border: 'none',
-                padding: '8px 16px',
-                borderRadius: '8px',
+                padding: '6px 14px',
+                borderRadius: '6px',
                 cursor: 'pointer',
                 fontWeight: 'bold',
-                fontSize: '13px',
+                fontSize: '12px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px'
@@ -540,64 +541,61 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
       {/* Mensajes de Alerta */}
       {mensajeEstado && (
         <div style={{
-          padding: '14px 20px',
-          borderRadius: '10px',
-          marginBottom: '20px',
+          padding: '8px 14px',
+          borderRadius: '8px',
+          marginBottom: '10px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           background: mensajeEstado.tipo === 'exito' ? '#064e3b' : '#450a0a',
           border: `1px solid ${mensajeEstado.tipo === 'exito' ? '#10b981' : '#ef4444'}`,
           color: mensajeEstado.tipo === 'exito' ? '#a7f3d0' : '#fecaca',
-          fontSize: '13px',
+          fontSize: '12px',
           fontWeight: '500'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span>{mensajeEstado.tipo === 'exito' ? '✅' : '⚠️'}</span>
             <span>{mensajeEstado.texto}</span>
           </div>
           <button
             onClick={() => setMensajeEstado(null)}
-            style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: '16px' }}
+            style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: '14px' }}
           >
             ✕
           </button>
         </div>
       )}
 
-      {/* Selector / Buscador de Pacientes (si no viene preseleccionado desde la Ficha) */}
+      {/* Selector de Pacientes compacto (si no viene preseleccionado) */}
       {!pacientePreseleccionado && (
         <div style={{
           background: '#1e293b',
           border: '1px solid #334155',
-          borderRadius: '16px',
-          padding: '20px',
-          marginBottom: '20px'
+          borderRadius: '12px',
+          padding: '10px 14px',
+          marginBottom: '10px'
         }}>
-          <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#94a3b8', marginBottom: '8px' }}>
-            👤 SELECCIONE EL PACIENTE:
-          </label>
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: '280px' }}>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ flex: 1, minWidth: '200px' }}>
               <input
                 type="text"
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="🔍 Escriba nombre, apellido o DNI del paciente..."
+                placeholder="🔍 Filtrar por nombre, apellido o DNI..."
                 style={{
                   width: '100%',
-                  padding: '12px 16px',
-                  borderRadius: '10px',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
                   background: '#0f172a',
                   border: '1px solid #475569',
                   color: '#fff',
-                  fontSize: '14px',
+                  fontSize: '13px',
                   outline: 'none',
                   boxSizing: 'border-box'
                 }}
               />
             </div>
-            <div style={{ flex: 1.5, minWidth: '280px' }}>
+            <div style={{ flex: 1.4, minWidth: '240px' }}>
               <select
                 value={pacienteSeleccionado?.id_paciente_excel || ''}
                 onChange={(e) => {
@@ -607,19 +605,19 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                 }}
                 style={{
                   width: '100%',
-                  padding: '12px 16px',
-                  borderRadius: '10px',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
                   background: '#0f172a',
                   border: '1px solid #38bdf8',
                   color: '#fff',
-                  fontSize: '14px',
+                  fontSize: '13px',
                   fontWeight: '600',
                   outline: 'none',
                   boxSizing: 'border-box',
                   cursor: 'pointer'
                 }}
               >
-                <option value="">-- Seleccione de la lista ({pacientesFiltrados.length} encontrados) --</option>
+                <option value="">-- Seleccione paciente ({pacientesFiltrados.length}) --</option>
                 {pacientesFiltrados.map(p => (
                   <option key={p.id_paciente_excel} value={p.id_paciente_excel}>
                     {p.nombre} {p.dni ? `• DNI: ${p.dni}` : ''} {p.obra_social ? `• ${p.obra_social}` : ''}
@@ -631,264 +629,92 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
         </div>
       )}
 
-      {/* Si hay un paciente seleccionado, mostramos la ficha de carga y su lista de documentos */}
-      {pacienteSeleccionado ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
-          {/* Tarjeta Informativa del Paciente Seleccionado */}
-          <div style={{
-            background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-            border: '1px solid #38bdf8',
-            borderRadius: '14px',
-            padding: '16px 20px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '10px'
-          }}>
-            <div>
-              <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Expediente Digital del Paciente
-              </span>
-              <h3 style={{ margin: '4px 0 0 0', fontSize: '19px', color: '#f8fafc' }}>
-                👤 {pacienteSeleccionado.nombre_apellido || pacienteSeleccionado.nombre}
-              </h3>
-              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
-                ID Sistema: <strong style={{ color: '#fff' }}>#{pacienteSeleccionado.id_paciente || pacienteSeleccionado.id_paciente_excel || pacienteSeleccionado.id}</strong>
-                {pacienteSeleccionado.dni && ` • DNI: ${pacienteSeleccionado.dni}`}
-                {pacienteSeleccionado.obra_social && ` • Obra Social: ${pacienteSeleccionado.obra_social}`}
-              </p>
-            </div>
-
-            <div style={{ textAlign: 'right' }}>
-              <span style={{
-                background: archivos.length > 0 ? '#0284c7' : '#334155',
-                color: '#fff',
-                padding: '6px 14px',
-                borderRadius: '20px',
-                fontSize: '13px',
-                fontWeight: 'bold',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}>
-                📁 {archivos.length} Documento{archivos.length !== 1 ? 's' : ''} Guardado{archivos.length !== 1 ? 's' : ''}
-              </span>
-            </div>
-          </div>
-
-          {/* ========================================================= */}
-          {/* ZONA DE CARGA DE NUEVOS DOCUMENTOS                       */}
-          {/* ========================================================= */}
-          <div style={{
-            background: '#1e293b',
-            border: '1px solid #334155',
-            borderRadius: '16px',
-            padding: '24px',
-            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.3)'
-          }}>
-            <h4 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>📤</span> Adjuntar Nuevo Documento
-            </h4>
-
-            {/* Presets rápidos de tipo de documento */}
-            <div style={{ marginBottom: '16px' }}>
-              <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>
-                ETIQUETA RÁPIDA (Opcional):
-              </span>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                {[
-                  { label: 'Historia Clínica', icon: '📋' },
-                  { label: 'Certificado CUD', icon: '♿' },
-                  { label: 'Orden Médica', icon: '📝' },
-                  { label: 'DNI / Identificación', icon: '🆔' },
-                  { label: 'Informe de Fonoaudiología', icon: '🗣️' },
-                  { label: 'Informe de Kinesiología', icon: '🏃' },
-                  { label: 'Informe de Psicología', icon: '🧠' }
-                ].map(p => (
-                  <button
-                    key={p.label}
-                    type="button"
-                    onClick={() => {
-                      setTipoPreset(p.label);
-                      setNombreArchivoPersonalizado(p.label);
-                    }}
-                    style={{
-                      background: tipoPreset === p.label ? '#0284c7' : '#0f172a',
-                      color: tipoPreset === p.label ? '#fff' : '#cbd5e1',
-                      border: `1px solid ${tipoPreset === p.label ? '#38bdf8' : '#334155'}`,
-                      padding: '5px 12px',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      transition: 'all 0.15s'
-                    }}
-                  >
-                    <span>{p.icon}</span> {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Nombre descriptivo del archivo */}
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', fontWeight: 'bold', marginBottom: '6px' }}>
-                TÍTULO / DESCRIPCIÓN DEL ARCHIVO:
-              </label>
-              <input
-                type="text"
-                value={nombreArchivoPersonalizado}
-                onChange={(e) => setNombreArchivoPersonalizado(e.target.value)}
-                placeholder="Ej: Historia Clínica 2026, CUD Vigente, Evaluación Neurocognitiva..."
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: '8px',
-                  background: '#0f172a',
-                  border: '1px solid #475569',
-                  color: '#fff',
-                  fontSize: '14px',
-                  boxSizing: 'border-box',
-                  outline: 'none'
-                }}
-              />
-            </div>
-
-            {/* Zona Dropzone para arrastrar o examinar archivo */}
-            <div
-              onDragOver={onDragOver}
-              onDragLeave={onDragLeave}
-              onDrop={onDrop}
-              onClick={() => fileInputRef.current && fileInputRef.current.click()}
-              style={{
-                border: `2px dashed ${arrastrando ? '#38bdf8' : archivoAsubir ? '#10b981' : '#475569'}`,
-                background: arrastrando ? '#082f49' : archivoAsubir ? '#064e3b20' : '#0f172a',
-                borderRadius: '12px',
-                padding: '30px 20px',
-                textAlign: 'center',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                marginBottom: '16px'
-              }}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                onChange={onFileChange}
-                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.webp"
-                style={{ display: 'none' }}
-              />
-
-              {archivoAsubir ? (
-                <div>
-                  <span style={{ fontSize: '36px' }}>
-                    {getIconoDocumento(archivoAsubir.name, archivoAsubir.name)}
-                  </span>
-                  <p style={{ margin: '8px 0 2px 0', fontSize: '15px', fontWeight: 'bold', color: '#10b981' }}>
-                    {archivoAsubir.name}
-                  </p>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>
-                    Tamaño: {(archivoAsubir.size / (1024 * 1024)).toFixed(2)} MB • Tipo: {archivoAsubir.type || 'Documento'}
-                  </p>
-                  <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: '#38bdf8', textDecoration: 'underline' }}>
-                    Haga clic o arrastre otro para cambiarlo
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <span style={{ fontSize: '36px' }}>📄</span>
-                  <p style={{ margin: '8px 0 2px 0', fontSize: '14px', fontWeight: 'bold', color: '#cbd5e1' }}>
-                    Arrastre el archivo aquí o <span style={{ color: '#38bdf8', textDecoration: 'underline' }}>haga clic para examinar</span>
-                  </p>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
-                    Soporta: PDF, Imágenes (JPG, PNG), Word (DOC, DOCX) • Hasta 30 MB
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Barra / Mensaje de Progreso de Subida */}
-            {subiendo && (
-              <div style={{
-                background: '#0284c7',
-                color: '#fff',
-                padding: '12px 16px',
-                borderRadius: '8px',
-                marginBottom: '16px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                fontSize: '13px',
-                fontWeight: 'bold'
-              }}>
-                <span>⏳</span> {progresoSubida || 'Subiendo archivo...'}
-              </div>
+      {/* Barra compacta del Expediente del Paciente */}
+      {pacienteSeleccionado && (
+        <div style={{
+          background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+          border: '1px solid #38bdf8',
+          borderRadius: '10px',
+          padding: '8px 14px',
+          marginBottom: '10px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '8px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#f8fafc' }}>
+              👤 {pacienteSeleccionado.nombre_apellido || pacienteSeleccionado.nombre}
+            </span>
+            <span style={{ fontSize: '12px', color: '#38bdf8', fontWeight: 'bold' }}>
+              #{pacienteSeleccionado.id_paciente || pacienteSeleccionado.id_paciente_excel || pacienteSeleccionado.id}
+            </span>
+            {pacienteSeleccionado.dni && (
+              <span style={{ fontSize: '12px', color: '#94a3b8' }}>• DNI: {pacienteSeleccionado.dni}</span>
             )}
-
-            {/* Botón de Confirmación de Subida */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              {archivoAsubir && (
-                <button
-                  type="button"
-                  onClick={resetFormularioSubida}
-                  disabled={subiendo}
-                  style={{
-                    background: '#334155',
-                    color: '#cbd5e1',
-                    border: 'none',
-                    padding: '10px 18px',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    fontWeight: 'bold'
-                  }}
-                >
-                  Cancelar
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={handleSubirDocumento}
-                disabled={subiendo || !archivoAsubir}
-                style={{
-                  background: subiendo || !archivoAsubir 
-                    ? '#475569' 
-                    : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                  color: '#fff',
-                  border: 'none',
-                  padding: '10px 24px',
-                  borderRadius: '8px',
-                  cursor: subiendo || !archivoAsubir ? 'not-allowed' : 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  boxShadow: subiendo || !archivoAsubir ? 'none' : '0 4px 12px rgba(16,185,129,0.35)'
-                }}
-              >
-                <span>📤</span> {subiendo ? 'Subiendo...' : 'Guardar y Subir Documento'}
-              </button>
-            </div>
+            {pacienteSeleccionado.obra_social && (
+              <span style={{ fontSize: '12px', color: '#94a3b8' }}>• {pacienteSeleccionado.obra_social}</span>
+            )}
           </div>
 
+          <div
+            onClick={() => {
+              if (listaDocsRef.current) {
+                listaDocsRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              }
+            }}
+            style={{
+              background: archivos.length > 0 ? '#0284c7' : '#334155',
+              color: '#fff',
+              padding: '4px 12px',
+              borderRadius: '14px',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.2)'
+            }}
+            title="Ver los documentos guardados"
+          >
+            📁 {archivos.length} Documento{archivos.length !== 1 ? 's' : ''} Guardado{archivos.length !== 1 ? 's' : ''}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* VISTA PRINCIPAL DIVIDIDA EN 2 COLUMNAS (ENTRA EN 1 PANTALLA) */}
+      {/* ========================================================= */}
+      {pacienteSeleccionado ? (
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '12px',
+          alignItems: 'stretch'
+        }}>
           {/* ========================================================= */}
-          {/* LISTA DE DOCUMENTOS EXISTENTES                           */}
+          {/* COLUMNA 1: DOCUMENTOS REGISTRADOS (PRIORIDAD VISUAL)     */}
           {/* ========================================================= */}
-          <div style={{
-            background: '#1e293b',
-            border: '1px solid #334155',
-            borderRadius: '16px',
-            padding: '24px'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h4 style={{ margin: 0, fontSize: '16px', color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>📚</span> Documentos Registrados ({archivos.length})
+          <div
+            ref={listaDocsRef}
+            style={{
+              flex: '1.25 1 420px',
+              background: '#1e293b',
+              border: '1px solid #334155',
+              borderRadius: '12px',
+              padding: '14px',
+              display: 'flex',
+              flexDirection: 'column',
+              maxHeight: 'calc(100vh - 220px)',
+              minHeight: '340px',
+              boxSizing: 'border-box'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <h4 style={{ margin: 0, fontSize: '15px', color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>📚</span> Documentos del Paciente ({archivos.length})
               </h4>
               <button
                 onClick={fetchArchivos}
@@ -897,10 +723,10 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                   background: 'transparent',
                   border: '1px solid #475569',
                   color: '#94a3b8',
-                  padding: '4px 10px',
+                  padding: '3px 8px',
                   borderRadius: '6px',
                   cursor: 'pointer',
-                  fontSize: '12px'
+                  fontSize: '11px'
                 }}
               >
                 🔄 Actualizar
@@ -915,21 +741,33 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
               <div style={{
                 background: '#0f172a',
                 border: '1px dashed #334155',
-                borderRadius: '12px',
-                padding: '40px 20px',
+                borderRadius: '10px',
+                padding: '30px 16px',
                 textAlign: 'center',
-                color: '#94a3b8'
+                color: '#94a3b8',
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center'
               }}>
-                <span style={{ fontSize: '40px', display: 'block', marginBottom: '10px' }}>📭</span>
-                <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>
-                  Aún no hay documentos registrados para este paciente.
+                <span style={{ fontSize: '32px', display: 'block', marginBottom: '8px' }}>📭</span>
+                <p style={{ margin: 0, fontSize: '13px', fontWeight: 'bold' }}>
+                  Aún no hay documentos para este paciente.
                 </p>
-                <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-                  Utilice la sección superior para adjuntar el primer archivo (PDF, CUD, DNI, etc.).
+                <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                  Utilice el panel lateral para adjuntar el primero (PDF, CUD, DNI, etc.).
                 </p>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{
+                flex: 1,
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                paddingRight: '4px'
+              }}>
                 {archivos.map((doc, idx) => {
                   const urlPublica = resolverUrlDocumento(doc);
                   const isJson = doc.url_storage && doc.url_storage.startsWith('JSON:');
@@ -944,84 +782,60 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                       style={{
                         background: '#0f172a',
                         border: '1px solid #334155',
-                        borderRadius: '12px',
-                        padding: '14px 18px',
+                        borderRadius: '10px',
+                        padding: '10px 12px',
                         display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                        gap: '12px',
-                        transition: 'border-color 0.15s'
+                        flexDirection: 'column',
+                        gap: '6px',
+                        transition: 'all 0.15s'
                       }}
                     >
-                      {/* Información del archivo */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: '240px' }}>
-                        <span style={{ fontSize: '28px' }}>
+                      {/* Cabecera del Documento */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                        <span style={{ fontSize: '24px', flexShrink: 0 }}>
                           {getIconoDocumento(doc.url_storage, doc.nombre_archivo)}
                         </span>
-                        <div>
-                          <a
-                            href={urlPublica}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                        <div style={{ minWidth: 0, overflow: 'hidden', flex: 1 }}>
+                          <span
+                            onClick={() => {
+                              if (isJson) {
+                                window.open(urlPublica, '_blank');
+                              } else {
+                                const ext = (doc.url_storage.split('.').pop() || '').toLowerCase();
+                                if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) {
+                                  setModalPreview({ url: urlPublica, nombre: doc.nombre_archivo, tipo: 'imagen' });
+                                } else if (ext === 'pdf') {
+                                  setModalPreview({ url: urlPublica, nombre: doc.nombre_archivo, tipo: 'pdf' });
+                                } else {
+                                  window.open(`https://docs.google.com/viewer?url=${encodeURIComponent(urlPublica)}&embedded=true`, '_blank');
+                                }
+                              }
+                            }}
                             style={{
                               color: '#38bdf8',
-                              textDecoration: 'none',
-                              fontSize: '15px',
+                              fontSize: '13px',
                               fontWeight: 'bold',
-                              display: 'block'
+                              display: 'block',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              cursor: 'pointer'
                             }}
                             onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
                             onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
+                            title={doc.nombre_archivo}
                           >
                             {doc.nombre_archivo}
-                          </a>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', fontSize: '12px', color: '#94a3b8' }}>
+                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '1px', fontSize: '11px', color: '#94a3b8' }}>
                             <span>📅 {fechaStr}</span>
-                            <span>•</span>
-                            <span style={{ fontFamily: 'monospace', fontSize: '11px', color: '#64748b' }}>
-                              {doc.url_storage}
-                            </span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Botones de acción */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      {/* Botones de acción compactos */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', paddingTop: '4px', borderTop: '1px solid #1e293b' }}>
                         
-                        {/* BOTÓN ADOSAR HOJA (Solo si es PDF) */}
-                        {esPdf && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setModalAdosar({
-                                doc,
-                                archivo: null,
-                                posicion: 'final',
-                                guardarNuevo: false,
-                                tituloNuevo: `${doc.nombre_archivo} (Actualizado)`
-                              });
-                            }}
-                            style={{
-                              background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
-                              color: '#fff',
-                              border: '1px solid #8b5cf6',
-                              padding: '6px 12px',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              fontSize: '12px',
-                              fontWeight: 'bold',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              boxShadow: '0 2px 4px rgba(124,58,237,0.35)'
-                            }}
-                            title="Anexar una o más hojas a este documento"
-                          >
-                            <span>➕</span> Adosar Hoja
-                          </button>
-                        )}
-
                         {/* Ver / Previsualizar */}
                         <button
                           type="button"
@@ -1043,10 +857,10 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                             background: '#0284c7',
                             color: '#fff',
                             border: 'none',
-                            padding: '6px 12px',
-                            borderRadius: '6px',
+                            padding: '4px 9px',
+                            borderRadius: '5px',
                             cursor: 'pointer',
-                            fontSize: '12px',
+                            fontSize: '11px',
                             fontWeight: 'bold',
                             display: 'inline-flex',
                             alignItems: 'center',
@@ -1055,6 +869,39 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                         >
                           👁️ Ver
                         </button>
+
+                        {/* BOTÓN ADOSAR HOJA (Solo si es PDF) */}
+                        {esPdf && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalAdosar({
+                                doc,
+                                archivo: null,
+                                posicion: 'final',
+                                guardarNuevo: false,
+                                tituloNuevo: `${doc.nombre_archivo} (Actualizado)`
+                              });
+                            }}
+                            style={{
+                              background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+                              color: '#fff',
+                              border: '1px solid #8b5cf6',
+                              padding: '4px 9px',
+                              borderRadius: '5px',
+                              cursor: 'pointer',
+                              fontSize: '11px',
+                              fontWeight: 'bold',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              boxShadow: '0 2px 4px rgba(124,58,237,0.3)'
+                            }}
+                            title="Anexar una o más hojas a este documento"
+                          >
+                            <span>➕</span> Adosar Hoja
+                          </button>
+                        )}
 
                         {/* Descargar */}
                         <a
@@ -1066,9 +913,9 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                             background: '#334155',
                             color: '#cbd5e1',
                             textDecoration: 'none',
-                            padding: '6px 12px',
-                            borderRadius: '6px',
-                            fontSize: '12px',
+                            padding: '4px 9px',
+                            borderRadius: '5px',
+                            fontSize: '11px',
                             fontWeight: 'bold',
                             display: 'inline-flex',
                             alignItems: 'center',
@@ -1086,11 +933,12 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                             background: '#450a0a',
                             color: '#f87171',
                             border: '1px solid #7f1d1d',
-                            padding: '6px 10px',
-                            borderRadius: '6px',
+                            padding: '4px 7px',
+                            borderRadius: '5px',
                             cursor: 'pointer',
-                            fontSize: '12px',
-                            fontWeight: 'bold'
+                            fontSize: '11px',
+                            fontWeight: 'bold',
+                            marginLeft: 'auto'
                           }}
                           title="Eliminar este documento"
                         >
@@ -1102,6 +950,207 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                 })}
               </div>
             )}
+          </div>
+
+          {/* ========================================================= */}
+          {/* COLUMNA 2: ADJUNTAR NUEVO DOCUMENTO                       */}
+          {/* ========================================================= */}
+          <div style={{
+            flex: '1 1 320px',
+            background: '#1e293b',
+            border: '1px solid #334155',
+            borderRadius: '12px',
+            padding: '14px',
+            boxSizing: 'border-box',
+            display: 'flex',
+            flexDirection: 'column',
+            maxHeight: 'calc(100vh - 220px)',
+            overflowY: 'auto'
+          }}>
+            <h4 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>📤</span> Adjuntar Nuevo Documento
+            </h4>
+
+            {/* Presets rápidos de tipo de documento */}
+            <div style={{ marginBottom: '8px' }}>
+              <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>
+                ETIQUETA RÁPIDA:
+              </span>
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                {[
+                  { label: 'Historia Clínica', icon: '📋' },
+                  { label: 'CUD', icon: '♿' },
+                  { label: 'Orden Médica', icon: '📝' },
+                  { label: 'DNI', icon: '🆔' },
+                  { label: 'Fono', icon: '🗣️' },
+                  { label: 'Kinesio', icon: '🏃' },
+                  { label: 'Psicología', icon: '🧠' }
+                ].map(p => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => {
+                      setTipoPreset(p.label);
+                      setNombreArchivoPersonalizado(p.label);
+                    }}
+                    style={{
+                      background: tipoPreset === p.label ? '#0284c7' : '#0f172a',
+                      color: tipoPreset === p.label ? '#fff' : '#cbd5e1',
+                      border: `1px solid ${tipoPreset === p.label ? '#38bdf8' : '#334155'}`,
+                      padding: '2px 7px',
+                      borderRadius: '5px',
+                      fontSize: '10px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '3px',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    <span>{p.icon}</span> {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Nombre descriptivo del archivo */}
+            <div style={{ marginBottom: '8px' }}>
+              <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', fontWeight: 'bold', marginBottom: '3px' }}>
+                TÍTULO / DESCRIPCIÓN:
+              </label>
+              <input
+                type="text"
+                value={nombreArchivoPersonalizado}
+                onChange={(e) => setNombreArchivoPersonalizado(e.target.value)}
+                placeholder="Ej: Historia Clínica 2026, CUD Vigente..."
+                style={{
+                  width: '100%',
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  background: '#0f172a',
+                  border: '1px solid #475569',
+                  color: '#fff',
+                  fontSize: '12px',
+                  boxSizing: 'border-box',
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            {/* Zona Dropzone para arrastrar o examinar archivo */}
+            <div
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
+              onClick={() => fileInputRef.current && fileInputRef.current.click()}
+              style={{
+                border: `2px dashed ${arrastrando ? '#38bdf8' : archivoAsubir ? '#10b981' : '#475569'}`,
+                background: arrastrando ? '#082f49' : archivoAsubir ? '#064e3b20' : '#0f172a',
+                borderRadius: '8px',
+                padding: '12px 10px',
+                textAlign: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                marginBottom: '8px'
+              }}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                onChange={onFileChange}
+                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.webp"
+                style={{ display: 'none' }}
+              />
+
+              {archivoAsubir ? (
+                <div>
+                  <span style={{ fontSize: '24px' }}>
+                    {getIconoDocumento(archivoAsubir.name, archivoAsubir.name)}
+                  </span>
+                  <p style={{ margin: '3px 0 1px 0', fontSize: '12px', fontWeight: 'bold', color: '#10b981' }}>
+                    {archivoAsubir.name}
+                  </p>
+                  <p style={{ margin: 0, fontSize: '10px', color: '#94a3b8' }}>
+                    {(archivoAsubir.size / (1024 * 1024)).toFixed(2)} MB • Clic para cambiar
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <span style={{ fontSize: '22px' }}>📄</span>
+                  <p style={{ margin: '3px 0 1px 0', fontSize: '12px', fontWeight: 'bold', color: '#cbd5e1' }}>
+                    Arrastre el archivo aquí o <span style={{ color: '#38bdf8', textDecoration: 'underline' }}>examinar</span>
+                  </p>
+                  <p style={{ margin: 0, fontSize: '10px', color: '#64748b' }}>
+                    PDF, JPG, PNG, DOCX (hasta 30 MB)
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Barra / Mensaje de Progreso de Subida */}
+            {subiendo && (
+              <div style={{
+                background: '#0284c7',
+                color: '#fff',
+                padding: '6px 10px',
+                borderRadius: '6px',
+                marginBottom: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '11px',
+                fontWeight: 'bold'
+              }}>
+                <span>⏳</span> {progresoSubida || 'Subiendo archivo...'}
+              </div>
+            )}
+
+            {/* Botón de Confirmación de Subida */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: 'auto' }}>
+              {archivoAsubir && (
+                <button
+                  type="button"
+                  onClick={resetFormularioSubida}
+                  disabled={subiendo}
+                  style={{
+                    background: '#334155',
+                    color: '#cbd5e1',
+                    border: 'none',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  Cancelar
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleSubirDocumento}
+                disabled={subiendo || !archivoAsubir}
+                style={{
+                  background: subiendo || !archivoAsubir 
+                    ? '#475569' 
+                    : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '6px 16px',
+                  borderRadius: '6px',
+                  cursor: subiendo || !archivoAsubir ? 'not-allowed' : 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  boxShadow: subiendo || !archivoAsubir ? 'none' : '0 2px 6px rgba(16,185,129,0.35)'
+                }}
+              >
+                <span>📤</span> {subiendo ? 'Subiendo...' : 'Guardar y Subir'}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
