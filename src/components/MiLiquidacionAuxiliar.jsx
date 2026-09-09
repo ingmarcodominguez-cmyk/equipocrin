@@ -42,6 +42,7 @@ const nombresDias = [
 const normalizarTexto = (txt) => {
   if (!txt) return '';
   return txt.toLowerCase()
+    .replace(/[\uFFFD]/g, 'n')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9\s]/g, '')
