@@ -7,6 +7,7 @@ import EstadosCuenta from './EstadosCuenta.jsx'
 import MovimientosPrestadores from './MovimientosPrestadores.jsx'
 import Documentos from './Documentos.jsx'
 import AsistenciaPacientes from './AsistenciaPacientes.jsx'
+import MiLiquidacionAuxiliar from './MiLiquidacionAuxiliar.jsx'
 import BotonPantallaCompleta from './BotonPantallaCompleta.jsx'
 import logo from '../assets/photo.jpg'
 
@@ -19,6 +20,7 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
   // -------------------------------
 
   const [vista, setVista] = useState('hub') 
+  const [modalMiLiqAbierto, setModalMiLiqAbierto] = useState(false)
   const audioRef = useRef(new Audio('/notificacion.mp3'))
   const playNotification = () => audioRef.current.play().catch(e => {})
   
@@ -30,6 +32,9 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
   // Definimos la condición para ver documentos
   const puedeVerDocumentos = ['DIRECCION', 'PROFESIONAL_PLUS'].includes(rol)
 
+  // Condición para ver Mi Liquidación (Auxiliares y Dirección/Administración para control)
+  const puedeVerMiLiquidacion = ['AUXILIAR', 'ADMINISTRACION', 'DIRECCION'].includes(rol)
+
   return (
     <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif' }}>
       
@@ -38,9 +43,29 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
           <div style={{ textAlign: 'center', marginBottom: '25px' }}>
              <img src={logo} alt="Logo" style={{ width: 120, borderRadius: '20px' }} />
              <h2 style={{ margin: '10px 0' }}>Hola, {userData?.nombre || 'Usuario'}</h2>
-             <div style={{ marginTop: '8px' }}>
-               <BotonPantallaCompleta />
-             </div>
+             <div style={{ marginTop: '8px', display: 'flex', gap: '10px', justifyContent: 'center', alignItems: 'center' }}>
+                <BotonPantallaCompleta />
+                {puedeVerMiLiquidacion && (
+                  <button
+                    onClick={() => setModalMiLiqAbierto(true)}
+                    style={{
+                      background: '#064e3b',
+                      color: '#6ee7b7',
+                      border: '1px solid #10b981',
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px'
+                    }}
+                  >
+                    💰 Modal Rápido Liquidación
+                  </button>
+                )}
+              </div>
           </div>
           
           <div style={{ display: 'grid', gap: '20px' }}>
@@ -56,6 +81,22 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
             
             {/* GESTIÓN PACIENTES ACCESIBLE PARA TODOS */}
             <button onClick={() => setVista('pacientes')} style={{...btnHubStyle, borderColor: '#00f2ff'}}>👤 GESTIÓN PACIENTES</button>
+
+            {/* MI LIQUIDACIÓN Y HORAS: ACCESIBLE PARA AUXILIARES (Y DIRECCION/ADMINISTRACION PARA AUDITORIA) */}
+            {puedeVerMiLiquidacion && (
+              <button 
+                onClick={() => setVista('mi_liquidacion')} 
+                style={{
+                  ...btnHubStyle, 
+                  borderColor: '#10b981', 
+                  background: 'linear-gradient(135deg, #064e3b 0%, #022c22 100%)', 
+                  color: '#6ee7b7',
+                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)'
+                }}
+              >
+                💰 MI LIQUIDACIÓN Y HORAS
+              </button>
+            )}
 
             {/* DOCUMENTOS SOLO PARA DIRECCIÓN Y PROFESIONAL_PLUS */}
             {puedeVerDocumentos && (
@@ -76,7 +117,7 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
         </div>
       )}
 
-      {['agenda', 'tareas', 'profesionales', 'pacientes', 'estados', 'movimientos', 'documentos', 'asistencia_pacientes'].includes(vista) && (
+      {['agenda', 'tareas', 'profesionales', 'pacientes', 'estados', 'movimientos', 'documentos', 'asistencia_pacientes', 'mi_liquidacion'].includes(vista) && (
         <div style={{ maxWidth: '1200px', margin: 'auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <button onClick={() => setVista('hub')} style={btnVolverStyle}>← VOLVER AL MENÚ</button>
@@ -101,8 +142,23 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
                 usuario={userData?.nombre || userData?.nombre_apellido || 'Usuario'} 
               />
             )}
+            {vista === 'mi_liquidacion' && (
+              <MiLiquidacionAuxiliar 
+                userData={userData} 
+                onVolver={() => setVista('hub')} 
+              />
+            )}
           </div>
         </div>
+      )}
+
+      {/* Modal flotante rápido para consultar sin salir de la pantalla actual */}
+      {modalMiLiqAbierto && (
+        <MiLiquidacionAuxiliar 
+          userData={userData} 
+          esModal={true} 
+          onCerrar={() => setModalMiLiqAbierto(false)} 
+        />
       )}
     </div>
   )
