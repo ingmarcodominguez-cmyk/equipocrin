@@ -180,7 +180,7 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
         .from('documentos_pacientes')
         .upload(storagePath, archivoAsubir, {
           cacheControl: '3600',
-          upsert: true,
+          upsert: false,
           contentType: archivoAsubir.type || undefined
         });
 
@@ -213,9 +213,12 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
       await fetchArchivos();
     } catch (err) {
       console.error("Error al subir documento:", err);
+      const esRls = (err.message || '').includes('row-level security');
       setMensajeEstado({
         tipo: 'error',
-        texto: `No se pudo completar la subida: ${err.message}`
+        texto: esRls 
+          ? `Error de permisos en Storage (RLS). Por favor ejecute la política de acceso total en Supabase SQL Editor.` 
+          : `No se pudo completar la subida: ${err.message}`
       });
     } finally {
       setSubiendo(false);
@@ -470,33 +473,33 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
     <div style={{
       color: '#f8fafc',
       fontFamily: 'Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, sans-serif',
-      maxWidth: esEmbebido ? '100%' : '1100px',
+      maxWidth: esEmbebido ? '100%' : '1400px',
       margin: '0 auto',
-      padding: esEmbebido ? '10px 0' : '20px'
+      padding: esEmbebido ? '8px 0' : '14px 20px'
     }}>
-      {/* Header superior compacto */}
+      {/* Header superior amplio y nítido */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         background: '#0f172a',
-        padding: '10px 16px',
+        padding: '12px 20px',
         borderRadius: '12px',
         border: '1px solid #1e293b',
-        marginBottom: '10px',
+        marginBottom: '12px',
         flexWrap: 'wrap',
-        gap: '8px'
+        gap: '10px'
       }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '18px', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h2 style={{ margin: 0, fontSize: '20px', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span>📁</span> Gestión de Documentos de Pacientes
           </h2>
-          <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#94a3b8' }}>
-            Historias clínicas, CUD, órdenes médicas y adosado de hojas
+          <p style={{ margin: '3px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
+            Historias clínicas, CUD, órdenes médicas, informes profesionales y adosado de hojas
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           {onVolver && (
             <button
               onClick={onVolver}
@@ -504,11 +507,11 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                 background: '#334155',
                 color: '#fff',
                 border: 'none',
-                padding: '6px 12px',
-                borderRadius: '6px',
+                padding: '7px 15px',
+                borderRadius: '8px',
                 cursor: 'pointer',
                 fontWeight: 'bold',
-                fontSize: '12px'
+                fontSize: '13px'
               }}
             >
               ← Volver
@@ -522,11 +525,11 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                 background: '#0284c7',
                 color: '#fff',
                 border: 'none',
-                padding: '6px 14px',
-                borderRadius: '6px',
+                padding: '7px 16px',
+                borderRadius: '8px',
                 cursor: 'pointer',
                 fontWeight: 'bold',
-                fontSize: '12px',
+                fontSize: '13px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px'
@@ -541,16 +544,16 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
       {/* Mensajes de Alerta */}
       {mensajeEstado && (
         <div style={{
-          padding: '8px 14px',
-          borderRadius: '8px',
-          marginBottom: '10px',
+          padding: '10px 16px',
+          borderRadius: '10px',
+          marginBottom: '12px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           background: mensajeEstado.tipo === 'exito' ? '#064e3b' : '#450a0a',
           border: `1px solid ${mensajeEstado.tipo === 'exito' ? '#10b981' : '#ef4444'}`,
           color: mensajeEstado.tipo === 'exito' ? '#a7f3d0' : '#fecaca',
-          fontSize: '12px',
+          fontSize: '13px',
           fontWeight: '500'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -559,32 +562,32 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
           </div>
           <button
             onClick={() => setMensajeEstado(null)}
-            style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: '14px' }}
+            style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: '15px' }}
           >
             ✕
           </button>
         </div>
       )}
 
-      {/* Selector de Pacientes compacto (si no viene preseleccionado) */}
+      {/* Selector de Pacientes amplio (si no viene preseleccionado) */}
       {!pacientePreseleccionado && (
         <div style={{
           background: '#1e293b',
           border: '1px solid #334155',
           borderRadius: '12px',
-          padding: '10px 14px',
-          marginBottom: '10px'
+          padding: '12px 18px',
+          marginBottom: '12px'
         }}>
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ flex: 1, minWidth: '200px' }}>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ flex: 1, minWidth: '240px' }}>
               <input
                 type="text"
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="🔍 Filtrar por nombre, apellido o DNI..."
+                placeholder="🔍 Filtrar por nombre, apellido o DNI del paciente..."
                 style={{
                   width: '100%',
-                  padding: '8px 12px',
+                  padding: '9px 14px',
                   borderRadius: '8px',
                   background: '#0f172a',
                   border: '1px solid #475569',
@@ -595,7 +598,7 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                 }}
               />
             </div>
-            <div style={{ flex: 1.4, minWidth: '240px' }}>
+            <div style={{ flex: 1.5, minWidth: '280px' }}>
               <select
                 value={pacienteSeleccionado?.id_paciente_excel || ''}
                 onChange={(e) => {
@@ -605,7 +608,7 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                 }}
                 style={{
                   width: '100%',
-                  padding: '8px 12px',
+                  padding: '9px 14px',
                   borderRadius: '8px',
                   background: '#0f172a',
                   border: '1px solid #38bdf8',
@@ -617,7 +620,7 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                   cursor: 'pointer'
                 }}
               >
-                <option value="">-- Seleccione paciente ({pacientesFiltrados.length}) --</option>
+                <option value="">-- Seleccione paciente ({pacientesFiltrados.length} encontrados) --</option>
                 {pacientesFiltrados.map(p => (
                   <option key={p.id_paciente_excel} value={p.id_paciente_excel}>
                     {p.nombre} {p.dni ? `• DNI: ${p.dni}` : ''} {p.obra_social ? `• ${p.obra_social}` : ''}
@@ -629,32 +632,39 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
         </div>
       )}
 
-      {/* Barra compacta del Expediente del Paciente */}
+      {/* Barra del Expediente del Paciente Seleccionado */}
       {pacienteSeleccionado && (
         <div style={{
           background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
           border: '1px solid #38bdf8',
-          borderRadius: '10px',
-          padding: '8px 14px',
-          marginBottom: '10px',
+          borderRadius: '12px',
+          padding: '10px 18px',
+          marginBottom: '14px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           flexWrap: 'wrap',
-          gap: '8px'
+          gap: '10px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#f8fafc' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#f8fafc' }}>
               👤 {pacienteSeleccionado.nombre_apellido || pacienteSeleccionado.nombre}
             </span>
-            <span style={{ fontSize: '12px', color: '#38bdf8', fontWeight: 'bold' }}>
-              #{pacienteSeleccionado.id_paciente || pacienteSeleccionado.id_paciente_excel || pacienteSeleccionado.id}
+            <span style={{
+              background: '#0369a1',
+              color: '#fff',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              padding: '2px 8px',
+              borderRadius: '6px'
+            }}>
+              ID #{pacienteSeleccionado.id_paciente || pacienteSeleccionado.id_paciente_excel || pacienteSeleccionado.id}
             </span>
             {pacienteSeleccionado.dni && (
-              <span style={{ fontSize: '12px', color: '#94a3b8' }}>• DNI: {pacienteSeleccionado.dni}</span>
+              <span style={{ fontSize: '13px', color: '#cbd5e1' }}>• DNI: <strong>{pacienteSeleccionado.dni}</strong></span>
             )}
             {pacienteSeleccionado.obra_social && (
-              <span style={{ fontSize: '12px', color: '#94a3b8' }}>• {pacienteSeleccionado.obra_social}</span>
+              <span style={{ fontSize: '13px', color: '#94a3b8' }}>• Obra Social: {pacienteSeleccionado.obra_social}</span>
             )}
           </div>
 
@@ -667,15 +677,15 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
             style={{
               background: archivos.length > 0 ? '#0284c7' : '#334155',
               color: '#fff',
-              padding: '4px 12px',
-              borderRadius: '14px',
-              fontSize: '12px',
+              padding: '5px 14px',
+              borderRadius: '16px',
+              fontSize: '13px',
               fontWeight: 'bold',
               cursor: 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              boxShadow: '0 2px 6px rgba(0,0,0,0.2)'
+              boxShadow: '0 2px 8px rgba(0,0,0,0.25)'
             }}
             title="Ver los documentos guardados"
           >
@@ -685,13 +695,13 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
       )}
 
       {/* ========================================================= */}
-      {/* VISTA PRINCIPAL DIVIDIDA EN 2 COLUMNAS (ENTRA EN 1 PANTALLA) */}
+      {/* VISTA PRINCIPAL DIVIDIDA EN 2 COLUMNAS (AMPLIA Y CÓMODA)   */}
       {/* ========================================================= */}
       {pacienteSeleccionado ? (
         <div style={{
           display: 'flex',
           flexWrap: 'wrap',
-          gap: '12px',
+          gap: '16px',
           alignItems: 'stretch'
         }}>
           {/* ========================================================= */}
@@ -700,20 +710,20 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
           <div
             ref={listaDocsRef}
             style={{
-              flex: '1.25 1 420px',
+              flex: '1.25 1 500px',
               background: '#1e293b',
               border: '1px solid #334155',
-              borderRadius: '12px',
-              padding: '14px',
+              borderRadius: '14px',
+              padding: '18px 20px',
               display: 'flex',
               flexDirection: 'column',
-              maxHeight: 'calc(100vh - 220px)',
-              minHeight: '340px',
+              maxHeight: 'calc(100vh - 230px)',
+              minHeight: '440px',
               boxSizing: 'border-box'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-              <h4 style={{ margin: 0, fontSize: '15px', color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h4 style={{ margin: 0, fontSize: '16px', color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span>📚</span> Documentos del Paciente ({archivos.length})
               </h4>
               <button
@@ -723,10 +733,10 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                   background: 'transparent',
                   border: '1px solid #475569',
                   color: '#94a3b8',
-                  padding: '3px 8px',
+                  padding: '4px 10px',
                   borderRadius: '6px',
                   cursor: 'pointer',
-                  fontSize: '11px'
+                  fontSize: '12px'
                 }}
               >
                 🔄 Actualizar
@@ -734,15 +744,15 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
             </div>
 
             {cargandoArchivos ? (
-              <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>
+              <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
                 <p>Cargando documentos del paciente...</p>
               </div>
             ) : archivos.length === 0 ? (
               <div style={{
                 background: '#0f172a',
                 border: '1px dashed #334155',
-                borderRadius: '10px',
-                padding: '30px 16px',
+                borderRadius: '12px',
+                padding: '40px 20px',
                 textAlign: 'center',
                 color: '#94a3b8',
                 flex: 1,
@@ -751,12 +761,12 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                 justifyContent: 'center',
                 alignItems: 'center'
               }}>
-                <span style={{ fontSize: '32px', display: 'block', marginBottom: '8px' }}>📭</span>
-                <p style={{ margin: 0, fontSize: '13px', fontWeight: 'bold' }}>
+                <span style={{ fontSize: '38px', display: 'block', marginBottom: '10px' }}>📭</span>
+                <p style={{ margin: 0, fontSize: '15px', fontWeight: 'bold' }}>
                   Aún no hay documentos para este paciente.
                 </p>
-                <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-                  Utilice el panel lateral para adjuntar el primero (PDF, CUD, DNI, etc.).
+                <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: '#64748b' }}>
+                  Utilice el panel lateral para adjuntar el primero (Historia Clínica, CUD, DNI, etc.).
                 </p>
               </div>
             ) : (
@@ -765,8 +775,8 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                 overflowY: 'auto',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '8px',
-                paddingRight: '4px'
+                gap: '10px',
+                paddingRight: '6px'
               }}>
                 {archivos.map((doc, idx) => {
                   const urlPublica = resolverUrlDocumento(doc);
@@ -782,17 +792,17 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                       style={{
                         background: '#0f172a',
                         border: '1px solid #334155',
-                        borderRadius: '10px',
-                        padding: '10px 12px',
+                        borderRadius: '12px',
+                        padding: '12px 16px',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: '6px',
+                        gap: '8px',
                         transition: 'all 0.15s'
                       }}
                     >
                       {/* Cabecera del Documento */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                        <span style={{ fontSize: '24px', flexShrink: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                        <span style={{ fontSize: '28px', flexShrink: 0 }}>
                           {getIconoDocumento(doc.url_storage, doc.nombre_archivo)}
                         </span>
                         <div style={{ minWidth: 0, overflow: 'hidden', flex: 1 }}>
@@ -813,7 +823,7 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                             }}
                             style={{
                               color: '#38bdf8',
-                              fontSize: '13px',
+                              fontSize: '14px',
                               fontWeight: 'bold',
                               display: 'block',
                               overflow: 'hidden',
@@ -827,14 +837,14 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                           >
                             {doc.nombre_archivo}
                           </span>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '1px', fontSize: '11px', color: '#94a3b8' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', fontSize: '12px', color: '#94a3b8' }}>
                             <span>📅 {fechaStr}</span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Botones de acción compactos */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', paddingTop: '4px', borderTop: '1px solid #1e293b' }}>
+                      {/* Botones de acción cómodos */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingTop: '6px', borderTop: '1px solid #1e293b' }}>
                         
                         {/* Ver / Previsualizar */}
                         <button
@@ -857,14 +867,14 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                             background: '#0284c7',
                             color: '#fff',
                             border: 'none',
-                            padding: '4px 9px',
-                            borderRadius: '5px',
+                            padding: '6px 14px',
+                            borderRadius: '6px',
                             cursor: 'pointer',
-                            fontSize: '11px',
+                            fontSize: '12px',
                             fontWeight: 'bold',
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '4px'
+                            gap: '5px'
                           }}
                         >
                           👁️ Ver
@@ -887,15 +897,15 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                               background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
                               color: '#fff',
                               border: '1px solid #8b5cf6',
-                              padding: '4px 9px',
-                              borderRadius: '5px',
+                              padding: '6px 14px',
+                              borderRadius: '6px',
                               cursor: 'pointer',
-                              fontSize: '11px',
+                              fontSize: '12px',
                               fontWeight: 'bold',
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '4px',
-                              boxShadow: '0 2px 4px rgba(124,58,237,0.3)'
+                              gap: '5px',
+                              boxShadow: '0 2px 6px rgba(124,58,237,0.3)'
                             }}
                             title="Anexar una o más hojas a este documento"
                           >
@@ -913,13 +923,13 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                             background: '#334155',
                             color: '#cbd5e1',
                             textDecoration: 'none',
-                            padding: '4px 9px',
-                            borderRadius: '5px',
-                            fontSize: '11px',
+                            padding: '6px 14px',
+                            borderRadius: '6px',
+                            fontSize: '12px',
                             fontWeight: 'bold',
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '4px'
+                            gap: '5px'
                           }}
                         >
                           ⬇️ Descargar
@@ -933,10 +943,10 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                             background: '#450a0a',
                             color: '#f87171',
                             border: '1px solid #7f1d1d',
-                            padding: '4px 7px',
-                            borderRadius: '5px',
+                            padding: '6px 10px',
+                            borderRadius: '6px',
                             cursor: 'pointer',
-                            fontSize: '11px',
+                            fontSize: '12px',
                             fontWeight: 'bold',
                             marginLeft: 'auto'
                           }}
@@ -956,27 +966,28 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
           {/* COLUMNA 2: ADJUNTAR NUEVO DOCUMENTO                       */}
           {/* ========================================================= */}
           <div style={{
-            flex: '1 1 320px',
+            flex: '1 1 380px',
             background: '#1e293b',
             border: '1px solid #334155',
-            borderRadius: '12px',
-            padding: '14px',
+            borderRadius: '14px',
+            padding: '18px 20px',
             boxSizing: 'border-box',
             display: 'flex',
             flexDirection: 'column',
-            maxHeight: 'calc(100vh - 220px)',
+            maxHeight: 'calc(100vh - 230px)',
+            minHeight: '440px',
             overflowY: 'auto'
           }}>
-            <h4 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h4 style={{ margin: '0 0 12px 0', fontSize: '16px', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span>📤</span> Adjuntar Nuevo Documento
             </h4>
 
             {/* Presets rápidos de tipo de documento */}
-            <div style={{ marginBottom: '8px' }}>
-              <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>
+            <div style={{ marginBottom: '12px' }}>
+              <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>
                 ETIQUETA RÁPIDA:
               </span>
-              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 {[
                   { label: 'Historia Clínica', icon: '📋' },
                   { label: 'CUD', icon: '♿' },
@@ -997,14 +1008,14 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                       background: tipoPreset === p.label ? '#0284c7' : '#0f172a',
                       color: tipoPreset === p.label ? '#fff' : '#cbd5e1',
                       border: `1px solid ${tipoPreset === p.label ? '#38bdf8' : '#334155'}`,
-                      padding: '2px 7px',
-                      borderRadius: '5px',
-                      fontSize: '10px',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
                       fontWeight: '600',
                       cursor: 'pointer',
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '3px',
+                      gap: '4px',
                       transition: 'all 0.15s'
                     }}
                   >
@@ -1015,8 +1026,8 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
             </div>
 
             {/* Nombre descriptivo del archivo */}
-            <div style={{ marginBottom: '8px' }}>
-              <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', fontWeight: 'bold', marginBottom: '3px' }}>
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', fontWeight: 'bold', marginBottom: '4px' }}>
                 TÍTULO / DESCRIPCIÓN:
               </label>
               <input
@@ -1026,12 +1037,12 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                 placeholder="Ej: Historia Clínica 2026, CUD Vigente..."
                 style={{
                   width: '100%',
-                  padding: '6px 10px',
-                  borderRadius: '6px',
+                  padding: '9px 12px',
+                  borderRadius: '8px',
                   background: '#0f172a',
                   border: '1px solid #475569',
                   color: '#fff',
-                  fontSize: '12px',
+                  fontSize: '13px',
                   boxSizing: 'border-box',
                   outline: 'none'
                 }}
@@ -1047,12 +1058,12 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
               style={{
                 border: `2px dashed ${arrastrando ? '#38bdf8' : archivoAsubir ? '#10b981' : '#475569'}`,
                 background: arrastrando ? '#082f49' : archivoAsubir ? '#064e3b20' : '#0f172a',
-                borderRadius: '8px',
-                padding: '12px 10px',
+                borderRadius: '10px',
+                padding: '22px 16px',
                 textAlign: 'center',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
-                marginBottom: '8px'
+                marginBottom: '12px'
               }}
             >
               <input
@@ -1065,23 +1076,23 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
 
               {archivoAsubir ? (
                 <div>
-                  <span style={{ fontSize: '24px' }}>
+                  <span style={{ fontSize: '32px' }}>
                     {getIconoDocumento(archivoAsubir.name, archivoAsubir.name)}
                   </span>
-                  <p style={{ margin: '3px 0 1px 0', fontSize: '12px', fontWeight: 'bold', color: '#10b981' }}>
+                  <p style={{ margin: '6px 0 2px 0', fontSize: '14px', fontWeight: 'bold', color: '#10b981' }}>
                     {archivoAsubir.name}
                   </p>
-                  <p style={{ margin: 0, fontSize: '10px', color: '#94a3b8' }}>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>
                     {(archivoAsubir.size / (1024 * 1024)).toFixed(2)} MB • Clic para cambiar
                   </p>
                 </div>
               ) : (
                 <div>
-                  <span style={{ fontSize: '22px' }}>📄</span>
-                  <p style={{ margin: '3px 0 1px 0', fontSize: '12px', fontWeight: 'bold', color: '#cbd5e1' }}>
+                  <span style={{ fontSize: '30px' }}>📄</span>
+                  <p style={{ margin: '6px 0 2px 0', fontSize: '14px', fontWeight: 'bold', color: '#cbd5e1' }}>
                     Arrastre el archivo aquí o <span style={{ color: '#38bdf8', textDecoration: 'underline' }}>examinar</span>
                   </p>
-                  <p style={{ margin: 0, fontSize: '10px', color: '#64748b' }}>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
                     PDF, JPG, PNG, DOCX (hasta 30 MB)
                   </p>
                 </div>
@@ -1093,13 +1104,13 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
               <div style={{
                 background: '#0284c7',
                 color: '#fff',
-                padding: '6px 10px',
-                borderRadius: '6px',
-                marginBottom: '8px',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                marginBottom: '12px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                fontSize: '11px',
+                gap: '8px',
+                fontSize: '12px',
                 fontWeight: 'bold'
               }}>
                 <span>⏳</span> {progresoSubida || 'Subiendo archivo...'}
@@ -1107,7 +1118,7 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
             )}
 
             {/* Botón de Confirmación de Subida */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: 'auto' }}>
               {archivoAsubir && (
                 <button
                   type="button"
@@ -1117,10 +1128,10 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                     background: '#334155',
                     color: '#cbd5e1',
                     border: 'none',
-                    padding: '6px 12px',
-                    borderRadius: '6px',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
                     cursor: 'pointer',
-                    fontSize: '11px',
+                    fontSize: '13px',
                     fontWeight: 'bold'
                   }}
                 >
@@ -1137,15 +1148,15 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                     : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                   color: '#fff',
                   border: 'none',
-                  padding: '6px 16px',
-                  borderRadius: '6px',
+                  padding: '9px 22px',
+                  borderRadius: '8px',
                   cursor: subiendo || !archivoAsubir ? 'not-allowed' : 'pointer',
-                  fontSize: '12px',
+                  fontSize: '13px',
                   fontWeight: 'bold',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '5px',
-                  boxShadow: subiendo || !archivoAsubir ? 'none' : '0 2px 6px rgba(16,185,129,0.35)'
+                  gap: '6px',
+                  boxShadow: subiendo || !archivoAsubir ? 'none' : '0 3px 10px rgba(16,185,129,0.35)'
                 }}
               >
                 <span>📤</span> {subiendo ? 'Subiendo...' : 'Guardar y Subir'}
