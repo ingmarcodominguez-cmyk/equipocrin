@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase.js';
 import FormularioAcuerdo from './FormularioAcuerdo.jsx';
+import Documentos from './Documentos.jsx';
 
 const deducirSesiones = (valores) => {
   if (!valores || valores.length === 0) return [];
@@ -3000,108 +3001,19 @@ const confirmarRegistroPago = async () => {
 
           {vistaActiva === 'documentos' && (
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '2px solid #e2e8f0', paddingBottom: '8px' }}>
-                <h4 style={{ color: '#1e293b', margin: 0 }}>📁 Documentos del Paciente</h4>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button
-                    onClick={() => cargarDocumentos(pacienteSeleccionado.id_paciente)}
-                    disabled={cargandoDocumentos}
-                    style={{ background: '#0284c7', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
-                  >
-                    {cargandoDocumentos ? 'Cargando...' : '🔄 Refrescar'}
-                  </button>
-                  <button
-                    onClick={() => setVistaActiva('menu')}
-                    style={{ background: '#e2e8f0', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#334155' }}
-                  >
-                    ← Volver al Menú de la Ficha
-                  </button>
-                </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '15px' }}>
+                <button
+                  onClick={() => setVistaActiva('menu')}
+                  style={{ background: '#334155', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#f8fafc' }}
+                >
+                  ← Volver al Menú de la Ficha
+                </button>
               </div>
-
-              {cargandoDocumentos ? (
-                <p style={{ color: '#64748b' }}>Cargando documentos...</p>
-              ) : documentos.length === 0 ? (
-                <p style={{ color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '20px', borderRadius: '8px', textAlign: 'center' }}>
-                  No se registran documentos cargados para este paciente en Supabase.
-                </p>
-              ) : (
-                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {documentos.map(doc => {
-                      const isJson = doc.url_storage && doc.url_storage.startsWith('JSON:');
-                      const fileUrl = isJson
-                        ? `${window.location.origin}/?presupuesto=${doc.id}`
-                        : `https://gqhfrzvtccxrixdtazzs.supabase.co/storage/v1/object/public/documentos_pacientes/${doc.url_storage}`;
-
-                      return (
-                        <div 
-                          key={doc.id} 
-                          style={{ 
-                            padding: '14px 18px', 
-                            background: '#f8fafc', 
-                            border: '1px solid #e2e8f0', 
-                            borderRadius: '10px', 
-                            display: 'flex', 
-                            justifyContent: 'space-between', 
-                            alignItems: 'center',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.01)'
-                          }}
-                        >
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left' }}>
-                            <span style={{ fontWeight: '600', color: '#1e293b', fontSize: '14px' }}>📄 {doc.nombre_archivo}</span>
-                            <span style={{ fontSize: '11px', color: '#64748b' }}>Subido el: {new Date(doc.fecha_subida).toLocaleDateString('es-AR')}</span>
-                          </div>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <a 
-                              href={fileUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{ 
-                                background: '#3b82f6', 
-                                color: '#fff', 
-                                textDecoration: 'none', 
-                                padding: '6px 14px', 
-                                borderRadius: '6px', 
-                                fontSize: '12px', 
-                                fontWeight: '600', 
-                                cursor: 'pointer',
-                                transition: 'background 0.2s'
-                              }}
-                              onMouseOver={(e) => e.target.style.background = '#2563eb'}
-                              onMouseOut={(e) => e.target.style.background = '#3b82f6'}
-                            >
-                              Descargar / Abrir
-                            </a>
-                            {!isJson && (
-                              <button
-                                onClick={() => {
-                                  window.open(`https://docs.google.com/viewer?url=${encodeURIComponent(fileUrl)}&embedded=true`, '_blank');
-                                }}
-                                style={{ 
-                                  background: '#10b981', 
-                                  color: '#fff', 
-                                  border: 'none',
-                                  padding: '6px 14px', 
-                                  borderRadius: '6px', 
-                                  fontSize: '12px', 
-                                  fontWeight: '600', 
-                                  cursor: 'pointer',
-                                  transition: 'background 0.2s'
-                                }}
-                                onMouseOver={(e) => e.target.style.background = '#059669'}
-                                onMouseOut={(e) => e.target.style.background = '#10b981'}
-                              >
-                                👁️ Ver Online
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+              <Documentos 
+                pacientePreseleccionado={pacienteSeleccionado} 
+                onVolver={() => setVistaActiva('menu')}
+                esEmbebido={true}
+              />
             </div>
           )}
 
