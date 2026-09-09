@@ -60,6 +60,14 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
   const [procesandoAccion, setProcesandoAccion] = useState(false);
   const [modalDetalleDias, setModalDetalleDias] = useState(null); // { auxiliar, asistencias }
 
+  // Modal para Cargar Liquidación de Monto Fijo
+  const [modalMontoFijoAbierto, setModalMontoFijoAbierto] = useState(false);
+  const [auxiliarFijoId, setAuxiliarFijoId] = useState('');
+  const [montoFijoTx, setMontoFijoTx] = useState('');
+  const [prestadorFijoTx, setPrestadorFijoTx] = useState('');
+  const [conceptoFijoTx, setConceptoFijoTx] = useState('LIQUIDACION MONTO FIJO');
+  const [listaPrestadores, setListaPrestadores] = useState([]);
+
   // Cuenta Corriente por Auxiliar
   const [auxiliares, setAuxiliares] = useState([]);
   const [auxiliarSeleccionado, setAuxiliarSeleccionado] = useState(null);
@@ -93,6 +101,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
   // 1. Inicialización
   useEffect(() => {
     inicializarDatos();
+    cargarPrestadores();
   }, []);
 
   // 2. Al cambiar el mes seleccionado en Cierre Mensual o Descuentos
@@ -117,10 +126,21 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
     await cargarPeriodosDisponibles();
   };
 
+  const cargarPrestadores = async () => {
+    try {
+      const { data } = await supabase
+        .from('users')
+        .select('id, nombre')
+        .order('nombre', { ascending: true });
+      setListaPrestadores(data || []);
+    } catch (err) {
+      console.error("Error al cargar prestadores:", err);
+    }
+  };
+
   // Cargar lista unificada de períodos
   const cargarPeriodosDisponibles = async () => {
     try {
-      // Períodos desde asistencias
       const { data: asistData } = await supabase
         .from('asistencia_auxiliares_motor')
         .select('fecha');
@@ -129,7 +149,6 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
         .map(a => a.fecha ? a.fecha.substring(0, 7) : null)
         .filter(Boolean);
 
-      // Períodos desde movimientos contables
       const { data: movsData } = await supabase
         .from('movauxiliares_motor')
         .select('periodo');
@@ -145,9 +164,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
         })
         .filter(Boolean);
 
-      // Mes simulado / actual
       const mesActual = fechaTrabajo.substring(0, 7);
-
       const todos = [...new Set([...mesesAsist, ...mesesMovs, mesActual, '2026-08', '2026-09'])].filter(Boolean);
       todos.sort().reverse();
 
@@ -172,7 +189,6 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
 
       if (errA) throw errA;
 
-      // Cargar movimientos para calcular saldos
       let listaMovs = [];
       let from = 0;
       let to = 999;
@@ -257,7 +273,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
   };
 
   // =========================================================================
-  // LOGICA PRINCIPAL: CIERRE Y LIQUIDACIÓN MENSUAL
+  // LOGICA PRINCIPAL: CIERRE Y LIQUIDACIÓN MENSUAL (INCLUYE MONTO FIJO)
   // =========================================================================
   const cargarCierreMensual = async (periodoYYYYMM) => {
     if (!periodoYYYYMM) return;
@@ -269,7 +285,15 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
       const ultimoDia = `${anio}-${mes}-${String(ultimoDiaVal).padStart(2, '0')}`;
       const periodoFormateado = `${mes}/${anio}`;
 
-      // 1. Obtener todas las asistencias del mes
+      // 1. Obtener todos los auxiliares del maestro
+      const { data: todosAuxiliares, error: errAux } = await supabase
+        .from('auxiliares_motor')
+        .select('*')
+        .order('nombre', { ascending: true });
+
+      if (errAux) throw errAux;
+
+      // 2. Obtener todas las asistencias del mes
       const { data: asistencias, error: errAsist } = await supabase
         .from('asistencia_auxiliares_motor')
         .select('*')
@@ -279,7 +303,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
 
       if (errAsist) throw errAsist;
 
-      // 2. Obtener las liquidaciones ya registradas para este período
+      // 3. Obtener las liquidaciones ya registradas para este período
       const { data: liquidacionesRegistradas, error: errLiq } = await supabase
         .from('movauxiliares_motor')
         .select('*')
@@ -293,7 +317,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
         mapaLiquidaciones[l.id_auxiliar] = l;
       });
 
-      // 3. Agrupar asistencias por auxiliar
+      // 4. Agrupar asistencias diarias (HORA y SESION)
       const agrupado = {};
       (asistencias || []).forEach(a => {
         const id = a.id_auxiliar;
@@ -314,19 +338,69 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
         agrupado[id].dias += 1;
         agrupado[id].asistencias.push(a);
 
-        const tarifaFila = a.tipo_liq === 'HORA' ? parsearDecimal(a.valor_hora) || 0 : parsearDecimal(a.valor_sesion) || 0;
-        const cantFila = a.tipo_liq === 'HORA' ? parsearDecimal(a.horas_trabajadas) || 0 : parsearDecimal(a.sesiones) || 0;
-
-        if (a.tipo_liq === 'HORA') {
-          agrupado[id].totalHoras += cantFila;
+        if (a.tipo_liq === 'FIJO') {
+          agrupado[id].tipo_liq = 'FIJO';
+          agrupado[id].totalCalculado = parsearDecimal(a.valor_sesion || a.valor_hora) || 0;
+          agrupado[id].tarifa = agrupado[id].totalCalculado;
         } else {
-          agrupado[id].totalSesiones += cantFila;
-        }
+          const tarifaFila = a.tipo_liq === 'HORA' ? parsearDecimal(a.valor_hora) || 0 : parsearDecimal(a.valor_sesion) || 0;
+          const cantFila = a.tipo_liq === 'HORA' ? parsearDecimal(a.horas_trabajadas) || 0 : parsearDecimal(a.sesiones) || 0;
 
-        agrupado[id].totalCalculado += (tarifaFila * cantFila);
+          if (a.tipo_liq === 'HORA') {
+            agrupado[id].totalHoras += cantFila;
+          } else {
+            agrupado[id].totalSesiones += cantFila;
+          }
+
+          agrupado[id].totalCalculado += (tarifaFila * cantFila);
+        }
       });
 
-      // 4. Armar filas finales con estado de liquidación
+      // 5. Integrar auxiliares con modalidad FIJO (aparecen automáticamente aunque no tengan asistencias diarias)
+      (todosAuxiliares || []).forEach(aux => {
+        if (aux.tipo_liq === 'FIJO') {
+          const montoFijo = parsearDecimal(aux.valor_hora || aux.valor_sesion) || 0;
+          if (!agrupado[aux.id_auxiliar]) {
+            agrupado[aux.id_auxiliar] = {
+              id_auxiliar: aux.id_auxiliar,
+              nombre: aux.nombre,
+              tipo_liq: 'FIJO',
+              dias: 0,
+              totalHoras: 0,
+              totalSesiones: 0,
+              totalCalculado: montoFijo,
+              tarifa: montoFijo,
+              asistencias: []
+            };
+          } else {
+            agrupado[aux.id_auxiliar].tipo_liq = 'FIJO';
+            if (agrupado[aux.id_auxiliar].totalCalculado === 0) {
+              agrupado[aux.id_auxiliar].totalCalculado = montoFijo;
+              agrupado[aux.id_auxiliar].tarifa = montoFijo;
+            }
+          }
+        }
+      });
+
+      // 6. Integrar liquidaciones ya existentes en movauxiliares_motor
+      (liquidacionesRegistradas || []).forEach(l => {
+        if (!agrupado[l.id_auxiliar]) {
+          const auxInfo = (todosAuxiliares || []).find(x => x.id_auxiliar === l.id_auxiliar);
+          agrupado[l.id_auxiliar] = {
+            id_auxiliar: l.id_auxiliar,
+            nombre: auxInfo?.nombre || `AUXILIAR #${l.id_auxiliar}`,
+            tipo_liq: auxInfo?.tipo_liq || 'FIJO',
+            dias: 0,
+            totalHoras: 0,
+            totalSesiones: 0,
+            totalCalculado: parsearDecimal(l.debe) || 0,
+            tarifa: parsearDecimal(l.debe) || 0,
+            asistencias: []
+          };
+        }
+      });
+
+      // 7. Armar filas finales con estado de liquidación
       const listaFilas = Object.values(agrupado).map(item => {
         const movLiq = mapaLiquidaciones[item.id_auxiliar] || null;
         return {
@@ -336,9 +410,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
         };
       });
 
-      // Ordenar alfabéticamente por nombre
       listaFilas.sort((a, b) => a.nombre.localeCompare(b.nombre));
-
       setFilasMes(listaFilas);
     } catch (err) {
       console.error("Error al cargar cierre mensual:", err);
@@ -360,7 +432,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
     return (data && data[0]?.id_mov ? data[0].id_mov : 0) + 1;
   };
 
-  // Liquidar un auxiliar individualmente
+  // Liquidar un auxiliar individualmente (admite HORA, SESION y FIJO)
   const liquidarAuxiliar = async (fila) => {
     if (fila.liquidado) {
       alert(`Este auxiliar ya fue liquidado para este período.`);
@@ -396,8 +468,30 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
 
       if (error) throw error;
 
+      // Si es de modalidad FIJO y no tenía asistencias cargadas, generar una entrada en asistencias para que Descuentos por Prestador lo compute
+      if (fila.tipo_liq === 'FIJO' && fila.asistencias.length === 0) {
+        const ultimoDiaVal = new Date(parseInt(anio), parseInt(mes), 0).getDate();
+        const ultimoDia = `${anio}-${mes}-${String(ultimoDiaVal).padStart(2, '0')}`;
+
+        await supabase
+          .from('asistencia_auxiliares_motor')
+          .insert([{
+            fecha: ultimoDia,
+            id_auxiliar: fila.id_auxiliar,
+            nombre: fila.nombre,
+            tipo_liq: 'FIJO',
+            horas_trabajadas: 0,
+            sesiones: 1,
+            valor_hora: fila.totalCalculado,
+            valor_sesion: fila.totalCalculado,
+            obs: '[P_M: VIVIANA JIMENEZ|1] MONTO FIJO MENSUAL',
+            fecha_registro: new Date().toISOString()
+          }]);
+      }
+
       mostrarAlerta(`Liquidación de ${fila.nombre} ($${fila.totalCalculado.toLocaleString('es-AR')}) guardada con éxito.`, "exito");
       await cargarCierreMensual(mesSeleccionado);
+      await cargarDescuentosPrestadores(mesSeleccionado);
       await cargarAuxiliares();
       if (auxiliarSeleccionado && auxiliarSeleccionado.id_auxiliar === fila.id_auxiliar) {
         await cargarMovimientos(fila.id_auxiliar);
@@ -430,8 +524,23 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
 
       if (error) throw error;
 
+      // Si fue cargado como FIJO en asistencias para ese mes, eliminarlo también
+      const [anio, mes] = mesSeleccionado.split('-');
+      const primerDia = `${anio}-${mes}-01`;
+      const ultimoDiaVal = new Date(parseInt(anio), parseInt(mes), 0).getDate();
+      const ultimoDia = `${anio}-${mes}-${String(ultimoDiaVal).padStart(2, '0')}`;
+
+      await supabase
+        .from('asistencia_auxiliares_motor')
+        .delete()
+        .eq('id_auxiliar', fila.id_auxiliar)
+        .eq('tipo_liq', 'FIJO')
+        .gte('fecha', primerDia)
+        .lte('fecha', ultimoDia);
+
       mostrarAlerta(`Liquidación de ${fila.nombre} anulada correctamente.`, "exito");
       await cargarCierreMensual(mesSeleccionado);
+      await cargarDescuentosPrestadores(mesSeleccionado);
       await cargarAuxiliares();
       if (auxiliarSeleccionado && auxiliarSeleccionado.id_auxiliar === fila.id_auxiliar) {
         await cargarMovimientos(fila.id_auxiliar);
@@ -439,6 +548,101 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
     } catch (err) {
       console.error("Error al anular liquidación:", err);
       alert("Error al anular liquidación: " + err.message);
+    } finally {
+      setProcesandoAccion(false);
+    }
+  };
+
+  // Cargar liquidación fija personalizada (formulario modal)
+  const abrirModalMontoFijo = () => {
+    setModalMontoFijoAbierto(true);
+    setAuxiliarFijoId('');
+    setMontoFijoTx('');
+    setPrestadorFijoTx('');
+    setConceptoFijoTx('LIQUIDACION MONTO FIJO');
+  };
+
+  const confirmarLiquidacionFija = async () => {
+    if (!auxiliarFijoId) {
+      alert("Por favor seleccione un auxiliar.");
+      return;
+    }
+
+    const montoNum = parsearDecimal(montoFijoTx);
+    if (isNaN(montoNum) || montoNum <= 0) {
+      alert("Por favor ingrese un importe válido mayor a 0.");
+      return;
+    }
+
+    const [anio, mes] = mesSeleccionado.split('-');
+    const periodoFormateado = `${mes}/${anio}`;
+    const aux = auxiliares.find(x => String(x.id_auxiliar) === String(auxiliarFijoId));
+
+    // Verificar si ya está liquidado
+    const { data: yaExiste } = await supabase
+      .from('movauxiliares_motor')
+      .select('id_mov')
+      .eq('id_auxiliar', auxiliarFijoId)
+      .eq('concepto', 'LIQUIDACION')
+      .eq('periodo', periodoFormateado);
+
+    if (yaExiste && yaExiste.length > 0) {
+      alert(`Este auxiliar ya tiene una liquidación registrada para el período ${periodoFormateado}. Si desea cambiarla, anule la anterior.`);
+      return;
+    }
+
+    setProcesandoAccion(true);
+    try {
+      const nextId = await obtenerProximoIdMov();
+      const nuevoMov = {
+        id_mov: nextId,
+        id_auxiliar: Number(auxiliarFijoId),
+        fecha: fechaTrabajo,
+        concepto: 'LIQUIDACION',
+        periodo: periodoFormateado,
+        debe: montoNum,
+        haber: 0,
+        saldo: 0,
+        fecha_registro: new Date().toISOString()
+      };
+
+      const { error: errMov } = await supabase
+        .from('movauxiliares_motor')
+        .insert([nuevoMov]);
+
+      if (errMov) throw errMov;
+
+      // Registrar en asistencias para que se compute en "Descuentos por Prestador"
+      const ultimoDiaVal = new Date(parseInt(anio), parseInt(mes), 0).getDate();
+      const ultimoDia = `${anio}-${mes}-${String(ultimoDiaVal).padStart(2, '0')}`;
+      const prestadorFinal = prestadorFijoTx ? prestadorFijoTx.trim().toUpperCase() : 'VIVIANA JIMENEZ';
+
+      await supabase
+        .from('asistencia_auxiliares_motor')
+        .insert([{
+          fecha: ultimoDia,
+          id_auxiliar: Number(auxiliarFijoId),
+          nombre: aux?.nombre || 'AUXILIAR',
+          tipo_liq: 'FIJO',
+          horas_trabajadas: 0,
+          sesiones: 1,
+          valor_hora: montoNum,
+          valor_sesion: montoNum,
+          obs: `[P_M: ${prestadorFinal}|1] ${conceptoFijoTx || 'MONTO FIJO MENSUAL'}`,
+          fecha_registro: new Date().toISOString()
+        }]);
+
+      mostrarAlerta(`Liquidación de monto fijo para ${aux?.nombre || 'Auxiliar'} ($${montoNum.toLocaleString('es-AR')}) guardada con éxito.`, "exito");
+      setModalMontoFijoAbierto(false);
+      await cargarCierreMensual(mesSeleccionado);
+      await cargarDescuentosPrestadores(mesSeleccionado);
+      await cargarAuxiliares();
+      if (auxiliarSeleccionado && String(auxiliarSeleccionado.id_auxiliar) === String(auxiliarFijoId)) {
+        await cargarMovimientos(auxiliarFijoId);
+      }
+    } catch (err) {
+      console.error("Error al registrar liquidación fija:", err);
+      alert("Error al registrar liquidación fija: " + err.message);
     } finally {
       setProcesandoAccion(false);
     }
@@ -534,8 +738,21 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
 
       if (error) throw error;
 
+      // Eliminar también filas de asistencias FIJO para este mes
+      const primerDia = `${anio}-${mes}-01`;
+      const ultimoDiaVal = new Date(parseInt(anio), parseInt(mes), 0).getDate();
+      const ultimoDia = `${anio}-${mes}-${String(ultimoDiaVal).padStart(2, '0')}`;
+
+      await supabase
+        .from('asistencia_auxiliares_motor')
+        .delete()
+        .eq('tipo_liq', 'FIJO')
+        .gte('fecha', primerDia)
+        .lte('fecha', ultimoDia);
+
       mostrarAlerta(`Se anularon todas las liquidaciones del mes ${periodoFormateado}.`, "exito");
       await cargarCierreMensual(mesSeleccionado);
+      await cargarDescuentosPrestadores(mesSeleccionado);
       await cargarAuxiliares();
       if (auxiliarSeleccionado) {
         await cargarMovimientos(auxiliarSeleccionado.id_auxiliar);
@@ -734,15 +951,24 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
 
       (asistencias || []).forEach(asist => {
         const auxiliarNombre = (asist.nombre || 'AUXILIAR').trim().toUpperCase();
-        const tarifa = asist.tipo_liq === 'HORA' ? parsearDecimal(asist.valor_hora) || 0 : parsearDecimal(asist.valor_sesion) || 0;
-        const cantidad = asist.tipo_liq === 'HORA' ? parsearDecimal(asist.horas_trabajadas) || 0 : parsearDecimal(asist.sesiones) || 0;
-        const costoFila = tarifa * cantidad;
+        let costoFila = 0;
+
+        if (asist.tipo_liq === 'FIJO') {
+          costoFila = parsearDecimal(asist.valor_sesion || asist.valor_hora) || 0;
+        } else {
+          const tarifa = asist.tipo_liq === 'HORA' ? parsearDecimal(asist.valor_hora) || 0 : parsearDecimal(asist.valor_sesion) || 0;
+          const cantidad = asist.tipo_liq === 'HORA' ? parsearDecimal(asist.horas_trabajadas) || 0 : parsearDecimal(asist.sesiones) || 0;
+          costoFila = tarifa * cantidad;
+        }
 
         if (costoFila <= 0) return;
 
         const parsed = parsearPrestadoresObs(asist.obs);
 
-        if (asist.tipo_liq === 'HORA') {
+        if (asist.tipo_liq === 'FIJO') {
+          const doctorAsignado = parsed.prestadorM1 || 'VIVIANA JIMENEZ';
+          acumularDeuda(doctorAsignado, auxiliarNombre, costoFila);
+        } else if (asist.tipo_liq === 'HORA') {
           const diffM = calcularMins(asist.hora_entrada_m, asist.hora_salida_m);
           const diffT = calcularMins(asist.hora_entrada_t, asist.hora_salida_t);
           const totalDiff = diffM + diffT;
@@ -843,7 +1069,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
             💰 Planilla de Liquidación de Auxiliares
           </h2>
           <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
-            Cierre mensual de haberes, cuentas corrientes individuales y cálculo de descuentos por prestador.
+            Cierre mensual de haberes (por hora, sesión o monto fijo), cuentas corrientes individuales y descuentos a prestadores.
           </p>
         </div>
         <button
@@ -966,7 +1192,27 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
               </button>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                onClick={abrirModalMontoFijo}
+                style={{
+                  background: '#7e22ce',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '9px 18px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '13.5px',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 2px 4px rgba(126,34,206,0.2)'
+                }}
+              >
+                💼 Cargar Monto Fijo
+              </button>
+
               <button
                 onClick={liquidarTodosPendientes}
                 disabled={procesandoAccion || cargandoMes || totalMesPendiente <= 0}
@@ -1017,7 +1263,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
                 ${totalMesCalculado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
               </div>
               <span style={{ fontSize: '11px', color: '#3b82f6' }}>
-                {filasMes.length} auxiliares con asistencias
+                {filasMes.length} auxiliares a liquidar
               </span>
             </div>
 
@@ -1050,7 +1296,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
                 Estado General
               </span>
               <div style={{ fontSize: '16px', fontWeight: 'bold', color: totalMesPendiente === 0 && filasMes.length > 0 ? '#15803d' : '#0f172a', marginTop: '8px' }}>
-                {filasMes.length === 0 ? 'Sin Asistencias' : totalMesPendiente === 0 ? '✅ Mes 100% Liquidado' : '🟡 Liquidación en Curso'}
+                {filasMes.length === 0 ? 'Sin Auxiliares' : totalMesPendiente === 0 ? '✅ Mes 100% Liquidado' : '🟡 Liquidación en Curso'}
               </div>
               <span style={{ fontSize: '11px', color: '#64748b' }}>
                 Período: {formatearMesLabel(mesSeleccionado)}
@@ -1062,10 +1308,10 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
           <div style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '12px', overflow: 'hidden' }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
               <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold', color: '#0f172a' }}>
-                📋 Auxiliares con Asistencias en {formatearMesLabel(mesSeleccionado)}
+                📋 Auxiliares a Liquidar en {formatearMesLabel(mesSeleccionado)}
               </h3>
               <span style={{ fontSize: '12px', color: '#64748b' }}>
-                Hacé clic en <b>"👁️ Ver Días"</b> para verificar los días y horarios trabajados antes de confirmar.
+                Incluye cobro por hora, por sesión y montos fijos mensuales.
               </span>
             </div>
 
@@ -1075,7 +1321,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
               </div>
             ) : filasMes.length === 0 ? (
               <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', fontStyle: 'italic' }}>
-                No se registraron jornadas de asistencia para los auxiliares en {formatearMesLabel(mesSeleccionado)}.
+                No se registraron jornadas de asistencia ni montos fijos en {formatearMesLabel(mesSeleccionado)}.
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
@@ -1084,7 +1330,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
                     <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1', color: '#475569' }}>
                       <th style={{ padding: '12px 14px' }}>Auxiliar</th>
                       <th style={{ padding: '12px 14px' }}>Modalidad</th>
-                      <th style={{ padding: '12px 14px' }}>Jornadas / Asistencias</th>
+                      <th style={{ padding: '12px 14px' }}>Detalle de Actividad</th>
                       <th style={{ padding: '12px 14px', textAlign: 'right' }}>Tarifa Unit.</th>
                       <th style={{ padding: '12px 14px', textAlign: 'right' }}>Total del Mes</th>
                       <th style={{ padding: '12px 14px', textAlign: 'center' }}>Estado</th>
@@ -1098,15 +1344,34 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
                           👤 {fila.nombre}
                         </td>
                         <td style={{ padding: '12px 14px' }}>
-                          <span style={{ fontSize: '11.5px', fontWeight: 'bold', padding: '3px 8px', borderRadius: '4px', background: fila.tipo_liq === 'HORA' ? '#e0f2fe' : '#fef3c7', color: fila.tipo_liq === 'HORA' ? '#0369a1' : '#b45309' }}>
+                          <span style={{
+                            fontSize: '11.5px',
+                            fontWeight: 'bold',
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            background: fila.tipo_liq === 'FIJO' ? '#f3e8ff' : (fila.tipo_liq === 'HORA' ? '#e0f2fe' : '#fef3c7'),
+                            color: fila.tipo_liq === 'FIJO' ? '#7e22ce' : (fila.tipo_liq === 'HORA' ? '#0369a1' : '#b45309')
+                          }}>
                             {fila.tipo_liq}
                           </span>
                         </td>
                         <td style={{ padding: '12px 14px', color: '#334155' }}>
-                          {fila.dias} días trabajados • {fila.tipo_liq === 'HORA' ? `${fila.totalHoras.toFixed(2)} hs` : `${fila.totalSesiones} sesiones`}
+                          {fila.tipo_liq === 'FIJO' ? (
+                            <span style={{ color: '#7e22ce', fontWeight: '600' }}>
+                              💼 Honorario Fijo Mensual (Sin horas ni pacientes)
+                            </span>
+                          ) : (
+                            `${fila.dias} días trabajados • ${fila.tipo_liq === 'HORA' ? `${fila.totalHoras.toFixed(2)} hs` : `${fila.totalSesiones} sesiones`}`
+                          )}
                         </td>
                         <td style={{ padding: '12px 14px', textAlign: 'right', color: '#64748b' }}>
-                          ${fila.tarifa ? fila.tarifa.toLocaleString('es-AR') : 0}
+                          {fila.tipo_liq === 'FIJO' ? (
+                            <span style={{ color: '#7e22ce', fontWeight: '600' }}>
+                              ${fila.tarifa ? fila.tarifa.toLocaleString('es-AR') : 0} / mes
+                            </span>
+                          ) : (
+                            `$${fila.tarifa ? fila.tarifa.toLocaleString('es-AR') : 0}`
+                          )}
                         </td>
                         <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 'bold', fontSize: '14.5px', color: '#0f172a' }}>
                           ${fila.totalCalculado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
@@ -1127,9 +1392,9 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
                             <button
                               onClick={() => setModalDetalleDias({ auxiliar: fila, asistencias: fila.asistencias })}
                               style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '5px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
-                              title="Ver desglose día por día"
+                              title="Ver detalle de asistencias"
                             >
-                              👁️ Ver Días
+                              👁️ Ver Detalle
                             </button>
 
                             {fila.liquidado ? (
@@ -1544,6 +1809,140 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
       )}
 
       {/* ================================================================= */}
+      {/* MODAL: CARGAR LIQUIDACIÓN DE MONTO FIJO */}
+      {/* ================================================================= */}
+      {modalMontoFijoAbierto && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 99999
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: '16px',
+            width: '90%',
+            maxWidth: '520px',
+            padding: '25px',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '20px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 'bold', color: '#0f172a' }}>
+                  💼 Liquidar Monto Fijo Mensual
+                </h3>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>
+                  Período: {formatearMesLabel(mesSeleccionado)}
+                </span>
+              </div>
+              <button
+                onClick={() => setModalMontoFijoAbierto(false)}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#94a3b8' }}
+              >
+                &times;
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
+                Seleccione el Auxiliar *
+              </label>
+              <select
+                value={auxiliarFijoId}
+                onChange={(e) => {
+                  const idSel = e.target.value;
+                  setAuxiliarFijoId(idSel);
+                  const auxEncontrado = auxiliares.find(x => String(x.id_auxiliar) === String(idSel));
+                  if (auxEncontrado && (auxEncontrado.valor_hora || auxEncontrado.valor_sesion)) {
+                    setMontoFijoTx(String(auxEncontrado.valor_hora || auxEncontrado.valor_sesion));
+                  }
+                }}
+                style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', background: '#fff' }}
+              >
+                <option value="">-- Seleccione un Auxiliar --</option>
+                {auxiliares.map(a => (
+                  <option key={a.id_auxiliar} value={a.id_auxiliar}>
+                    👤 {a.nombre} ({a.tipo_liq})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
+                Monto Fijo a Liquidar ($) *
+              </label>
+              <input
+                type="number"
+                value={montoFijoTx}
+                onChange={(e) => setMontoFijoTx(e.target.value)}
+                placeholder="Ej: 250000"
+                style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px' }}
+              />
+              <span style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', display: 'block' }}>
+                Este monto se imputará al Debe del auxiliar como su liquidación del mes.
+              </span>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
+                Prestador a quien Descontar el Costo (Opcional)
+              </label>
+              <select
+                value={prestadorFijoTx}
+                onChange={(e) => setPrestadorFijoTx(e.target.value)}
+                style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', background: '#fff' }}
+              >
+                <option value="">-- Por defecto: VIVIANA JIMENEZ --</option>
+                {listaPrestadores.map(p => (
+                  <option key={p.id} value={p.nombre}>{p.nombre}</option>
+                ))}
+              </select>
+              <span style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', display: 'block' }}>
+                Si este auxiliar asiste a un profesional específico (ej. Paula Véliz), selecciónelo para que figure en la pestaña "Descuentos por Prestador".
+              </span>
+            </div>
+
+            <div style={{ marginBottom: '22px' }}>
+              <label style={{ display: 'block', fontSize: '12.5px', color: '#475569', marginBottom: '6px' }}>
+                Concepto / Observación
+              </label>
+              <input
+                type="text"
+                value={conceptoFijoTx}
+                onChange={(e) => setConceptoFijoTx(e.target.value)}
+                placeholder="Ej: HONORARIO MENSUAL FIJO"
+                style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => setModalMontoFijoAbierto(false)}
+                disabled={procesandoAccion}
+                style={{ padding: '9px 18px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmarLiquidacionFija}
+                disabled={procesandoAccion}
+                style={{ padding: '9px 20px', background: '#7e22ce', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
+              >
+                {procesandoAccion ? 'Guardando...' : 'Confirmar Liquidación Fija'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================= */}
       {/* MODAL DESPLEGABLE: VER DETALLE DE DÍAS TRABAJADOS */}
       {/* ================================================================= */}
       {modalDetalleDias && (
@@ -1588,53 +1987,70 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
             </div>
 
             <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-                <thead>
-                  <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1', color: '#475569' }}>
-                    <th style={{ padding: '10px' }}>Fecha</th>
-                    <th style={{ padding: '10px' }}>Turno Mañana</th>
-                    <th style={{ padding: '10px' }}>Turno Tarde</th>
-                    <th style={{ padding: '10px', textAlign: 'center' }}>Cantidad</th>
-                    <th style={{ padding: '10px', textAlign: 'right' }}>Tarifa</th>
-                    <th style={{ padding: '10px', textAlign: 'right' }}>Subtotal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {modalDetalleDias.asistencias.map((asist, idx) => {
-                    const tarifa = asist.tipo_liq === 'HORA' ? parsearDecimal(asist.valor_hora) || 0 : parsearDecimal(asist.valor_sesion) || 0;
-                    const cantidad = asist.tipo_liq === 'HORA' ? parsearDecimal(asist.horas_trabajadas) || 0 : parsearDecimal(asist.sesiones) || 0;
-                    const subtotal = tarifa * cantidad;
+              {modalDetalleDias.auxiliar.tipo_liq === 'FIJO' && modalDetalleDias.asistencias.length === 0 ? (
+                <div style={{ padding: '30px', background: '#fdf4ff', border: '1px solid #f0abfc', borderRadius: '12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '32px', marginBottom: '10px' }}>💼</div>
+                  <h4 style={{ margin: '0 0 8px 0', color: '#7e22ce', fontSize: '16px', fontWeight: 'bold' }}>
+                    Modalidad: Monto Fijo Mensual
+                  </h4>
+                  <p style={{ margin: 0, color: '#4a044e', fontSize: '14px', lineHeight: '1.5' }}>
+                    Este auxiliar percibe un honorario fijo mensual acordado de <strong>${modalDetalleDias.auxiliar.totalCalculado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong>.<br />
+                    No requiere registro diario de asistencias, horarios de entrada/salida ni asignación de pacientes individuales.
+                  </p>
+                </div>
+              ) : modalDetalleDias.asistencias.length === 0 ? (
+                <p style={{ textAlign: 'center', color: '#64748b', fontStyle: 'italic', padding: '30px' }}>
+                  No se registran asistencias detalladas para este auxiliar en el período seleccionado.
+                </p>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1', color: '#475569' }}>
+                      <th style={{ padding: '10px' }}>Fecha</th>
+                      <th style={{ padding: '10px' }}>Turno Mañana</th>
+                      <th style={{ padding: '10px' }}>Turno Tarde</th>
+                      <th style={{ padding: '10px', textAlign: 'center' }}>Cantidad</th>
+                      <th style={{ padding: '10px', textAlign: 'right' }}>Tarifa</th>
+                      <th style={{ padding: '10px', textAlign: 'right' }}>Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {modalDetalleDias.asistencias.map((asist, idx) => {
+                      const tarifa = asist.tipo_liq === 'HORA' ? parsearDecimal(asist.valor_hora) || 0 : parsearDecimal(asist.valor_sesion) || 0;
+                      const cantidad = asist.tipo_liq === 'HORA' ? parsearDecimal(asist.horas_trabajadas) || 0 : parsearDecimal(asist.sesiones) || 0;
+                      const subtotal = asist.tipo_liq === 'FIJO' ? (tarifa || parsearDecimal(asist.valor_hora)) : tarifa * cantidad;
 
-                    return (
-                      <tr key={asist.id_registro || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '10px', fontWeight: '600', color: '#1e293b', whiteSpace: 'nowrap' }}>
-                          {asist.fecha ? new Date(asist.fecha + 'T00:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' }) : '-'}
-                        </td>
-                        <td style={{ padding: '10px', color: '#64748b' }}>
-                          {asist.hora_entrada_m ? `${asist.hora_entrada_m.slice(0, 5)} a ${asist.hora_salida_m?.slice(0, 5) || ''}` : '-'}
-                        </td>
-                        <td style={{ padding: '10px', color: '#64748b' }}>
-                          {asist.hora_entrada_t ? `${asist.hora_entrada_t.slice(0, 5)} a ${asist.hora_salida_t?.slice(0, 5) || ''}` : '-'}
-                        </td>
-                        <td style={{ padding: '10px', textAlign: 'center', fontWeight: 'bold' }}>
-                          {cantidad} {asist.tipo_liq === 'HORA' ? 'hs' : 'ses'}
-                        </td>
-                        <td style={{ padding: '10px', textAlign: 'right', color: '#64748b' }}>
-                          ${tarifa.toLocaleString('es-AR')}
-                        </td>
-                        <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: '#0f172a' }}>
-                          ${subtotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                      return (
+                        <tr key={asist.id_registro || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '10px', fontWeight: '600', color: '#1e293b', whiteSpace: 'nowrap' }}>
+                            {asist.fecha ? new Date(asist.fecha + 'T00:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' }) : '-'}
+                          </td>
+                          <td style={{ padding: '10px', color: '#64748b' }}>
+                            {asist.hora_entrada_m ? `${asist.hora_entrada_m.slice(0, 5)} a ${asist.hora_salida_m?.slice(0, 5) || ''}` : '-'}
+                          </td>
+                          <td style={{ padding: '10px', color: '#64748b' }}>
+                            {asist.hora_entrada_t ? `${asist.hora_entrada_t.slice(0, 5)} a ${asist.hora_salida_t?.slice(0, 5) || ''}` : '-'}
+                          </td>
+                          <td style={{ padding: '10px', textAlign: 'center', fontWeight: 'bold' }}>
+                            {asist.tipo_liq === 'FIJO' ? 'Monto Fijo' : `${cantidad} ${asist.tipo_liq === 'HORA' ? 'hs' : 'ses'}`}
+                          </td>
+                          <td style={{ padding: '10px', textAlign: 'right', color: '#64748b' }}>
+                            ${tarifa.toLocaleString('es-AR')}
+                          </td>
+                          <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: '#0f172a' }}>
+                            ${subtotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
             </div>
 
             <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <span style={{ fontSize: '13px', color: '#64748b' }}>Total acumulado del mes: </span>
+                <span style={{ fontSize: '13px', color: '#64748b' }}>Total del mes: </span>
                 <strong style={{ fontSize: '16px', color: '#15803d' }}>
                   ${modalDetalleDias.auxiliar.totalCalculado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                 </strong>

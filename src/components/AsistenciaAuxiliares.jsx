@@ -59,6 +59,7 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
   const [tipoLiqAux, setTipoLiqAux] = useState('HORA');
   const [valorHoraAux, setValorHoraAux] = useState('');
   const [valorSesionAux, setValorSesionAux] = useState('');
+  const [valorFijoAux, setValorFijoAux] = useState('');
   const [guardandoAux, setGuardandoAux] = useState(false);
 
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' });
@@ -612,11 +613,13 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
       setTipoLiqAux(aux.tipo_liq || 'HORA');
       setValorHoraAux(aux.valor_hora ? String(aux.valor_hora) : '');
       setValorSesionAux(aux.valor_sesion ? String(aux.valor_sesion) : '');
+      setValorFijoAux(aux.tipo_liq === 'FIJO' ? String(aux.valor_hora || aux.valor_sesion || '') : '');
     } else {
       setNombreAux('');
       setTipoLiqAux('HORA');
       setValorHoraAux('');
       setValorSesionAux('');
+      setValorFijoAux('');
     }
     setModalAuxiliarAbierto(true);
   };
@@ -649,8 +652,8 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
         id_auxiliar: idAuxInsert,
         nombre: nombreAux.toUpperCase(),
         tipo_liq: tipoLiqAux,
-        valor_hora: tipoLiqAux === 'HORA' ? parsearDecimal(valorHoraAux) || 0 : null,
-        valor_sesion: tipoLiqAux === 'SESION' ? parsearDecimal(valorSesionAux) || 0 : null,
+        valor_hora: tipoLiqAux === 'FIJO' ? parsearDecimal(valorFijoAux) || 0 : (tipoLiqAux === 'HORA' ? parsearDecimal(valorHoraAux) || 0 : null),
+        valor_sesion: tipoLiqAux === 'FIJO' ? parsearDecimal(valorFijoAux) || 0 : (tipoLiqAux === 'SESION' ? parsearDecimal(valorSesionAux) || 0 : null),
         fecha_registro: new Date().toISOString()
       };
 
@@ -985,6 +988,10 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                                   </button>
                                 )}
                               </div>
+                            ) : aux.tipo_liq === 'FIJO' ? (
+                              <span style={{ fontSize: '11px', color: '#7e22ce', background: '#f3e8ff', border: '1px solid #e9d5ff', padding: '5px 10px', borderRadius: '6px', fontWeight: 'bold', display: 'inline-block' }}>
+                                💼 Monto Fijo Mensual
+                              </span>
                             ) : (
                               <button
                                 onClick={() => abrirFormularioAsistencia(aux)}
@@ -1036,15 +1043,30 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                         {aux.nombre}
                       </td>
                       <td style={{ padding: '12px 10px' }}>
-                        <span style={{ fontSize: '11px', background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold' }}>
+                        <span style={{
+                          fontSize: '11px',
+                          background: aux.tipo_liq === 'FIJO' ? '#f3e8ff' : aux.tipo_liq === 'HORA' ? '#e0f2fe' : '#fef3c7',
+                          color: aux.tipo_liq === 'FIJO' ? '#7e22ce' : aux.tipo_liq === 'HORA' ? '#0369a1' : '#b45309',
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          fontWeight: 'bold'
+                        }}>
                           {aux.tipo_liq}
                         </span>
                       </td>
                       <td style={{ padding: '12px 10px', textAlign: 'right', fontWeight: '600' }}>
-                        {aux.valor_hora ? `$${parsearDecimal(aux.valor_hora).toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
+                        {aux.tipo_liq === 'FIJO' ? (
+                          <span style={{ color: '#7e22ce', fontWeight: 'bold' }}>
+                            ${parsearDecimal(aux.valor_hora || aux.valor_sesion).toLocaleString('es-AR', { minimumFractionDigits: 2 })} / mes
+                          </span>
+                        ) : (
+                          aux.valor_hora ? `$${parsearDecimal(aux.valor_hora).toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'
+                        )}
                       </td>
                       <td style={{ padding: '12px 10px', textAlign: 'right', fontWeight: '600' }}>
-                        {aux.valor_sesion ? `$${parsearDecimal(aux.valor_sesion).toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
+                        {aux.tipo_liq === 'FIJO' ? '-' : (
+                          aux.valor_sesion ? `$${parsearDecimal(aux.valor_sesion).toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'
+                        )}
                       </td>
                       <td style={{ padding: '12px 10px', textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
@@ -1813,10 +1835,11 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
               >
                 <option value="HORA">Por Horas Trabajadas (HORA)</option>
                 <option value="SESION">Por Sesiones Realizadas (SESION)</option>
+                <option value="FIJO">Monto Fijo Mensual (FIJO)</option>
               </select>
             </div>
 
-            {tipoLiqAux === 'HORA' ? (
+            {tipoLiqAux === 'HORA' && (
               <div style={{ marginBottom: '20px' }}>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>Valor Hora Predeterminado ($)</label>
                 <input
@@ -1827,7 +1850,9 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                   style={{ width: '100%', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
                 />
               </div>
-            ) : (
+            )}
+
+            {tipoLiqAux === 'SESION' && (
               <div style={{ marginBottom: '20px' }}>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>Valor Sesión Predeterminado ($)</label>
                 <input
@@ -1837,6 +1862,22 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                   placeholder="Ej: 3500"
                   style={{ width: '100%', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
                 />
+              </div>
+            )}
+
+            {tipoLiqAux === 'FIJO' && (
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>Monto Fijo Mensual ($)</label>
+                <input
+                  type="number"
+                  value={valorFijoAux}
+                  onChange={(e) => setValorFijoAux(e.target.value)}
+                  placeholder="Ej: 250000"
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+                />
+                <span style={{ fontSize: '11px', color: '#7e22ce', display: 'block', marginTop: '4px' }}>
+                  💡 Este auxiliar cobrará este importe fijo en la liquidación mensual, sin necesidad de cargar horas ni sesiones diarias.
+                </span>
               </div>
             )}
 
