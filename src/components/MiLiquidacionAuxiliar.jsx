@@ -49,42 +49,30 @@ const normalizarTexto = (txt) => {
     .trim();
 };
 
-const encontrarAuxiliar = (usuarioNombre, listaAuxiliares) => {
-  if (!usuarioNombre || !listaAuxiliares || listaAuxiliares.length === 0) return null;
+const encontrarTodosAuxiliares = (usuarioNombre, listaAuxiliares) => {
+  if (!usuarioNombre || !listaAuxiliares || listaAuxiliares.length === 0) return [];
   const userNorm = normalizarTexto(usuarioNombre);
   const userWords = userNorm.split(/\s+/).filter(w => w.length >= 2);
 
-  // 1. Coincidencia exacta normalizada
-  for (const a of listaAuxiliares) {
-    if (normalizarTexto(a.nombre) === userNorm) return a;
-  }
+  const matched = [];
 
-  // 2. Todas las palabras del usuario están contenidas en el nombre del auxiliar
   for (const a of listaAuxiliares) {
-    const auxWords = normalizarTexto(a.nombre).split(/\s+/).filter(w => w.length >= 2);
-    if (userWords.length > 0 && userWords.every(w => auxWords.includes(w))) {
-      return a;
+    const auxNorm = normalizarTexto(a.nombre);
+    const auxWords = auxNorm.split(/\s+/).filter(w => w.length >= 2);
+
+    const isExact = (userNorm === auxNorm);
+    const allWordsMatch = (userWords.length > 0 && userWords.every(w => auxWords.includes(w)));
+    const twoWordsMatch = (userWords.filter(w => auxWords.includes(w)).length >= 2);
+    const inverseAllMatch = (auxWords.length > 0 && auxWords.every(w => userWords.includes(w)));
+
+    if (isExact || allWordsMatch || twoWordsMatch || inverseAllMatch) {
+      if (!matched.some(m => m.id_auxiliar === a.id_auxiliar)) {
+        matched.push(a);
+      }
     }
   }
 
-  // 3. Al menos 2 palabras coinciden
-  for (const a of listaAuxiliares) {
-    const auxWords = normalizarTexto(a.nombre).split(/\s+/).filter(w => w.length >= 2);
-    const matches = userWords.filter(w => auxWords.includes(w));
-    if (matches.length >= 2) {
-      return a;
-    }
-  }
-
-  // 4. Búsqueda inversa: palabras del auxiliar contenidas en el usuario
-  for (const a of listaAuxiliares) {
-    const auxWords = normalizarTexto(a.nombre).split(/\s+/).filter(w => w.length >= 2);
-    if (auxWords.length > 0 && auxWords.every(w => userWords.includes(w))) {
-      return a;
-    }
-  }
-
-  return null;
+  return matched;
 };
 
 export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = false, onCerrar }) {
@@ -99,6 +87,7 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
   // Estados de datos del auxiliar
   const [cargandoAuxiliares, setCargandoAuxiliares] = useState(true);
   const [listaAuxiliares, setListaAuxiliares] = useState([]);
+  const [misPerfiles, setMisPerfiles] = useState([]);
   const [miAuxiliar, setMiAuxiliar] = useState(null);
   const [errorVinculacion, setErrorVinculacion] = useState(null);
 
@@ -175,21 +164,50 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
 
       // Si es un auxiliar regular, vincular obligatoriamente su identidad
       if (!esSupervisor) {
-        const matched = encontrarAuxiliar(userData?.nombre, auxList);
-        if (matched) {
-          setMiAuxiliar(matched);
+        const matched = encontrarTodosAuxiliares(userData?.nombre, auxList);
+        setMisPerfiles(matched);
+        if (matched.length > 0) {
+          let perfilActivo = matched[0];
+          if (matched.length > 1) {
+            try {
+              const ids = matched.map(m => m.id_auxiliar);
+              const { data: ultMovs } = await supabase
+                .from('movauxiliares_motor')
+                .select('id_auxiliar, fecha')
+                .in('id_auxiliar', ids)
+                .order('fecha', { ascending: false })
+                .order('id_mov', { ascending: false })
+                .limit(1);
+
+              if (ultMovs && ultMovs.length > 0) {
+                const found = matched.find(m => m.id_auxiliar === ultMovs[0].id_auxiliar);
+                if (found) perfilActivo = found;
+              } else {
+                const horaProf = matched.find(m => m.tipo_liq === 'HORA');
+                if (horaProf) perfilActivo = horaProf;
+              }
+            } catch (e) {
+              console.error("Error al determinar perfil activo:", e);
+            }
+          }
+          setMiAuxiliar(perfilActivo);
         } else {
           setErrorVinculacion(
             `No se encontró una cuenta de auxiliar vinculada al usuario "${userData?.nombre || 'Usuario'}". Por favor comuníquese con Administración para asociar su cuenta.`
           );
         }
       } else {
-        // Si es supervisor (Dirección / Administración), vincular por defecto al primer auxiliar o al que coincida si es uno de ellos
-        const matched = encontrarAuxiliar(userData?.nombre, auxList);
-        if (matched) {
-          setMiAuxiliar(matched);
+        // Si es supervisor (Dirección / Administración), vincular por defecto
+        const matched = encontrarTodosAuxiliares(userData?.nombre, auxList);
+        if (matched.length > 0) {
+          setMisPerfiles(matched);
+          const act = matched.find(m => m.tipo_liq === 'HORA') || matched[0];
+          setMiAuxiliar(act);
         } else if (auxList.length > 0) {
-          setMiAuxiliar(auxList[0]);
+          const primero = auxList[0];
+          const todosPrimero = encontrarTodosAuxiliares(primero.nombre, auxList);
+          setMisPerfiles(todosPrimero);
+          setMiAuxiliar(primero);
         }
       }
     } catch (err) {
@@ -467,22 +485,57 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
             <h2 style={{ margin: 0, fontSize: '19px', color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span>💰</span> Mi Liquidación y Horas Trabajadas
             </h2>
-            <p style={{ margin: '3px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
-              Auxiliar: <strong style={{ color: '#38bdf8' }}>{miAuxiliar ? miAuxiliar.nombre : 'Buscando...'}</strong>
-              {miAuxiliar && (
-                <span style={{
-                  marginLeft: '8px',
-                  padding: '2px 8px',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  fontWeight: 'bold',
-                  background: miAuxiliar.tipo_liq === 'FIJO' ? '#f59e0b' : '#0ea5e9',
-                  color: '#fff'
-                }}>
-                  MODALIDAD {miAuxiliar.tipo_liq}
-                </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '4px' }}>
+              <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8' }}>
+                Auxiliar: <strong style={{ color: '#38bdf8' }}>{miAuxiliar ? miAuxiliar.nombre : 'Buscando...'}</strong>
+                {miAuxiliar && (
+                  <span style={{
+                    marginLeft: '8px',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    background: miAuxiliar.tipo_liq === 'FIJO' ? '#f59e0b' : '#0ea5e9',
+                    color: '#fff'
+                  }}>
+                    MODALIDAD {miAuxiliar.tipo_liq}
+                  </span>
+                )}
+              </p>
+
+              {/* Botones para alternar entre modalidades si el auxiliar trabaja tanto por Horas como por Sesión */}
+              {misPerfiles.length > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#0f172a', padding: '3px 8px', borderRadius: '8px', border: '1px solid #334155' }}>
+                  <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'bold' }}>Cambiar a:</span>
+                  {misPerfiles.map(p => {
+                    const activo = miAuxiliar?.id_auxiliar === p.id_auxiliar;
+                    return (
+                      <button
+                        key={p.id_auxiliar}
+                        onClick={() => setMiAuxiliar(p)}
+                        style={{
+                          padding: '3px 10px',
+                          borderRadius: '6px',
+                          border: activo ? '1px solid #10b981' : '1px solid #475569',
+                          background: activo ? '#064e3b' : '#1e293b',
+                          color: activo ? '#6ee7b7' : '#94a3b8',
+                          fontWeight: 'bold',
+                          fontSize: '11px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <span>{p.tipo_liq === 'HORA' ? '⏱️' : '📋'}</span>
+                        {p.tipo_liq === 'HORA' ? 'Por Horas' : 'Por Sesiones'}
+                        {activo && <span style={{ fontSize: '9px', background: '#10b981', color: '#000', padding: '0 4px', borderRadius: '3px', fontWeight: '900' }}>✓ ACTIVO</span>}
+                      </button>
+                    );
+                  })}
+                </div>
               )}
-            </p>
+            </div>
           </div>
         </div>
 
@@ -494,7 +547,11 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
               value={miAuxiliar ? miAuxiliar.id_auxiliar : ''}
               onChange={(e) => {
                 const target = listaAuxiliares.find(x => String(x.id_auxiliar) === String(e.target.value));
-                if (target) setMiAuxiliar(target);
+                if (target) {
+                  setMiAuxiliar(target);
+                  const related = encontrarTodosAuxiliares(target.nombre, listaAuxiliares);
+                  setMisPerfiles(related);
+                }
               }}
               style={{
                 background: '#1e293b',
