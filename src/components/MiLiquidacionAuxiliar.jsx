@@ -75,6 +75,25 @@ const encontrarTodosAuxiliares = (usuarioNombre, listaAuxiliares) => {
   return matched;
 };
 
+// Extraer lista de IDs de pacientes y limpiar texto de observaciones
+const extraerDetallesObs = (obsText) => {
+  if (!obsText) return { pacsIds: [], textoLimpio: '' };
+  let pacsIds = [];
+  let limpia = String(obsText);
+
+  const matchP = limpia.match(/\[PACS:\s*([^\]]+)\]/i);
+  if (matchP) {
+    pacsIds = matchP[1]
+      .split(',')
+      .map(s => parseInt(s.trim(), 10))
+      .filter(n => !isNaN(n) && n > 0);
+    limpia = limpia.replace(matchP[0], '');
+  }
+
+  limpia = limpia.replace(/\[P_M:[^\]]+\]/gi, '').replace(/\[P_T:[^\]]+\]/gi, '').trim();
+  return { pacsIds, textoLimpio: limpia };
+};
+
 export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = false, onCerrar }) {
   const rol = (userData?.rol || '').toUpperCase();
   const esSupervisor = ['ADMINISTRACION', 'DIRECCION'].includes(rol);
@@ -90,6 +109,10 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
   const [misPerfiles, setMisPerfiles] = useState([]);
   const [miAuxiliar, setMiAuxiliar] = useState(null);
   const [errorVinculacion, setErrorVinculacion] = useState(null);
+
+  // Maestro de pacientes para resolver nombres a partir de IDs
+  const [mapaPacientes, setMapaPacientes] = useState({});
+  const [modalPacientesData, setModalPacientesData] = useState(null);
 
   // Pestañas
   const [pestañaActiva, setPestañaActiva] = useState('mes_en_curso'); // 'mes_en_curso' o 'cuenta_corriente'
@@ -120,11 +143,29 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
   const [cargandoDetalleHistorico, setCargandoDetalleHistorico] = useState(false);
   const [asistenciasHistorico, setAsistenciasHistorico] = useState([]);
 
-  // 1. Inicializar auxiliares y vincular identidad
+  // 1. Inicializar auxiliares, pacientes y vincular identidad
   useEffect(() => {
     cargarAuxiliares();
+    cargarPacientesMaestro();
     generarPeriodosDisponibles();
   }, [userData]);
+
+  const cargarPacientesMaestro = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('pacientes_motor')
+        .select('id_paciente, nombre_apellido, dni, obra_social');
+      if (!error && data) {
+        const map = {};
+        data.forEach(p => {
+          map[p.id_paciente] = p;
+        });
+        setMapaPacientes(map);
+      }
+    } catch (e) {
+      console.error("Error al cargar maestro de pacientes:", e);
+    }
+  };
 
   // 2. Al cambiar el auxiliar activo o el mes seleccionado
   useEffect(() => {
@@ -361,6 +402,58 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
     }
   };
 
+  // Renderizar celda de observaciones con botón interactivo de pacientes si corresponde
+  const renderCeldaObservaciones = (a) => {
+    const { pacsIds, textoLimpio } = extraerDetallesObs(a.obs);
+    if (pacsIds.length > 0) {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              const lista = pacsIds.map(id => mapaPacientes[id] || { id_paciente: id, nombre_apellido: `Paciente #${id}`, dni: 'S/D', obra_social: 'S/D' });
+              const fechaObj = new Date(a.fecha + 'T00:00:00');
+              const diaSem = nombresDias[fechaObj.getDay()] || '';
+              const parts = a.fecha.split('-');
+              const fechaFormat = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : a.fecha;
+              setModalPacientesData({
+                fecha: fechaFormat,
+                diaSemana: diaSem,
+                pacientes: lista,
+                textoLimpio,
+                totalSesiones: a.sesiones || pacsIds.length
+              });
+            }}
+            style={{
+              background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+              color: '#ffffff',
+              border: '1px solid #38bdf8',
+              padding: '5px 12px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '11px',
+              fontWeight: 'bold',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 5px rgba(2, 132, 199, 0.35)',
+              transition: 'transform 0.15s'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.filter = 'brightness(1.15)'}
+            onMouseOut={(e) => e.currentTarget.style.filter = 'none'}
+          >
+            <span>👥</span> Ver {pacsIds.length} Paciente{pacsIds.length > 1 ? 's' : ''}
+          </button>
+          {textoLimpio && (
+            <span style={{ fontSize: '11px', color: '#cbd5e1' }}>{textoLimpio}</span>
+          )}
+        </div>
+      );
+    }
+    return <span style={{ color: '#94a3b8' }}>{textoLimpio || '-'}</span>;
+  };
+
   // Exportar detalle diario a CSV / Excel
   const descargarDetalleMesCSV = () => {
     if (!asistenciasMes || asistenciasMes.length === 0) {
@@ -390,7 +483,13 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
         : parsearDecimal(a.valor_sesion || miAuxiliar.valor_sesion);
       const subtotal = cant * tarifa;
 
-      const obsLimpia = (a.obs || '').replace(/;/g, ',').replace(/\n/g, ' ');
+      const { pacsIds, textoLimpio } = extraerDetallesObs(a.obs);
+      let obsFinal = textoLimpio;
+      if (pacsIds.length > 0) {
+        const nombresPacs = pacsIds.map(id => mapaPacientes[id]?.nombre_apellido?.trim() || ('#' + id)).join(', ');
+        obsFinal = obsFinal ? `Pacientes: [${nombresPacs}] - ${obsFinal}` : `Pacientes: [${nombresPacs}]`;
+      }
+      const obsLimpia = (obsFinal || '').replace(/;/g, ',').replace(/\n/g, ' ');
 
       csv += `"${fechaStr}";"${diaSemana}";"${manana}";"${tarde}";"${cant}";"${tarifa.toFixed(2)}";"${subtotal.toFixed(2)}";"${obsLimpia}"\r\n`;
     });
@@ -907,7 +1006,7 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
                           )}
                           <th style={{ padding: '12px 16px', textAlign: 'right' }}>Tarifa</th>
                           <th style={{ padding: '12px 16px', textAlign: 'right' }}>Subtotal Ganado</th>
-                          <th style={{ padding: '12px 16px' }}>Observaciones</th>
+                          <th style={{ padding: '12px 16px' }}>{miAuxiliar.tipo_liq === 'SESION' ? 'Pacientes / Obs' : 'Observaciones'}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -976,8 +1075,8 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
                               <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 'bold', color: '#34d399' }}>
                                 ${subtotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                               </td>
-                              <td style={{ padding: '12px 16px', color: '#94a3b8', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {a.obs || '-'}
+                              <td style={{ padding: '12px 16px' }}>
+                                {renderCeldaObservaciones(a)}
                               </td>
                             </tr>
                           );
@@ -1293,7 +1392,7 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
                           <th style={{ padding: '10px' }}>Horario</th>
                           <th style={{ padding: '10px', textAlign: 'center' }}>Hs / Ses</th>
                           <th style={{ padding: '10px', textAlign: 'right' }}>Subtotal</th>
-                          <th style={{ padding: '10px' }}>Obs</th>
+                          <th style={{ padding: '10px' }}>{miAuxiliar.tipo_liq === 'SESION' ? 'Pacientes / Obs' : 'Observaciones'}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1313,7 +1412,7 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
                               <td style={{ padding: '10px', color: '#cbd5e1' }}>{horario}</td>
                               <td style={{ padding: '10px', textAlign: 'center', color: '#38bdf8' }}>{cant}</td>
                               <td style={{ padding: '10px', textAlign: 'right', color: '#34d399', fontWeight: 'bold' }}>${sub.toLocaleString('es-AR')}</td>
-                              <td style={{ padding: '10px', color: '#94a3b8' }}>{a.obs || '-'}</td>
+                              <td style={{ padding: '10px' }}>{renderCeldaObservaciones(a)}</td>
                             </tr>
                           );
                         })}
@@ -1333,6 +1432,146 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
                       borderRadius: '8px',
                       cursor: 'pointer',
                       fontWeight: 'bold'
+                    }}
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* MODAL EMERGENTE: DETALLE DE PACIENTES ATENDIDOS EN EL DÍA */}
+          {/* ========================================================= */}
+          {modalPacientesData && (
+            <div style={{
+              position: 'fixed',
+              top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.85)',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              zIndex: 100000,
+              padding: '15px'
+            }}>
+              <div style={{
+                background: '#1e293b',
+                color: '#f8fafc',
+                borderRadius: '16px',
+                maxWidth: '650px',
+                width: '100%',
+                maxHeight: '85vh',
+                display: 'flex',
+                flexDirection: 'column',
+                border: '1px solid #38bdf8',
+                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.8)'
+              }}>
+                {/* Header del modal */}
+                <div style={{
+                  padding: '16px 20px',
+                  borderBottom: '1px solid #334155',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  background: '#0f172a',
+                  borderRadius: '16px 16px 0 0'
+                }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '18px', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span>👥</span> Pacientes Atendidos
+                    </h3>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
+                      {modalPacientesData.diaSemana} {modalPacientesData.fecha} • <strong style={{ color: '#34d399' }}>{modalPacientesData.pacientes.length} paciente(s) / sesiones</strong>
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setModalPacientesData(null)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#94a3b8',
+                      fontSize: '22px',
+                      cursor: 'pointer',
+                      padding: '4px 8px'
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Lista de pacientes */}
+                <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ background: '#0f172a', color: '#94a3b8', borderBottom: '1px solid #334155' }}>
+                        <th style={{ padding: '10px 12px', width: '40px' }}>#</th>
+                        <th style={{ padding: '10px 12px' }}>Paciente</th>
+                        <th style={{ padding: '10px 12px' }}>DNI</th>
+                        <th style={{ padding: '10px 12px' }}>Obra Social</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {modalPacientesData.pacientes.map((p, idx) => (
+                        <tr
+                          key={p.id_paciente || idx}
+                          style={{
+                            borderBottom: '1px solid #334155',
+                            background: idx % 2 === 0 ? '#1e293b' : '#172554'
+                          }}
+                        >
+                          <td style={{ padding: '10px 12px', color: '#64748b', fontWeight: 'bold' }}>
+                            {idx + 1}
+                          </td>
+                          <td style={{ padding: '10px 12px', fontWeight: 'bold', color: '#f8fafc' }}>
+                            👤 {p.nombre_apellido}
+                          </td>
+                          <td style={{ padding: '10px 12px', color: '#cbd5e1' }}>
+                            {p.dni || 'S/D'}
+                          </td>
+                          <td style={{ padding: '10px 12px', color: '#94a3b8' }}>
+                            {p.obra_social || 'S/D'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {modalPacientesData.textoLimpio && (
+                    <div style={{
+                      marginTop: '16px',
+                      padding: '12px 16px',
+                      background: '#0f172a',
+                      borderRadius: '10px',
+                      border: '1px solid #334155',
+                      fontSize: '12px',
+                      color: '#cbd5e1'
+                    }}>
+                      <strong style={{ color: '#38bdf8' }}>Observación del día:</strong> {modalPacientesData.textoLimpio}
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div style={{
+                  padding: '14px 20px',
+                  borderTop: '1px solid #334155',
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  background: '#0f172a',
+                  borderRadius: '0 0 16px 16px'
+                }}>
+                  <button
+                    onClick={() => setModalPacientesData(null)}
+                    style={{
+                      background: '#334155',
+                      color: '#fff',
+                      border: 'none',
+                      padding: '8px 20px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                      fontSize: '13px'
                     }}
                   >
                     Cerrar
