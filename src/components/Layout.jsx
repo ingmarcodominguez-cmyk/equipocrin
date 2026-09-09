@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import AgendaMensualPro from './AgendaMensualPro.jsx'
 import AgendaFija from './AgendaFija.jsx'
 import Tasks from './Tasks.jsx'
@@ -9,6 +9,7 @@ import Documentos from './Documentos.jsx'
 import AsistenciaPacientes from './AsistenciaPacientes.jsx'
 import MiLiquidacionAuxiliar from './MiLiquidacionAuxiliar.jsx'
 import BotonPantallaCompleta from './BotonPantallaCompleta.jsx'
+import { supabase } from '../lib/supabase'
 import logo from '../assets/photo.jpg'
 
 function Layout({ userData, logout, actualizarMoraYCuotas }) {
@@ -21,6 +22,8 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
 
   const [vista, setVista] = useState('hub') 
   const [modalMiLiqAbierto, setModalMiLiqAbierto] = useState(false)
+  const [tienePerfilAuxiliar, setTienePerfilAuxiliar] = useState(false)
+  const [tienePerfilPrestador, setTienePerfilPrestador] = useState(false)
   const audioRef = useRef(new Audio('/notificacion.mp3'))
   const playNotification = () => audioRef.current.play().catch(e => {})
   
@@ -32,8 +35,66 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
   // Definimos la condición para ver documentos
   const puedeVerDocumentos = ['DIRECCION', 'PROFESIONAL_PLUS'].includes(rol)
 
-  // Condición para ver Mi Liquidación (Auxiliares y Dirección/Administración para control)
-  const puedeVerMiLiquidacion = ['AUXILIAR', 'ADMINISTRACION', 'DIRECCION'].includes(rol)
+  // Verificación dinámica de perfiles para usuarios duales (Auxiliar y Profesional al mismo tiempo)
+  useEffect(() => {
+    if (!userData?.nombre) return;
+
+    const normalizar = (txt) => {
+      if (!txt) return '';
+      return txt.toLowerCase()
+        .replace(/[\uFFFD]/g, 'n')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s]/g, '')
+        .replace(/([a-z])\1+/g, '$1')
+        .trim();
+    };
+
+    const matchNombre = (uName, targetName) => {
+      if (!uName || !targetName) return false;
+      const uNorm = normalizar(uName);
+      const tNorm = normalizar(targetName);
+      if (uNorm === tNorm) return true;
+      const uWords = uNorm.split(/\s+/).filter(w => w.length >= 2);
+      const tWords = tNorm.split(/\s+/).filter(w => w.length >= 2);
+      if (uWords.length > 0 && uWords.every(w => tWords.includes(w))) return true;
+      if (uWords.filter(w => tWords.includes(w)).length >= 2) return true;
+      return false;
+    };
+
+    const verificarPerfiles = async () => {
+      try {
+        // 1. Verificar si existe en auxiliares_motor
+        const { data: auxList } = await supabase
+          .from('auxiliares_motor')
+          .select('id_auxiliar, nombre');
+        if (auxList && auxList.length > 0) {
+          const matchAux = auxList.some(a => matchNombre(userData.nombre, a.nombre));
+          if (matchAux) setTienePerfilAuxiliar(true);
+        }
+
+        // 2. Verificar si existe en prestadores_motor
+        const { data: prestList } = await supabase
+          .from('prestadores_motor')
+          .select('id_prestador, nombre_prestador');
+        if (prestList && prestList.length > 0) {
+          const matchPrest = prestList.some(p => matchNombre(userData.nombre, p.nombre_prestador));
+          if (matchPrest) setTienePerfilPrestador(true);
+        }
+      } catch (e) {
+        console.error("Error al verificar perfiles duales:", e);
+      }
+    };
+
+    verificarPerfiles();
+  }, [userData?.nombre]);
+
+  // Condición para ver Mi Liquidación (Auxiliares, Dirección/Administración y usuarios con perfil auxiliar)
+  const puedeVerMiLiquidacion = ['AUXILIAR', 'ADMINISTRACION', 'DIRECCION'].includes(rol) || tienePerfilAuxiliar;
+
+  // Condición para ver Cuenta Corriente de Prestador / Profesional
+  const puedeVerCuentaCorriente = ['PROFESIONAL', 'PROFESIONAL_PLUS', 'DIRECCION'].includes(rol) || tienePerfilPrestador;
+  const esPerfilDual = puedeVerMiLiquidacion && puedeVerCuentaCorriente && !esAdminOrDir;
 
   return (
     <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif' }}>
@@ -62,7 +123,7 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
                       gap: '5px'
                     }}
                   >
-                    💰 Modal Rápido Liquidación
+                    💰 {esPerfilDual ? 'Liquidación Auxiliar (Rápido)' : 'Modal Rápido Liquidación'}
                   </button>
                 )}
               </div>
@@ -82,7 +143,7 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
             {/* GESTIÓN PACIENTES ACCESIBLE PARA TODOS */}
             <button onClick={() => setVista('pacientes')} style={{...btnHubStyle, borderColor: '#00f2ff'}}>👤 GESTIÓN PACIENTES</button>
 
-            {/* MI LIQUIDACIÓN Y HORAS: ACCESIBLE PARA AUXILIARES (Y DIRECCION/ADMINISTRACION PARA AUDITORIA) */}
+            {/* MI LIQUIDACIÓN Y HORAS: ACCESIBLE PARA AUXILIARES (Y DIRECCION/ADMINISTRACION/DUALES) */}
             {puedeVerMiLiquidacion && (
               <button 
                 onClick={() => setVista('mi_liquidacion')} 
@@ -94,7 +155,7 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
                   boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)'
                 }}
               >
-                💰 MI LIQUIDACIÓN Y HORAS
+                💰 {esPerfilDual ? 'MI LIQUIDACIÓN Y HORAS (AUXILIAR)' : 'MI LIQUIDACIÓN Y HORAS'}
               </button>
             )}
 
@@ -103,9 +164,10 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
               <button onClick={() => setVista('documentos')} style={{...btnHubStyle, borderColor: '#fff'}}>📁 DOCUMENTOS</button>
             )}
 
-            {(rol === 'PROFESIONAL' || rol === 'PROFESIONAL_PLUS' || rol === 'DIRECCION') && (
+            {/* MI CUENTA CORRIENTE (PRESTADOR / PROFESIONAL) */}
+            {puedeVerCuentaCorriente && (
               <button onClick={() => setVista('movimientos')} style={{...btnHubStyle, borderColor: '#75AADB'}}>
-                {rol === 'DIRECCION' ? '📊 MOV. PRESTADORES' : '📊 MI CUENTA CORRIENTE'}
+                {rol === 'DIRECCION' ? '📊 MOV. PRESTADORES' : (esPerfilDual ? '📊 MI CUENTA CORRIENTE (PROFESIONAL)' : '📊 MI CUENTA CORRIENTE')}
               </button>
             )}
             

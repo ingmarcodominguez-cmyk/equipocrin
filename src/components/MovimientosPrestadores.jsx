@@ -144,9 +144,10 @@ const MovimientosPrestadores = ({ userData }) => {
 
       setDatos(resultados);
 
-      // Auto-vincular si es profesional
+      // Auto-vincular si no es supervisor (Dirección / Administración)
       const rol = userData?.rol?.toUpperCase() || "";
-      if (rol === 'PROFESIONAL' || rol === 'PROFESIONAL_PLUS') {
+      const esSupervisor = ['DIRECCION', 'ADMINISTRACION'].includes(rol);
+      if (!esSupervisor) {
         const matchedId = encontrarPrestadorId(userData.nombre, resultados);
         if (matchedId) {
           const matchedP = resultados.find(p => p.id_prestador === matchedId);
@@ -167,7 +168,7 @@ const MovimientosPrestadores = ({ userData }) => {
   }
 
   const userRol = userData?.rol?.toUpperCase() || "";
-  const hideVolver = userRol === 'PROFESIONAL' || userRol === 'PROFESIONAL_PLUS';
+  const hideVolver = !['DIRECCION', 'ADMINISTRACION'].includes(userRol);
 
   if (errorVinc) {
     return (
