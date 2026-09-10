@@ -55,6 +55,13 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
 
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' });
 
+  // --- PROYECCIÓN DE INGRESOS POR PACIENTE (ACUERDOS MENSUALES) ---
+  const [modalProyeccionAbierto, setModalProyeccionAbierto] = useState(false);
+  const [periodoProyeccion, setPeriodoProyeccion] = useState(202609);
+  const [filtroPacienteProyeccion, setFiltroPacienteProyeccion] = useState('');
+  const [cargandoProyeccion, setCargandoProyeccion] = useState(false);
+  const [datosProyeccion, setDatosProyeccion] = useState([]);
+
   // --- BÚSQUEDA Y SUMARIZACIÓN GLOBAL ---
   const [globalSearchTerm, setGlobalSearchTerm] = useState('');
   const [globalResults, setGlobalResults] = useState([]);
@@ -532,6 +539,270 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
     }
   };
 
+  const listaPeriodos = [
+    { id: 202610, nombre: 'Octubre 2026' },
+    { id: 202609, nombre: 'Septiembre 2026' },
+    { id: 202608, nombre: 'Agosto 2026' },
+    { id: 202607, nombre: 'Julio 2026' },
+    { id: 202606, nombre: 'Junio 2026' },
+    { id: 202605, nombre: 'Mayo 2026' },
+    { id: 202604, nombre: 'Abril 2026' },
+    { id: 202603, nombre: 'Marzo 2026' }
+  ];
+
+  const abrirModalProyeccion = () => {
+    setModalProyeccionAbierto(true);
+    setFiltroPacienteProyeccion('');
+    const fechaTrabajo = localStorage.getItem('crin_fecha_trabajo_simulada') || new Date().toISOString().split('T')[0];
+    const anio = parseInt(fechaTrabajo.split('-')[0], 10);
+    const mes = parseInt(fechaTrabajo.split('-')[1], 10);
+    const perDefecto = (anio * 100) + mes;
+    const perFinal = listaPeriodos.some(p => p.id === perDefecto) ? perDefecto : 202609;
+    setPeriodoProyeccion(perFinal);
+    if (prestadorSeleccionado) {
+      cargarProyeccionIngresos(prestadorSeleccionado.id_prestador, perFinal);
+    }
+  };
+
+  const cargarProyeccionIngresos = async (idPrestador, periodo) => {
+    setCargandoProyeccion(true);
+    try {
+      // 1. Acuerdos mensuales activos
+      const { data: acuerdosData, error: errAc } = await supabase
+        .from('acuerdos_motor')
+        .select('*')
+        .eq('tipo_acuerdo', 'MENSUAL')
+        .eq('estado', 'ACTIVO');
+
+      if (errAc) throw errAc;
+
+      // 2. Pacientes
+      const { data: pacientesData, error: errPac } = await supabase
+        .from('pacientes_motor')
+        .select('id_paciente, nombre_apellido, obra_social');
+      if (errPac) throw errPac;
+      const pacMap = {};
+      (pacientesData || []).forEach(p => pacMap[p.id_paciente] = p);
+
+      // 3. Prestaciones
+      const { data: prestacionesData, error: errPres } = await supabase
+        .from('prestaciones_motor')
+        .select('id_prestacion, nombre_prestacion');
+      if (errPres) throw errPres;
+      const prestMap = {};
+      (prestacionesData || []).forEach(pr => prestMap[pr.id_prestacion] = pr.nombre_prestacion);
+
+      // 4. Usuarios para resolver profesionales de sesiones_fijas
+      const { data: usersData, error: errUsers } = await supabase
+        .from('users')
+        .select('*');
+      if (errUsers) throw errUsers;
+
+      // 5. Sesiones fijas
+      const { data: sesionesData, error: errSes } = await supabase
+        .from('sesiones_fijas')
+        .select('*');
+      if (errSes) throw errSes;
+
+      // Mapear sesiones por id_paciente
+      const sesMap = {};
+      (sesionesData || []).forEach(s => {
+        let idPacNum = null;
+        if (typeof s.paciente_id === 'string' && s.paciente_id.startsWith('00000000-0000-0000-0000-')) {
+          idPacNum = parseInt(s.paciente_id.replace('00000000-0000-0000-0000-', ''), 10);
+        } else if (!isNaN(parseInt(s.paciente_id, 10))) {
+          idPacNum = parseInt(s.paciente_id, 10);
+        }
+        if (idPacNum) {
+          if (!sesMap[idPacNum]) sesMap[idPacNum] = [];
+          sesMap[idPacNum].push(s);
+        }
+      });
+
+      // 6. Movimientos de cuenta corriente para este período
+      const { data: movsPeriodo, error: errMovs } = await supabase
+        .from('movimientoscuenta_motor')
+        .select('*')
+        .eq('ciclo_mora', periodo);
+      if (errMovs) throw errMovs;
+
+      // 7. Movimientos en movprestadores_motor para verificar liquidaciones previas
+      const { data: movsPrestadoresData, error: errMovPrest } = await supabase
+        .from('movprestadores_motor')
+        .select('id_paciente, id_pago, haber, fecha, concepto')
+        .eq('id_prestador', idPrestador);
+      if (errMovPrest) throw errMovPrest;
+
+      const idViviana = prestadores.find(p => p.nombre_prestador?.toUpperCase().includes('VIVIANA'))?.id_prestador || 1;
+      const PRESTADORES_EXPLICITOS = [
+        'JIMENEZ ANA',
+        'LAGARDE MARIA',
+        'VACA JESSICA',
+        'PAZ BARRAZA LAURA',
+        'OLIVERA MARINA',
+        'VELIZ MATIAS',
+        'VELIZ PAULA'
+      ].map(n => n.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim());
+
+      const encontrarPrestadorIdLocal = (usuarioNombre, pList) => {
+        if (!usuarioNombre) return null;
+        const normalizedUser = usuarioNombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        const userWords = normalizedUser.split(/\s+/).filter(w => w.length >= 2);
+
+        for (const p of pList) {
+          const normalizedPrestador = p.nombre_prestador.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+          const prestadorWords = normalizedPrestador.split(/\s+/).filter(w => w.length >= 2);
+          if (userWords.every(word => prestadorWords.includes(word))) return p.id_prestador;
+        }
+        
+        for (const p of pList) {
+          const normalizedPrestador = p.nombre_prestador.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+          const prestadorWords = normalizedPrestador.split(/\s+/).filter(w => w.length >= 2);
+          const matches = userWords.filter(word => prestadorWords.includes(word));
+          if (matches.length >= 2) return p.id_prestador;
+        }
+        return null;
+      };
+
+      const resultados = [];
+
+      for (const ac of (acuerdosData || [])) {
+        const pac = pacMap[ac.id_paciente];
+        const nombrePrestacion = prestMap[ac.id_prestacion] || 'Acuerdo Mensual';
+        const pacSes = sesMap[ac.id_paciente] || [];
+
+        let totalSesiones = 0;
+        const conteoPrestadores = {};
+        prestadores.forEach(p => conteoPrestadores[p.id_prestador] = 0);
+
+        pacSes.forEach(s => {
+          totalSesiones++;
+          const prof = (usersData || []).find(u => u.id === s.profesional_id);
+          if (!prof) {
+            conteoPrestadores[idViviana] = (conteoPrestadores[idViviana] || 0) + 1;
+            return;
+          }
+          const normProf = prof.nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+          const esExplicito = PRESTADORES_EXPLICITOS.some(n => {
+            const pWords = n.split(/\s+/);
+            const profWords = normProf.split(/\s+/);
+            return pWords.every(w => profWords.includes(w)) || profWords.every(w => pWords.includes(w));
+          });
+
+          if (esExplicito) {
+            const matchedId = encontrarPrestadorIdLocal(prof.nombre, prestadores);
+            if (matchedId) {
+              conteoPrestadores[matchedId] = (conteoPrestadores[matchedId] || 0) + 1;
+            } else {
+              conteoPrestadores[idViviana] = (conteoPrestadores[idViviana] || 0) + 1;
+            }
+          } else {
+            conteoPrestadores[idViviana] = (conteoPrestadores[idViviana] || 0) + 1;
+          }
+        });
+
+        const sesionesEstePrestador = conteoPrestadores[idPrestador] || 0;
+
+        // Solo incluir pacientes donde este prestador tenga sesiones asignadas
+        if (sesionesEstePrestador === 0) continue;
+
+        const proporcion = totalSesiones > 0 ? (sesionesEstePrestador / totalSesiones) : 0;
+        const importeAcuerdo = parsearDecimal(ac.importe_actual || ac.monto_cuota_base);
+        const ingresoEstimado = Math.round(importeAcuerdo * proporcion);
+
+        // Buscar cuota del período para este paciente y acuerdo
+        const cuotaMov = (movsPeriodo || []).find(m => 
+          m.id_paciente === ac.id_paciente && 
+          (m.tipo_movimiento || '').toLowerCase() === 'cuota' &&
+          (m.id_acuerdo === ac.id_acuerdo || !m.id_acuerdo)
+        );
+
+        let estadoCobro = 'NO_COBRADO';
+        let montoCobrado = 0;
+
+        if (cuotaMov) {
+          const saldoCuota = parsearDecimal(cuotaMov.saldo);
+          const debeCuota = parsearDecimal(cuotaMov.debe);
+
+          const pagosDeuda = (movsPeriodo || []).filter(m => 
+            m.id_deuda === cuotaMov.id_deuda && 
+            (m.tipo_movimiento || '').toLowerCase() === 'pago'
+          );
+          const totalPagadoDeuda = pagosDeuda.reduce((sum, p) => sum + parsearDecimal(p.haber), 0);
+
+          if (saldoCuota <= 0 || (totalPagadoDeuda >= debeCuota && debeCuota > 0)) {
+            estadoCobro = 'COBRADO';
+            montoCobrado = ingresoEstimado;
+          } else if (totalPagadoDeuda > 0) {
+            estadoCobro = 'PARCIAL';
+            montoCobrado = Math.round(totalPagadoDeuda * proporcion);
+          }
+        }
+
+        // Chequeo complementario: si en movprestadores_motor ya se acreditó para este paciente en el período
+        if (estadoCobro !== 'COBRADO') {
+          const periodoStr = String(periodo);
+          const anioMes = periodoStr.substring(0, 4) + '-' + periodoStr.substring(4, 6);
+          const tieneLiquidacion = (movsPrestadoresData || []).some(mp => 
+            mp.id_paciente === ac.id_paciente && 
+            parsearDecimal(mp.haber) > 0 && 
+            mp.fecha && mp.fecha.startsWith(anioMes)
+          );
+          if (tieneLiquidacion) {
+            estadoCobro = 'COBRADO';
+            montoCobrado = ingresoEstimado;
+          }
+        }
+
+        resultados.push({
+          id_acuerdo: ac.id_acuerdo,
+          id_paciente: ac.id_paciente,
+          paciente: pac ? pac.nombre_apellido : `Paciente #${ac.id_paciente}`,
+          obra_social: pac?.obra_social || 'Particular',
+          prestacion: nombrePrestacion,
+          importeAcuerdo,
+          sesionesEstePrestador,
+          totalSesiones,
+          porcentaje: (proporcion * 100).toFixed(1) + '%',
+          ingresoEstimado,
+          montoCobrado,
+          estadoCobro,
+          dia_vencimiento: ac.dia_vencimiento || 10
+        });
+      }
+
+      resultados.sort((a, b) => a.paciente.localeCompare(b.paciente));
+      setDatosProyeccion(resultados);
+
+    } catch (err) {
+      console.error("Error al cargar proyección de ingresos:", err);
+      alert("Error al cargar proyección: " + err.message);
+    } finally {
+      setCargandoProyeccion(false);
+    }
+  };
+
+  const descargarProyeccionExcel = (prestadorNombre, periodoNombre) => {
+    const BOM = "\uFEFF";
+    let csv = "sep=;\n";
+    csv += `Proyección de Ingresos por Paciente - ${prestadorNombre} (${periodoNombre})\n\n`;
+    csv += "Paciente;Obra Social;Prestación / Acuerdo Mensual;Cuota Total Paciente ($);Sesiones Asignadas;Total Sesiones;Participación (%);Ingreso Estimado Prestador ($);Estado Cobranza\r\n";
+
+    datosProyeccion.forEach(d => {
+      const estadoStr = d.estadoCobro === 'COBRADO' ? 'Cobrado' : d.estadoCobro === 'PARCIAL' ? 'Cobro Parcial' : 'No Cobrado';
+      csv += `"${d.paciente}";"${d.obra_social}";"${d.prestacion}";${d.importeAcuerdo};${d.sesionesEstePrestador};${d.totalSesiones};"${d.porcentaje}";${d.ingresoEstimado};"${estadoStr}"\r\n`;
+    });
+
+    const blob = new Blob([BOM + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Proyeccion_Ingresos_${prestadorNombre.replace(/\s+/g, '_')}_${periodoNombre.replace(/\s+/g, '_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const totalHaber = movimientos.reduce((acc, m) => acc + parsearDecimal(m.haber), 0);
   const totalDebe = movimientos.reduce((acc, m) => acc + parsearDecimal(m.debe), 0);
   const saldoFinal = totalHaber - totalDebe;
@@ -837,10 +1108,10 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '15px', marginBottom: '30px', background: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'flex', gap: '15px', marginBottom: '30px', background: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
             <button
               onClick={() => abrirFormulario('pago')}
-              style={{ flex: 1, padding: '12px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'background 0.2s' }}
+              style={{ flex: 1, minWidth: '170px', padding: '12px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'background 0.2s' }}
               onMouseOver={(e) => e.target.style.background = '#059669'}
               onMouseOut={(e) => e.target.style.background = '#10b981'}
             >
@@ -849,7 +1120,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
 
             <button
               onClick={() => abrirFormulario('gasto')}
-              style={{ flex: 1, padding: '12px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'background 0.2s' }}
+              style={{ flex: 1, minWidth: '170px', padding: '12px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'background 0.2s' }}
               onMouseOver={(e) => e.target.style.background = '#dc2626'}
               onMouseOut={(e) => e.target.style.background = '#ef4444'}
             >
@@ -858,11 +1129,20 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
 
             <button
               onClick={() => abrirFormulario('ajuste')}
-              style={{ flex: 1, padding: '12px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'background 0.2s' }}
+              style={{ flex: 1, minWidth: '170px', padding: '12px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'background 0.2s' }}
               onMouseOver={(e) => e.target.style.background = '#d97706'}
               onMouseOut={(e) => e.target.style.background = '#f59e0b'}
             >
               ⚙️ Registrar Ajuste
+            </button>
+
+            <button
+              onClick={abrirModalProyeccion}
+              style={{ flex: 1.2, minWidth: '220px', padding: '12px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'background 0.2s', boxShadow: '0 2px 6px rgba(99,102,241,0.25)' }}
+              onMouseOver={(e) => e.target.style.background = '#4f46e5'}
+              onMouseOut={(e) => e.target.style.background = '#6366f1'}
+            >
+              👥 Proyección por Paciente (Mensual)
             </button>
           </div>
 
@@ -1195,6 +1475,222 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
               </button>
               <button 
                 onClick={() => setModalReporteAbierto(false)} 
+                style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', color: '#475569' }}
+              >
+                Cerrar
+              </button>
+            </div>
+            
+          </div>
+        </div>
+      )}
+
+      {/* Modal Proyección de Ingresos por Paciente (Acuerdos Mensuales) */}
+      {modalProyeccionAbierto && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
+          <div style={{ background: '#fff', padding: '30px', borderRadius: '16px', width: '92%', maxWidth: '1050px', maxHeight: '88vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.3)', border: '1px solid #e2e8f0' }}>
+            
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #6366f1', paddingBottom: '15px', marginBottom: '20px' }}>
+              <div>
+                <h3 style={{ margin: 0, color: '#4338ca', fontSize: '20px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  👥 Proyección de Ingresos por Paciente: {prestadorSeleccionado?.nombre_prestador}
+                </h3>
+                <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '13px' }}>
+                  Estimación de honorarios calculados sobre <strong>Acuerdos Mensuales</strong> activos según la distribución de sesiones fijas asignadas.
+                </p>
+              </div>
+              <button 
+                onClick={() => setModalProyeccionAbierto(false)} 
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#94a3b8' }}
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Controles de Selección de Período y Filtro */}
+            <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center', background: '#f8fafc', padding: '12px 16px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#334155' }}>📅 Período:</label>
+                <select
+                  value={periodoProyeccion}
+                  onChange={(e) => {
+                    const per = parseInt(e.target.value, 10);
+                    setPeriodoProyeccion(per);
+                    if (prestadorSeleccionado) {
+                      cargarProyeccionIngresos(prestadorSeleccionado.id_prestador, per);
+                    }
+                  }}
+                  style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', fontWeight: '600', color: '#1e293b', background: '#fff', outline: 'none' }}
+                >
+                  {listaPeriodos.map(p => (
+                    <option key={p.id} value={p.id}>{p.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '220px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#334155' }}>🔍 Buscar:</label>
+                <input
+                  type="text"
+                  placeholder="Filtrar por paciente o prestación..."
+                  value={filtroPacienteProyeccion}
+                  onChange={(e) => setFiltroPacienteProyeccion(e.target.value)}
+                  style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#fff', outline: 'none' }}
+                />
+                {filtroPacienteProyeccion && (
+                  <button
+                    onClick={() => setFiltroPacienteProyeccion('')}
+                    style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                  >
+                    Limpiar
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Tarjetas de Resumen KPI */}
+            {(() => {
+              const filtrados = datosProyeccion.filter(d => 
+                !filtroPacienteProyeccion.trim() || 
+                d.paciente.toLowerCase().includes(filtroPacienteProyeccion.toLowerCase()) ||
+                d.prestacion.toLowerCase().includes(filtroPacienteProyeccion.toLowerCase())
+              );
+              const totalEst = filtrados.reduce((acc, d) => acc + d.ingresoEstimado, 0);
+              const totalCob = filtrados.filter(d => d.estadoCobro === 'COBRADO').reduce((acc, d) => acc + d.ingresoEstimado, 0);
+              const totalPend = filtrados.filter(d => d.estadoCobro !== 'COBRADO').reduce((acc, d) => acc + (d.ingresoEstimado - (d.montoCobrado || 0)), 0);
+
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+                  <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '10px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Ingreso Proyectado Total</span>
+                    <h4 style={{ margin: '4px 0 0 0', fontSize: '20px', color: '#1e293b', fontWeight: '800' }}>
+                      ${totalEst.toLocaleString('es-AR')}
+                    </h4>
+                  </div>
+                  <div style={{ background: '#f0fdf4', padding: '12px 16px', borderRadius: '10px', border: '1px solid #bbf7d0', textAlign: 'center' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#166534', textTransform: 'uppercase' }}>🟢 Ya Cobrado</span>
+                    <h4 style={{ margin: '4px 0 0 0', fontSize: '20px', color: '#15803d', fontWeight: '800' }}>
+                      ${totalCob.toLocaleString('es-AR')}
+                    </h4>
+                  </div>
+                  <div style={{ background: '#fef2f2', padding: '12px 16px', borderRadius: '10px', border: '1px solid #fecaca', textAlign: 'center' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#991b1b', textTransform: 'uppercase' }}>🔴 Pendiente de Cobro</span>
+                    <h4 style={{ margin: '4px 0 0 0', fontSize: '20px', color: '#b91c1c', fontWeight: '800' }}>
+                      ${totalPend.toLocaleString('es-AR')}
+                    </h4>
+                  </div>
+                  <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '10px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Pacientes Asignados</span>
+                    <h4 style={{ margin: '4px 0 0 0', fontSize: '20px', color: '#4338ca', fontWeight: '800' }}>
+                      {filtrados.length}
+                    </h4>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Contenido / Tabla */}
+            {cargandoProyeccion ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '40px' }}>
+                <div style={{ width: '36px', height: '36px', border: '4px solid #e2e8f0', borderTop: '4px solid #6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                <p style={{ marginTop: '12px', color: '#64748b', fontSize: '14px', fontWeight: '500' }}>Calculando proyección y estado de cuotas...</p>
+              </div>
+            ) : (() => {
+              const filtrados = datosProyeccion.filter(d => 
+                !filtroPacienteProyeccion.trim() || 
+                d.paciente.toLowerCase().includes(filtroPacienteProyeccion.toLowerCase()) ||
+                d.prestacion.toLowerCase().includes(filtroPacienteProyeccion.toLowerCase())
+              );
+
+              if (filtrados.length === 0) {
+                return (
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                    <p style={{ margin: 0, color: '#64748b', fontStyle: 'italic', textAlign: 'center' }}>
+                      No se encontraron pacientes con acuerdos mensuales activos vinculados a este profesional para el período seleccionado.
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px', marginBottom: '20px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 'bold' }}>
+                        <th style={{ padding: '12px 14px' }}>Paciente</th>
+                        <th style={{ padding: '12px 14px' }}>Obra Social</th>
+                        <th style={{ padding: '12px 14px' }}>Prestación (Acuerdo Mensual)</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'right' }}>Cuota Total ($)</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'center' }}>Sesiones / Part.</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'right' }}>Ingreso Prestador ($)</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'center' }}>Estado de Cobro</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtrados.map((d, i) => (
+                        <tr key={d.id_acuerdo || i} style={{ borderBottom: '1px solid #edf2f7', background: i % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                          <td style={{ padding: '12px 14px', fontWeight: 'bold', color: '#1e293b' }}>
+                            {d.paciente}
+                          </td>
+                          <td style={{ padding: '12px 14px', color: '#64748b', fontSize: '12px' }}>
+                            {d.obra_social}
+                          </td>
+                          <td style={{ padding: '12px 14px', color: '#334155' }}>
+                            <span style={{ background: '#eef2ff', color: '#4338ca', padding: '2px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: '600' }}>
+                              {d.prestacion}
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 14px', textAlign: 'right', color: '#475569', fontWeight: '600' }}>
+                            ${d.importeAcuerdo.toLocaleString('es-AR')}
+                          </td>
+                          <td style={{ padding: '12px 14px', textAlign: 'center', color: '#475569' }}>
+                            <span style={{ fontSize: '12px', fontWeight: '600' }}>
+                              {d.sesionesEstePrestador} de {d.totalSesiones} ({d.porcentaje})
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: '800', fontSize: '14px', color: d.estadoCobro === 'COBRADO' ? '#15803d' : '#b91c1c' }}>
+                            ${d.ingresoEstimado.toLocaleString('es-AR')}
+                          </td>
+                          <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                            {d.estadoCobro === 'COBRADO' && (
+                              <span style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', padding: '4px 10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                🟢 Cobrado
+                              </span>
+                            )}
+                            {d.estadoCobro === 'NO_COBRADO' && (
+                              <span style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', padding: '4px 10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                🔴 No cobrado
+                              </span>
+                            )}
+                            {d.estadoCobro === 'PARCIAL' && (
+                              <span style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', padding: '4px 10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                🟡 Parcial (${d.montoCobrado.toLocaleString('es-AR')})
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
+
+            {/* Footer */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid #e2e8f0', paddingTop: '15px' }}>
+              <button 
+                onClick={() => {
+                  const nombrePer = listaPeriodos.find(p => p.id === periodoProyeccion)?.nombre || String(periodoProyeccion);
+                  descargarProyeccionExcel(prestadorSeleccionado?.nombre_prestador || 'Prestador', nombrePer);
+                }}
+                disabled={datosProyeccion.length === 0 || cargandoProyeccion}
+                style={{ background: '#10b981', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                📥 Descargar Excel
+              </button>
+              <button 
+                onClick={() => setModalProyeccionAbierto(false)} 
                 style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', color: '#475569' }}
               >
                 Cerrar
