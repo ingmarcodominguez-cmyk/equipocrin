@@ -744,6 +744,66 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
     }
   };
 
+  const manejarEliminarAcuerdo = async (acuerdo) => {
+    if (!acuerdo || !acuerdo.id_acuerdo) return;
+
+    try {
+      // 1. Verificación en memoria local del paciente
+      const movsEnMemoria = (movimientosDetallados || []).filter(
+        m => String(m.id_acuerdo) === String(acuerdo.id_acuerdo)
+      );
+
+      // 2. Verificación exacta directa en base de datos
+      const { count, error: errCount } = await supabase
+        .from('movimientoscuenta_motor')
+        .select('*', { count: 'exact', head: true })
+        .eq('id_acuerdo', acuerdo.id_acuerdo);
+
+      if (errCount) throw errCount;
+
+      const totalMovs = Math.max(count || 0, movsEnMemoria.length);
+
+      if (totalMovs > 0) {
+        alert(
+          `⛔ NO SE PUEDE ELIMINAR EL ACUERDO #${acuerdo.id_acuerdo}\n\n` +
+          `Este acuerdo (${acuerdo.nombre_prestacion}) posee ${totalMovs} movimiento(s) de cuenta corriente asociado(s).\n\n` +
+          `Solo se permite eliminar acuerdos que no tengan ningún movimiento de cuenta registrado.`
+        );
+        return;
+      }
+
+      // 3. Confirmación del usuario
+      const montoFormateado = parsearMoneda(acuerdo.importe_actual).toLocaleString('es-AR', { minimumFractionDigits: 2 });
+      const confirmar = window.confirm(
+        `¿Está seguro de que desea eliminar permanentemente este acuerdo?\n\n` +
+        `• ID Acuerdo: #${acuerdo.id_acuerdo}\n` +
+        `• Prestación: ${acuerdo.nombre_prestacion}\n` +
+        `• Estado: ${acuerdo.estado || 'ACTIVO'}\n` +
+        `• Importe: $${montoFormateado}\n\n` +
+        `Este acuerdo no posee ningún movimiento de cuenta corriente y será eliminado definitivamente de la base de datos.`
+      );
+
+      if (!confirmar) return;
+
+      // 4. Eliminación en acuerdos_motor
+      const { error: errDelete } = await supabase
+        .from('acuerdos_motor')
+        .delete()
+        .eq('id_acuerdo', acuerdo.id_acuerdo);
+
+      if (errDelete) throw errDelete;
+
+      // 5. Actualizar estado local
+      setAcuerdos(prev => prev.filter(a => a.id_acuerdo !== acuerdo.id_acuerdo));
+      setMensaje({ texto: `Acuerdo #${acuerdo.id_acuerdo} (${acuerdo.nombre_prestacion}) eliminado exitosamente.`, tipo: 'exito' });
+      setTimeout(() => setMensaje({ texto: '', tipo: '' }), 3500);
+
+    } catch (err) {
+      console.error("Error al eliminar acuerdo:", err);
+      alert("Error al eliminar el acuerdo: " + err.message);
+    }
+  };
+
   useEffect(() => {
     if (modalPagoAbierto) {
       async function cargarPrestadores() {
@@ -2338,6 +2398,35 @@ const confirmarRegistroPago = async () => {
                               <option value="RESCINDIDO">RESCINDIDO</option>
                             </select>
                             <span style={{ fontSize: '12px', color: '#64748b' }}>ID: {acuerdo.id_acuerdo}</span>
+                            <button
+                              type="button"
+                              onClick={() => manejarEliminarAcuerdo(acuerdo)}
+                              title="Eliminar acuerdo (solo si no tiene movimientos de cuenta asociados)"
+                              style={{
+                                background: '#fee2e2',
+                                color: '#dc2626',
+                                border: '1px solid #fca5a5',
+                                padding: '4px 8px',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: 'bold',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                transition: 'all 0.2s'
+                              }}
+                              onMouseOver={(e) => {
+                                e.currentTarget.style.background = '#dc2626';
+                                e.currentTarget.style.color = '#fff';
+                              }}
+                              onMouseOut={(e) => {
+                                e.currentTarget.style.background = '#fee2e2';
+                                e.currentTarget.style.color = '#dc2626';
+                              }}
+                            >
+                              🗑️ Eliminar
+                            </button>
                           </div>
                         </div>
 
