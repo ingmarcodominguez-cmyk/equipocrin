@@ -748,44 +748,109 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
     if (!acuerdo || !acuerdo.id_acuerdo) return;
 
     try {
-      // 1. Verificación en memoria local del paciente
-      const movsEnMemoria = (movimientosDetallados || []).filter(
-        m => String(m.id_acuerdo) === String(acuerdo.id_acuerdo)
-      );
-
-      // 2. Verificación exacta directa en base de datos
-      const { count, error: errCount } = await supabase
-        .from('movimientoscuenta_motor')
-        .select('*', { count: 'exact', head: true })
+      // 1. Verificar si hay pagos registrados en pagos_motor vinculados a este acuerdo
+      const { data: pagosAsociados, error: errPagos } = await supabase
+        .from('pagos_motor')
+        .select('id_pago, importe, fecha_pago')
         .eq('id_acuerdo', acuerdo.id_acuerdo);
 
-      if (errCount) throw errCount;
+      if (errPagos) throw errPagos;
 
-      const totalMovs = Math.max(count || 0, movsEnMemoria.length);
-
-      if (totalMovs > 0) {
+      if (pagosAsociados && pagosAsociados.length > 0) {
         alert(
           `⛔ NO SE PUEDE ELIMINAR EL ACUERDO #${acuerdo.id_acuerdo}\n\n` +
-          `Este acuerdo (${acuerdo.nombre_prestacion}) posee ${totalMovs} movimiento(s) de cuenta corriente asociado(s).\n\n` +
-          `Solo se permite eliminar acuerdos que no tengan ningún movimiento de cuenta registrado.`
+          `Este acuerdo (${acuerdo.nombre_prestacion}) tiene ${pagosAsociados.length} pago(s) registrado(s) en el sistema.\n\n` +
+          `No es posible eliminar acuerdos con pagos o cobros asociados.`
         );
         return;
       }
 
+      // 2. Consultar movimientos en movimientoscuenta_motor asociados a este acuerdo
+      const { data: movsAcuerdo, error: errMovs } = await supabase
+        .from('movimientoscuenta_motor')
+        .select('*')
+        .eq('id_acuerdo', acuerdo.id_acuerdo);
+
+      if (errMovs) throw errMovs;
+
+      const movimientos = movsAcuerdo || [];
+
+      // Si tiene más de 1 movimiento en la cuenta corriente, ya hubo movimientos posteriores (recargos, notas, etc.)
+      if (movimientos.length > 1) {
+        alert(
+          `⛔ NO SE PUEDE ELIMINAR EL ACUERDO #${acuerdo.id_acuerdo}\n\n` +
+          `Este acuerdo (${acuerdo.nombre_prestacion}) posee ${movimientos.length} movimientos registrados en su cuenta corriente (cuotas adicionales, recargos o notas).\n\n` +
+          `Solo se permite eliminar si únicamente tiene el movimiento inicial de creación.`
+        );
+        return;
+      }
+
+      let movimientoInicialAEliminar = null;
+
+      if (movimientos.length === 1) {
+        const mov = movimientos[0];
+
+        // Verificar si este único movimiento tiene abonos en haber o pago asociado
+        const haberVal = parsearMoneda(mov.haber);
+        if (haberVal > 0 || mov.id_pago || mov.tipo_movimiento === 'pago') {
+          alert(
+            `⛔ NO SE PUEDE ELIMINAR EL ACUERDO #${acuerdo.id_acuerdo}\n\n` +
+            `El movimiento asociado a este acuerdo corresponde a un pago o crédito (Haber: $${haberVal.toLocaleString('es-AR')}).\n\n` +
+            `No se puede eliminar.`
+          );
+          return;
+        }
+
+        // Verificar si la deuda asociada a este movimiento tuvo pagos, notas de crédito o recargos imputados
+        if (mov.id_deuda) {
+          const { data: movsDeuda, error: errDeuda } = await supabase
+            .from('movimientoscuenta_motor')
+            .select('id_movimiento, debe, haber, tipo_movimiento, id_pago')
+            .eq('id_deuda', mov.id_deuda);
+
+          if (errDeuda) throw errDeuda;
+
+          const otrosMovs = (movsDeuda || []).filter(m => String(m.id_movimiento) !== String(mov.id_movimiento));
+          if (otrosMovs.length > 0) {
+            alert(
+              `⛔ NO SE PUEDE ELIMINAR EL ACUERDO #${acuerdo.id_acuerdo}\n\n` +
+              `La deuda originada por este acuerdo (#${mov.id_deuda}) tiene ${otrosMovs.length} movimiento(s) imputado(s) posterior(es) (pagos, notas o recargos).\n\n` +
+              `Por seguridad contable no es posible eliminarlo.`
+            );
+            return;
+          }
+        }
+
+        // Es el movimiento inicial legítimo creado automáticamente con el acuerdo
+        movimientoInicialAEliminar = mov;
+      }
+
       // 3. Confirmación del usuario
       const montoFormateado = parsearMoneda(acuerdo.importe_actual).toLocaleString('es-AR', { minimumFractionDigits: 2 });
-      const confirmar = window.confirm(
+      const mensajeConfirmacion =
         `¿Está seguro de que desea eliminar permanentemente este acuerdo?\n\n` +
         `• ID Acuerdo: #${acuerdo.id_acuerdo}\n` +
         `• Prestación: ${acuerdo.nombre_prestacion}\n` +
         `• Estado: ${acuerdo.estado || 'ACTIVO'}\n` +
         `• Importe: $${montoFormateado}\n\n` +
-        `Este acuerdo no posee ningún movimiento de cuenta corriente y será eliminado definitivamente de la base de datos.`
-      );
+        (movimientoInicialAEliminar
+          ? `ℹ️ Se eliminará también el movimiento de débito inicial generado al crearlo (Mov #${movimientoInicialAEliminar.id_movimiento}) para que no quede deuda pendiente en la cuenta corriente.\n\n`
+          : `ℹ️ El acuerdo no posee movimientos registrados en la cuenta corriente.\n\n`) +
+        `¿Desea proceder?`;
 
-      if (!confirmar) return;
+      if (!window.confirm(mensajeConfirmacion)) return;
 
-      // 4. Eliminación en acuerdos_motor
+      // 4. Si hay un movimiento inicial de creación, eliminarlo primero
+      if (movimientoInicialAEliminar) {
+        const { error: errDelMov } = await supabase
+          .from('movimientoscuenta_motor')
+          .delete()
+          .eq('id_movimiento', movimientoInicialAEliminar.id_movimiento);
+
+        if (errDelMov) throw errDelMov;
+      }
+
+      // 5. Eliminar el acuerdo en acuerdos_motor
       const { error: errDelete } = await supabase
         .from('acuerdos_motor')
         .delete()
@@ -793,10 +858,18 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
 
       if (errDelete) throw errDelete;
 
-      // 5. Actualizar estado local
-      setAcuerdos(prev => prev.filter(a => a.id_acuerdo !== acuerdo.id_acuerdo));
-      setMensaje({ texto: `Acuerdo #${acuerdo.id_acuerdo} (${acuerdo.nombre_prestacion}) eliminado exitosamente.`, tipo: 'exito' });
-      setTimeout(() => setMensaje({ texto: '', tipo: '' }), 3500);
+      // 6. Recargar ficha completa del paciente para reflejar saldos, acuerdos y movimientos actualizados
+      if (pacienteSeleccionado?.id_paciente) {
+        await seleccionarPacientePorId({ target: { value: pacienteSeleccionado.id_paciente } });
+      } else {
+        setAcuerdos(prev => prev.filter(a => a.id_acuerdo !== acuerdo.id_acuerdo));
+      }
+
+      setMensaje({
+        texto: `Acuerdo #${acuerdo.id_acuerdo} (${acuerdo.nombre_prestacion})${movimientoInicialAEliminar ? ' y su débito inicial' : ''} eliminado(s) exitosamente.`,
+        tipo: 'exito'
+      });
+      setTimeout(() => setMensaje({ texto: '', tipo: '' }), 4000);
 
     } catch (err) {
       console.error("Error al eliminar acuerdo:", err);
