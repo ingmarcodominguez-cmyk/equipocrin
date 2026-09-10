@@ -511,14 +511,24 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
     try {
       const [
         { data: acuerdosData, error: errorAcuerdos },
-        { data: movimientosData, error: errorMovimientos }
+        { data: movimientosData, error: errorMovimientos },
+        { data: prestacionesData, error: errorPrestaciones }
       ] = await Promise.all([
         supabase.from('acuerdos_motor').select('*').eq('id_paciente', pacienteEncontrado.id_paciente),
-        supabase.from('movimientoscuenta_motor').select('*').eq('id_paciente', pacienteEncontrado.id_paciente)
+        supabase.from('movimientoscuenta_motor').select('*').eq('id_paciente', pacienteEncontrado.id_paciente),
+        supabase.from('prestaciones_motor').select('*')
       ]);
 
       if (errorAcuerdos) throw errorAcuerdos;
       if (errorMovimientos) throw errorMovimientos;
+
+      const listaPrestacionesActual = (prestacionesData && !errorPrestaciones && prestacionesData.length > 0)
+        ? prestacionesData
+        : prestaciones;
+
+      if (prestacionesData && !errorPrestaciones && prestacionesData.length > 0) {
+        setPrestaciones(prestacionesData);
+      }
 
       // Cargar observaciones
       await cargarObservaciones(pacienteEncontrado.id_paciente);
@@ -527,15 +537,25 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
       await cargarLiquidacionesPrestadores(pacienteEncontrado.id_paciente, pacienteEncontrado.nombre_apellido);
       setFiltroPrestador('');
 
-      const acuerdosConPrestacion = (acuerdosData || []).map(acuerdo => {
-        const prestacionEncontrada = prestaciones.find(
-          p => String(p.id_prestacion).trim() === String(acuerdo.id_prestacion).trim()
+      const acuerdosConPrestacion = await Promise.all((acuerdosData || []).map(async (acuerdo) => {
+        let prestacionEncontrada = listaPrestacionesActual.find(
+          p => String(p.id_prestacion || p.id).trim() === String(acuerdo.id_prestacion).trim()
         );
+        if (!prestacionEncontrada && acuerdo.id_prestacion) {
+          const { data: pSingle } = await supabase
+            .from('prestaciones_motor')
+            .select('*')
+            .eq('id_prestacion', acuerdo.id_prestacion)
+            .maybeSingle();
+          if (pSingle) {
+            prestacionEncontrada = pSingle;
+          }
+        }
         return {
           ...acuerdo,
           nombre_prestacion: prestacionEncontrada ? prestacionEncontrada.nombre_prestacion : `Prestación ID: ${acuerdo.id_prestacion || 'S/D'}`
         };
-      });
+      }));
 
       const acuerdosSinCeros = acuerdosConPrestacion.filter(acuerdo => {
         const valor = acuerdo.importe_actual;
