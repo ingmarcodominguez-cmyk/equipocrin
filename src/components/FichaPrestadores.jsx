@@ -149,11 +149,15 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
       });
       const movimientosFiltrados = listaMovs.filter(m => !m.id_pago || !revertedPagoIds.has(m.id_pago));
 
+      const fechaHoy = localStorage.getItem('crin_fecha_trabajo_simulada') || new Date().toISOString().split('T')[0];
+      const mesActual = fechaHoy.substring(0, 7); // Excluir mes en curso (ej: 2026-09)
+
       const prestadorMesMapa = {};
       movimientosFiltrados.forEach(m => {
         if (!m.fecha) return;
         if (m.fecha < '2026-03-01') return; // Descartar enero y febrero
         const mes = m.fecha.substring(0, 7);
+        if (mes >= mesActual) return; // Excluir mes en curso (no cerrado) y períodos futuros
         const id = m.id_prestador;
 
         const conc = (m.concepto || '').toUpperCase();
@@ -212,7 +216,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
   const descargarReporteIngresosExcel = () => {
     const BOM = "\uFEFF";
     let csv = "sep=;\n";
-    csv += `Reporte Confidencial - Promedio Mensual de Ingresos por Prestador\n\n`;
+    csv += `Reporte Confidencial - Promedio Mensual de Ingresos por Prestador (Meses cerrados desde Marzo, sin mes en curso)\n\n`;
     csv += "Prestador;Promedio Mensual ($);Meses y Montos Detallados\r\n";
 
     datosReporte.forEach(p => {
@@ -1122,7 +1126,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                   📊 Reporte Confidencial: Promedios Mensuales de Ingresos
                 </h3>
                 <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '13px' }}>
-                  Suma de honorarios liquidados por mes (neto de débitos/reversos, antes de pagos).
+                  Suma de honorarios liquidados por mes cerrado desde Marzo (neto de débitos/reversos, antes de pagos). Excluye el mes en curso por encontrarse abierto.
                 </p>
               </div>
               <button 
