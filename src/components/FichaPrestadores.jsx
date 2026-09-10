@@ -493,6 +493,45 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
     }
   };
 
+  const manejarEliminarAjusteManual = async (mov) => {
+    const concepto = mov.concepto || 'Ajuste';
+    const valHaber = parsearDecimal(mov.haber);
+    const valDebe = parsearDecimal(mov.debe);
+    const monto = valHaber > 0 ? valHaber : valDebe;
+    const tipo = valHaber > 0 ? 'Crédito' : 'Débito/Pago';
+
+    const confirmar = window.confirm(
+      `¿Está seguro de que desea eliminar este movimiento manual?\n\n` +
+      `Concepto: ${concepto}\n` +
+      `Tipo: ${tipo}\n` +
+      `Monto: $${monto.toLocaleString('es-AR', { minimumFractionDigits: 2 })}\n\n` +
+      `Esta acción eliminará el registro de forma permanente de la cuenta corriente del profesional.`
+    );
+
+    if (!confirmar) return;
+
+    try {
+      const { error } = await supabase
+        .from('movprestadores_motor')
+        .delete()
+        .eq('id_mov', mov.id_mov);
+
+      if (error) throw error;
+
+      mostrarAlerta("Movimiento manual eliminado con éxito.", "exito");
+      await cargarPrestadores();
+      if (prestadorSeleccionado) {
+        await cargarMovimientos(prestadorSeleccionado.id_prestador);
+      }
+      if (globalResults.length > 0) {
+        setGlobalResults(prev => prev.filter(item => item.id_mov !== mov.id_mov));
+      }
+    } catch (err) {
+      console.error("Error al eliminar movimiento:", err);
+      alert("Error al eliminar el movimiento: " + err.message);
+    }
+  };
+
   const totalHaber = movimientos.reduce((acc, m) => acc + parsearDecimal(m.haber), 0);
   const totalDebe = movimientos.reduce((acc, m) => acc + parsearDecimal(m.debe), 0);
   const saldoFinal = totalHaber - totalDebe;
@@ -679,6 +718,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                       <th style={{ padding: '12px 10px' }}>Acuerdo / Ref</th>
                       <th style={{ padding: '12px 10px', textAlign: 'right' }}>Debe</th>
                       <th style={{ padding: '12px 10px', textAlign: 'right' }}>Haber</th>
+                      <th style={{ padding: '12px 10px', textAlign: 'center', width: '90px' }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -706,6 +746,38 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                           </td>
                           <td style={{ padding: '10px', textAlign: 'right', color: valHaber > 0 ? '#15803d' : '#94a3b8' }}>
                             {valHaber > 0 ? `$${valHaber.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                          </td>
+                          <td style={{ padding: '10px', textAlign: 'center' }}>
+                            {m.acuerdo === 'Ajuste Manual' && (
+                              <button
+                                onClick={() => manejarEliminarAjusteManual(m)}
+                                title="Eliminar este movimiento manual"
+                                style={{
+                                  background: '#fee2e2',
+                                  color: '#dc2626',
+                                  border: '1px solid #fca5a5',
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  fontSize: '11px',
+                                  fontWeight: 'bold',
+                                  transition: 'all 0.2s',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                                onMouseOver={(e) => {
+                                  e.currentTarget.style.background = '#dc2626';
+                                  e.currentTarget.style.color = '#fff';
+                                }}
+                                onMouseOut={(e) => {
+                                  e.currentTarget.style.background = '#fee2e2';
+                                  e.currentTarget.style.color = '#dc2626';
+                                }}
+                              >
+                                🗑️ Eliminar
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );
@@ -968,6 +1040,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                       <th style={{ padding: '12px 10px', textAlign: 'right' }}>Debe (Pagos/Gastos)</th>
                       <th style={{ padding: '12px 10px', textAlign: 'right' }}>Haber (Honorarios)</th>
                       <th style={{ padding: '12px 10px', textAlign: 'right' }}>Saldo Acumulado</th>
+                      <th style={{ padding: '12px 10px', textAlign: 'center', width: '90px' }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -995,6 +1068,38 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                           </td>
                           <td style={{ padding: '10px', textAlign: 'right', color: m.saldoAcumulado >= 0 ? '#15803d' : '#b91c1c', fontWeight: 'bold' }}>
                             ${m.saldoAcumulado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td style={{ padding: '10px', textAlign: 'center' }}>
+                            {m.acuerdo === 'Ajuste Manual' && (
+                              <button
+                                onClick={() => manejarEliminarAjusteManual(m)}
+                                title="Eliminar este movimiento manual"
+                                style={{
+                                  background: '#fee2e2',
+                                  color: '#dc2626',
+                                  border: '1px solid #fca5a5',
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  fontSize: '11px',
+                                  fontWeight: 'bold',
+                                  transition: 'all 0.2s',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                                onMouseOver={(e) => {
+                                  e.currentTarget.style.background = '#dc2626';
+                                  e.currentTarget.style.color = '#fff';
+                                }}
+                                onMouseOut={(e) => {
+                                  e.currentTarget.style.background = '#fee2e2';
+                                  e.currentTarget.style.color = '#dc2626';
+                                }}
+                              >
+                                🗑️ Eliminar
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );
