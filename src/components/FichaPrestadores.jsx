@@ -619,19 +619,33 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
         }
       });
 
-      // 6. Movimientos de cuenta corriente para este período
-      const { data: movsPeriodo, error: errMovs } = await supabase
+      // 6. Cuotas de cuenta corriente para este período
+      const { data: cuotasPeriodo, error: errCuotas } = await supabase
         .from('movimientoscuenta_motor')
         .select('*')
-        .eq('ciclo_mora', periodo);
-      if (errMovs) throw errMovs;
+        .eq('ciclo_mora', periodo)
+        .ilike('tipo_movimiento', 'cuota');
+      if (errCuotas) throw errCuotas;
 
-      // 7. Movimientos en movprestadores_motor para verificar liquidaciones previas
-      const { data: movsPrestadoresData, error: errMovPrest } = await supabase
-        .from('movprestadores_motor')
-        .select('id_paciente, id_pago, haber, fecha, concepto')
-        .eq('id_prestador', idPrestador);
-      if (errMovPrest) throw errMovPrest;
+      const idDeudasPeriodo = [...new Set((cuotasPeriodo || []).map(c => c.id_deuda).filter(Boolean))];
+
+      // Recuperar TODOS los movimientos pertenecientes a estas deudas (incluye notas de crédito y pagos)
+      let todosMovsDeuda = [];
+      for (let i = 0; i < idDeudasPeriodo.length; i += 50) {
+        const chunk = idDeudasPeriodo.slice(i, i + 50);
+        const { data: chunkMovs, error: errChunk } = await supabase
+          .from('movimientoscuenta_motor')
+          .select('*')
+          .in('id_deuda', chunk);
+        if (errChunk) throw errChunk;
+        todosMovsDeuda = todosMovsDeuda.concat(chunkMovs || []);
+      }
+
+      const deudasMap = {};
+      todosMovsDeuda.forEach(m => {
+        if (!deudasMap[m.id_deuda]) deudasMap[m.id_deuda] = [];
+        deudasMap[m.id_deuda].push(m);
+      });
 
       const idViviana = prestadores.find(p => p.nombre_prestador?.toUpperCase().includes('VIVIANA'))?.id_prestador || 1;
       const PRESTADORES_EXPLICITOS = [
@@ -707,51 +721,58 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
         if (sesionesEstePrestador === 0) continue;
 
         const proporcion = totalSesiones > 0 ? (sesionesEstePrestador / totalSesiones) : 0;
-        const importeAcuerdo = parsearDecimal(ac.importe_actual || ac.monto_cuota_base);
-        const ingresoEstimado = Math.round(importeAcuerdo * proporcion);
+        const cuotaPactadaAcuerdo = parsearDecimal(ac.importe_actual || ac.monto_cuota_base);
 
-        // Buscar cuota del período para este paciente y acuerdo
-        const cuotaMov = (movsPeriodo || []).find(m => 
+        // Buscar la cuota del período para este paciente y acuerdo
+        const cuotaMov = (cuotasPeriodo || []).find(m => 
           m.id_paciente === ac.id_paciente && 
-          (m.tipo_movimiento || '').toLowerCase() === 'cuota' &&
           (m.id_acuerdo === ac.id_acuerdo || !m.id_acuerdo)
         );
 
+        let totalNotasCredito = 0;
+        let totalPagado = 0;
+        let saldoPendiente = cuotaPactadaAcuerdo;
         let estadoCobro = 'NO_COBRADO';
-        let montoCobrado = 0;
 
-        if (cuotaMov) {
-          const saldoCuota = parsearDecimal(cuotaMov.saldo);
-          const debeCuota = parsearDecimal(cuotaMov.debe);
+        if (cuotaMov && cuotaMov.id_deuda) {
+          const movsDeuda = deudasMap[cuotaMov.id_deuda] || [];
+          let dTot = 0;
+          let hTot = 0;
 
-          const pagosDeuda = (movsPeriodo || []).filter(m => 
-            m.id_deuda === cuotaMov.id_deuda && 
-            (m.tipo_movimiento || '').toLowerCase() === 'pago'
-          );
-          const totalPagadoDeuda = pagosDeuda.reduce((sum, p) => sum + parsearDecimal(p.haber), 0);
+          movsDeuda.forEach(m => {
+            const d = parsearDecimal(m.debe);
+            const h = parsearDecimal(m.haber);
+            dTot += d;
+            hTot += h;
+            const tipo = (m.tipo_movimiento || '').toLowerCase();
+            if (tipo === 'pago') totalPagado += h;
+            if (tipo === 'ajuste') totalNotasCredito += h;
+          });
 
-          if (saldoCuota <= 0 || (totalPagadoDeuda >= debeCuota && debeCuota > 0)) {
+          saldoPendiente = Math.max(0, Math.round((dTot - hTot) * 100) / 100);
+
+          if (saldoPendiente <= 0.01 && dTot > 0) {
             estadoCobro = 'COBRADO';
-            montoCobrado = ingresoEstimado;
-          } else if (totalPagadoDeuda > 0) {
+          } else if (totalPagado > 0) {
             estadoCobro = 'PARCIAL';
-            montoCobrado = Math.round(totalPagadoDeuda * proporcion);
+          } else {
+            estadoCobro = 'NO_COBRADO';
           }
         }
 
-        // Chequeo complementario: si en movprestadores_motor ya se acreditó para este paciente en el período
-        if (estadoCobro !== 'COBRADO') {
-          const periodoStr = String(periodo);
-          const anioMes = periodoStr.substring(0, 4) + '-' + periodoStr.substring(4, 6);
-          const tieneLiquidacion = (movsPrestadoresData || []).some(mp => 
-            mp.id_paciente === ac.id_paciente && 
-            parsearDecimal(mp.haber) > 0 && 
-            mp.fecha && mp.fecha.startsWith(anioMes)
-          );
-          if (tieneLiquidacion) {
-            estadoCobro = 'COBRADO';
-            montoCobrado = ingresoEstimado;
-          }
+        const ingresoEstimado = Math.round(cuotaPactadaAcuerdo * proporcion);
+        let ingresoCobrado = 0;
+        let ingresoPendiente = 0;
+
+        if (estadoCobro === 'COBRADO') {
+          ingresoCobrado = ingresoEstimado;
+        } else if (estadoCobro === 'PARCIAL') {
+          const baseDiv = cuotaPactadaAcuerdo > 0 ? cuotaPactadaAcuerdo : 1;
+          const pctPagado = Math.min(1, totalPagado / baseDiv);
+          ingresoCobrado = Math.round(ingresoEstimado * pctPagado);
+          ingresoPendiente = ingresoEstimado - ingresoCobrado;
+        } else {
+          ingresoPendiente = ingresoEstimado;
         }
 
         resultados.push({
@@ -760,12 +781,18 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
           paciente: pac ? pac.nombre_apellido : `Paciente #${ac.id_paciente}`,
           obra_social: pac?.obra_social || 'Particular',
           prestacion: nombrePrestacion,
-          importeAcuerdo,
+          importeAcuerdo: cuotaPactadaAcuerdo,
+          cuotaPactada: cuotaPactadaAcuerdo,
+          totalNotasCredito,
+          totalPagado,
+          saldoPendiente,
           sesionesEstePrestador,
           totalSesiones,
           porcentaje: (proporcion * 100).toFixed(1) + '%',
           ingresoEstimado,
-          montoCobrado,
+          ingresoCobrado,
+          montoCobrado: ingresoCobrado,
+          ingresoPendiente,
           estadoCobro,
           dia_vencimiento: ac.dia_vencimiento || 10
         });
@@ -786,11 +813,11 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
     const BOM = "\uFEFF";
     let csv = "sep=;\n";
     csv += `Proyección de Ingresos por Paciente - ${prestadorNombre} (${periodoNombre})\n\n`;
-    csv += "Paciente;Obra Social;Prestación / Acuerdo Mensual;Cuota Total Paciente ($);Sesiones Asignadas;Total Sesiones;Participación (%);Ingreso Estimado Prestador ($);Estado Cobranza\r\n";
+    csv += "Paciente;Obra Social;Prestación / Acuerdo Mensual;Cuota Pactada ($);Notas Crédito / Obra Social ($);Saldo a Pagar Paciente ($);Sesiones Asignadas;Total Sesiones;Participación (%);Ingreso Estimado Prestador ($);Estado Cobranza\r\n";
 
     datosProyeccion.forEach(d => {
       const estadoStr = d.estadoCobro === 'COBRADO' ? 'Cobrado' : d.estadoCobro === 'PARCIAL' ? 'Cobro Parcial' : 'No Cobrado';
-      csv += `"${d.paciente}";"${d.obra_social}";"${d.prestacion}";${d.importeAcuerdo};${d.sesionesEstePrestador};${d.totalSesiones};"${d.porcentaje}";${d.ingresoEstimado};"${estadoStr}"\r\n`;
+      csv += `"${d.paciente}";"${d.obra_social}";"${d.prestacion}";${d.cuotaPactada};${d.totalNotasCredito};${d.saldoPendiente};${d.sesionesEstePrestador};${d.totalSesiones};"${d.porcentaje}";${d.ingresoEstimado};"${estadoStr}"\r\n`;
     });
 
     const blob = new Blob([BOM + csv], { type: "text/csv;charset=utf-8;" });
@@ -1488,7 +1515,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
       {/* Modal Proyección de Ingresos por Paciente (Acuerdos Mensuales) */}
       {modalProyeccionAbierto && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
-          <div style={{ background: '#fff', padding: '30px', borderRadius: '16px', width: '92%', maxWidth: '1050px', maxHeight: '88vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.3)', border: '1px solid #e2e8f0' }}>
+          <div style={{ background: '#fff', padding: '30px', borderRadius: '16px', width: '94%', maxWidth: '1200px', maxHeight: '88vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.3)', border: '1px solid #e2e8f0' }}>
             
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #6366f1', paddingBottom: '15px', marginBottom: '20px' }}>
@@ -1556,9 +1583,9 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                 d.paciente.toLowerCase().includes(filtroPacienteProyeccion.toLowerCase()) ||
                 d.prestacion.toLowerCase().includes(filtroPacienteProyeccion.toLowerCase())
               );
-              const totalEst = filtrados.reduce((acc, d) => acc + d.ingresoEstimado, 0);
-              const totalCob = filtrados.filter(d => d.estadoCobro === 'COBRADO').reduce((acc, d) => acc + d.ingresoEstimado, 0);
-              const totalPend = filtrados.filter(d => d.estadoCobro !== 'COBRADO').reduce((acc, d) => acc + (d.ingresoEstimado - (d.montoCobrado || 0)), 0);
+              const totalEst = filtrados.reduce((acc, d) => acc + (d.ingresoEstimado || 0), 0);
+              const totalCob = filtrados.reduce((acc, d) => acc + (d.ingresoCobrado || 0), 0);
+              const totalPend = filtrados.reduce((acc, d) => acc + (d.ingresoPendiente || 0), 0);
 
               return (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
@@ -1621,7 +1648,9 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                         <th style={{ padding: '12px 14px' }}>Paciente</th>
                         <th style={{ padding: '12px 14px' }}>Obra Social</th>
                         <th style={{ padding: '12px 14px' }}>Prestación (Acuerdo Mensual)</th>
-                        <th style={{ padding: '12px 14px', textAlign: 'right' }}>Cuota Total ($)</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'right' }}>Cuota Pactada ($)</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'right' }}>N. Crédito / O. Social ($)</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'right' }}>Saldo a Pagar ($)</th>
                         <th style={{ padding: '12px 14px', textAlign: 'center' }}>Sesiones / Part.</th>
                         <th style={{ padding: '12px 14px', textAlign: 'right' }}>Ingreso Prestador ($)</th>
                         <th style={{ padding: '12px 14px', textAlign: 'center' }}>Estado de Cobro</th>
@@ -1642,15 +1671,35 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                             </span>
                           </td>
                           <td style={{ padding: '12px 14px', textAlign: 'right', color: '#475569', fontWeight: '600' }}>
-                            ${d.importeAcuerdo.toLocaleString('es-AR')}
+                            ${(d.cuotaPactada || 0).toLocaleString('es-AR')}
+                          </td>
+                          <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                            {d.totalNotasCredito > 0 ? (
+                              <span style={{ color: '#7c3aed', fontWeight: '600', fontSize: '12px' }}>
+                                -${d.totalNotasCredito.toLocaleString('es-AR')}
+                              </span>
+                            ) : (
+                              <span style={{ color: '#94a3b8' }}>-</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                            {d.saldoPendiente > 0 ? (
+                              <span style={{ color: '#b91c1c', fontWeight: 'bold' }}>
+                                ${d.saldoPendiente.toLocaleString('es-AR')}
+                              </span>
+                            ) : (
+                              <span style={{ color: '#15803d', fontWeight: '600' }}>
+                                $0 (Al día)
+                              </span>
+                            )}
                           </td>
                           <td style={{ padding: '12px 14px', textAlign: 'center', color: '#475569' }}>
                             <span style={{ fontSize: '12px', fontWeight: '600' }}>
                               {d.sesionesEstePrestador} de {d.totalSesiones} ({d.porcentaje})
                             </span>
                           </td>
-                          <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: '800', fontSize: '14px', color: d.estadoCobro === 'COBRADO' ? '#15803d' : '#b91c1c' }}>
-                            ${d.ingresoEstimado.toLocaleString('es-AR')}
+                          <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: '800', fontSize: '14px', color: d.estadoCobro === 'COBRADO' ? '#15803d' : d.estadoCobro === 'PARCIAL' ? '#b45309' : '#b91c1c' }}>
+                            ${(d.ingresoEstimado || 0).toLocaleString('es-AR')}
                           </td>
                           <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                             {d.estadoCobro === 'COBRADO' && (
@@ -1659,14 +1708,26 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                               </span>
                             )}
                             {d.estadoCobro === 'NO_COBRADO' && (
-                              <span style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', padding: '4px 10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                🔴 No cobrado
-                              </span>
+                              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                <span style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', padding: '4px 10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  🔴 No cobrado
+                                </span>
+                                {d.saldoPendiente > 0 && (
+                                  <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: '600' }}>
+                                    Debe ${d.saldoPendiente.toLocaleString('es-AR')}
+                                  </span>
+                                )}
+                              </div>
                             )}
                             {d.estadoCobro === 'PARCIAL' && (
-                              <span style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', padding: '4px 10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                🟡 Parcial (${d.montoCobrado.toLocaleString('es-AR')})
-                              </span>
+                              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                <span style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', padding: '4px 10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  🟡 Cobro Parcial
+                                </span>
+                                <span style={{ fontSize: '10px', color: '#b45309', fontWeight: '600' }}>
+                                  Pagó ${d.totalPagado.toLocaleString('es-AR')} / Saldo ${d.saldoPendiente.toLocaleString('es-AR')}
+                                </span>
+                              </div>
                             )}
                           </td>
                         </tr>
