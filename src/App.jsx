@@ -812,6 +812,7 @@ function App() {
           const fechaStr = formatearFechaLocal(fechaTrabajo);
 
           const nuevoRecargoItem = {
+            id_movimiento: maxIdMovimiento,
             id_acuerdo: deuda.id_acuerdo,
             id_paciente: deuda.id_paciente,
             id_deuda: deuda.id_deuda,
@@ -820,6 +821,7 @@ function App() {
             concepto: label,
             debe: montoRecargo.toString(),
             haber: '0',
+            saldo: '0.00',
             fecha_movimiento: fechaStr,
             fecha_vencimiento: deuda.fecha_vencimiento,
             escalon_mora: String(nroRecargo)
