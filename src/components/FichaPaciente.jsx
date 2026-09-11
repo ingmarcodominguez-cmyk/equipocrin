@@ -694,13 +694,26 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
       if (error) throw error;
 
       if (campo === 'importe_actual') {
+        const acuerdoTarget = acuerdos.find(ac => ac.id_acuerdo === idAcuerdo);
+        const esOS = Boolean(
+          acuerdoTarget?.nombre_prestacion?.toUpperCase().startsWith('OS-') ||
+          acuerdoTarget?.nombre_prestacion?.toUpperCase().startsWith('OS ') ||
+          acuerdoTarget?.observaciones?.toUpperCase().includes('OBRA SOCIAL') ||
+          acuerdoTarget?.observaciones?.includes('OBRA_SOCIAL') ||
+          acuerdoTarget?.observaciones?.includes('FACTURADO')
+        );
+
         const num = parsearMoneda(valor);
-        if (num === 0 || valor === '' || valor === null) {
+        if (!esOS && (num === 0 || valor === '' || valor === null)) {
           setAcuerdos(acuerdos.filter(ac => ac.id_acuerdo !== idAcuerdo));
           setMensaje({ texto: 'Acuerdo ocultado por tener importe 0.', tipo: 'exito' });
           setTimeout(() => setMensaje({ texto: '', tipo: '' }), 2500);
           return;
         }
+
+        // Si es de obra social o tiene importe, mantener en el estado actualizado
+        setAcuerdos(acuerdos.map(ac => ac.id_acuerdo === idAcuerdo ? { ...ac, [campo]: valor } : ac));
+        return;
       }
 
       if (campo === 'estado') {
@@ -2590,7 +2603,7 @@ const confirmarRegistroPago = async () => {
           {vistaActiva === 'acuerdos' && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '2px solid #e2e8f0', paddingBottom: '8px' }}>
-                <h4 style={{ color: '#1e293b', margin: 0 }}>📋 Acuerdos Activos (Sin valor 0)</h4>
+                <h4 style={{ color: '#1e293b', margin: 0 }}>📋 Acuerdos Activos</h4>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button
                     onClick={() => setVistaActiva('nuevo_acuerdo')}
@@ -2732,15 +2745,33 @@ const confirmarRegistroPago = async () => {
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' }}>
                           <div>
                             <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '5px' }}>
-                              Importe Actual ($)
+                              {esOS ? 'Importe O.S. ($)' : 'Importe Actual ($)'}
                             </label>
-                            <input
-                              type="text"
-                              defaultValue={acuerdo.importe_actual || ''}
-                              onBlur={(e) => actualizarAcuerdoEnBD(acuerdo.id_acuerdo, 'importe_actual', e.target.value)}
-                              style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontWeight: 'bold' }}
-                            />
-                            <span style={{ fontSize: '11px', color: '#64748b' }}>Clic fuera para guardar</span>
+                            {esOS && !estaFacturado ? (
+                              <div style={{
+                                padding: '8px 10px',
+                                background: '#f8fafc',
+                                border: '1px dashed #94a3b8',
+                                borderRadius: '6px',
+                                color: '#475569',
+                                fontSize: '13px',
+                                fontWeight: '600'
+                              }}>
+                                $0.00 (Pendiente de facturación)
+                              </div>
+                            ) : (
+                              <input
+                                type="text"
+                                defaultValue={acuerdo.importe_actual || ''}
+                                onBlur={(e) => actualizarAcuerdoEnBD(acuerdo.id_acuerdo, 'importe_actual', e.target.value)}
+                                style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontWeight: 'bold' }}
+                              />
+                            )}
+                            <span style={{ fontSize: '11px', color: '#64748b' }}>
+                              {esOS
+                                ? (estaFacturado ? 'Importe facturado a la entidad' : 'Se asigna al pulsar "Facturar a Obra Social"')
+                                : 'Clic fuera para guardar'}
+                            </span>
                           </div>
 
                           <div>
