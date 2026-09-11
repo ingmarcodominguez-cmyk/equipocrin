@@ -67,6 +67,18 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
   const [cargandoLiquidaciones, setCargandoLiquidaciones] = useState(false);
   const [filtroPrestador, setFiltroPrestador] = useState('');
 
+  // Estados para Facturación a Obra Social
+  const [modalFacturarOS, setModalFacturarOS] = useState(false);
+  const [acuerdoAFacturar, setAcuerdoAFacturar] = useState(null);
+  const [formFacturarOS, setFormFacturarOS] = useState({
+    obraSocial: '',
+    monto: '',
+    nroFactura: '',
+    fecha: new Date().toISOString().split('T')[0],
+    observaciones: ''
+  });
+  const [guardandoFacturaOS, setGuardandoFacturaOS] = useState(false);
+
   // Estados para Registro de Pago
   const [modalPagoAbierto, setModalPagoAbierto] = useState(false);
   const [prestadoresList, setPrestadoresList] = useState([]);
@@ -558,6 +570,14 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
       }));
 
       const acuerdosSinCeros = acuerdosConPrestacion.filter(acuerdo => {
+        const esOS = Boolean(
+          acuerdo.nombre_prestacion?.toUpperCase().startsWith('OS-') ||
+          acuerdo.nombre_prestacion?.toUpperCase().startsWith('OS ') ||
+          acuerdo.observaciones?.includes('OBRA_SOCIAL') ||
+          acuerdo.observaciones?.includes('FACTURADO')
+        );
+        if (esOS) return true; // Mantener siempre acuerdos de obra social
+
         const valor = acuerdo.importe_actual;
         if (valor === null || valor === undefined || valor === '') return false;
         return parsearMoneda(valor) !== 0;
@@ -874,6 +894,117 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
     } catch (err) {
       console.error("Error al eliminar acuerdo:", err);
       alert("Error al eliminar el acuerdo: " + err.message);
+    }
+  };
+
+  const abrirModalFacturarOS = (acuerdo) => {
+    setAcuerdoAFacturar(acuerdo);
+    
+    // Extraer obra social sugerida
+    let osSugerida = (pacienteSeleccionado?.obra_social || '').trim();
+    if (acuerdo.observaciones && acuerdo.observaciones.includes('OBRA_SOCIAL:')) {
+      const match = acuerdo.observaciones.match(/OBRA_SOCIAL:([^\s,\]]+)/);
+      if (match && match[1]) osSugerida = match[1];
+    } else if (acuerdo.nombre_prestacion?.toUpperCase().startsWith('OS-')) {
+      const parteOS = acuerdo.nombre_prestacion.substring(3).trim();
+      const palabras = parteOS.split(' ');
+      if (palabras.length > 0) osSugerida = palabras.slice(0, 2).join(' ');
+    }
+
+    setFormFacturarOS({
+      obraSocial: osSugerida.toUpperCase() || 'SANCOR SALUD',
+      monto: acuerdo.importe_actual && parsearMoneda(acuerdo.importe_actual) > 0 ? String(acuerdo.importe_actual) : '',
+      nroFactura: '',
+      fecha: new Date().toISOString().split('T')[0],
+      observaciones: ''
+    });
+    setModalFacturarOS(true);
+  };
+
+  const guardarFacturacionOS = async (e) => {
+    if (e) e.preventDefault();
+    if (!acuerdoAFacturar) return;
+
+    const montoNum = parsearMoneda(formFacturarOS.monto);
+    if (!montoNum || montoNum <= 0) {
+      alert('Por favor, ingresá un monto facturado válido y mayor a 0.');
+      return;
+    }
+    const osFinal = (formFacturarOS.obraSocial || 'OBRA SOCIAL').trim().toUpperCase();
+    if (!osFinal) {
+      alert('Por favor, ingresá el nombre de la Obra Social.');
+      return;
+    }
+
+    try {
+      setGuardandoFacturaOS(true);
+
+      // 1. Obtener siguiente id_movimiento en movimientoscuenta_motor
+      const { data: ultMov, error: errUlt } = await supabase
+        .from('movimientoscuenta_motor')
+        .select('id_movimiento')
+        .order('id_movimiento', { ascending: false })
+        .limit(1);
+
+      if (errUlt) throw errUlt;
+      const nextIdMov = (ultMov && ultMov[0]?.id_movimiento ? ultMov[0].id_movimiento : 0) + 1;
+
+      // 2. Registrar el movimiento en la Cuenta Corriente de la Obra Social (id_paciente = 0 para no tocar la cuenta del paciente)
+      const conceptoFactura = `Factura ${formFacturarOS.nroFactura ? '#' + formFacturarOS.nroFactura : 'S/N'} - ${osFinal} - Pac: ${pacienteSeleccionado.nombre_apellido} (ID ${pacienteSeleccionado.id_paciente}) - Prestación: ${acuerdoAFacturar.nombre_prestacion}${formFacturarOS.observaciones ? ' - ' + formFacturarOS.observaciones : ''}`;
+
+      const movOS = {
+        id_movimiento: nextIdMov,
+        id_paciente: 0, // 0 = Aislado de la cuenta personal del paciente
+        id_acuerdo: acuerdoAFacturar.id_acuerdo,
+        tipo_movimiento: 'FACTURA_OS',
+        subtipo: osFinal,
+        concepto: conceptoFactura,
+        debe: montoNum,
+        haber: 0,
+        saldo: 0,
+        fecha_movimiento: formFacturarOS.fecha || new Date().toISOString().split('T')[0],
+        fecha_registro: new Date().toISOString(),
+        usuario: usuario || 'Admin'
+      };
+
+      const { error: errInsertMov } = await supabase
+        .from('movimientoscuenta_motor')
+        .insert([movOS]);
+
+      if (errInsertMov) throw errInsertMov;
+
+      // 3. Actualizar el acuerdo en acuerdos_motor para registrar que fue facturado
+      const nuevaObs = `${acuerdoAFacturar.observaciones || ''} [FACTURADO O.S: $${montoNum.toLocaleString('es-AR')} - Factura: ${formFacturarOS.nroFactura || 'S/N'} - O.S: ${osFinal} - Fecha: ${formFacturarOS.fecha}]`.trim();
+
+      const { error: errUpdAcuerdo } = await supabase
+        .from('acuerdos_motor')
+        .update({
+          observaciones: nuevaObs,
+          importe_actual: montoNum
+        })
+        .eq('id_acuerdo', acuerdoAFacturar.id_acuerdo);
+
+      if (errUpdAcuerdo) throw errUpdAcuerdo;
+
+      setModalFacturarOS(false);
+      setAcuerdoAFacturar(null);
+
+      // 4. Recargar ficha del paciente
+      if (pacienteSeleccionado?.id_paciente) {
+        await seleccionarPacientePorId({ target: { value: pacienteSeleccionado.id_paciente } });
+      }
+
+      setMensaje({
+        texto: `✅ Facturación de $${montoNum.toLocaleString('es-AR')} registrada con éxito en la Cuenta de ${osFinal}. El saldo del paciente se mantiene en $0.`,
+        tipo: 'exito'
+      });
+      setTimeout(() => setMensaje({ texto: '', tipo: '' }), 4500);
+
+    } catch (err) {
+      console.error('Error al registrar facturación a obra social:', err);
+      alert('Error al registrar facturación: ' + (err.message || err));
+    } finally {
+      setGuardandoFacturaOS(false);
     }
   };
 
@@ -2454,12 +2585,27 @@ const confirmarRegistroPago = async () => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                   {acuerdos.map((acuerdo) => {
                     const estBadge = obtenerColorEstado(acuerdo.estado);
+                    const esOS = Boolean(
+                      acuerdo.nombre_prestacion?.toUpperCase().startsWith('OS-') ||
+                      acuerdo.nombre_prestacion?.toUpperCase().startsWith('OS ') ||
+                      acuerdo.observaciones?.includes('OBRA_SOCIAL') ||
+                      acuerdo.observaciones?.includes('FACTURADO')
+                    );
+                    const estaFacturado = Boolean(acuerdo.observaciones?.includes('FACTURADO'));
+
                     return (
-                      <div key={acuerdo.id_acuerdo} style={{ border: '1px solid #cbd5e1', borderRadius: '8px', padding: '20px', background: '#fff' }}>
+                      <div key={acuerdo.id_acuerdo} style={{ border: `1px solid ${esOS ? '#93c5fd' : '#cbd5e1'}`, borderRadius: '8px', padding: '20px', background: esOS ? '#f8faff' : '#fff' }}>
                         <div style={{ marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#2563eb' }}>
-                            🩺 Prestación: {acuerdo.nombre_prestacion}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#2563eb' }}>
+                              🩺 Prestación: {acuerdo.nombre_prestacion}
+                            </span>
+                            {esOS && (
+                              <span style={{ fontSize: '11px', background: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold' }}>
+                                🏛️ OBRA SOCIAL (Sin deuda paciente)
+                              </span>
+                            )}
+                          </div>
                           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                             <select
                               value={acuerdo.estado || 'ACTIVO'}
@@ -2502,6 +2648,53 @@ const confirmarRegistroPago = async () => {
                             </button>
                           </div>
                         </div>
+
+                        {esOS && (
+                          <div style={{
+                            background: estaFacturado ? '#f0fdf4' : '#fffbeb',
+                            border: `1px solid ${estaFacturado ? '#bbf7d0' : '#fef08a'}`,
+                            borderRadius: '6px',
+                            padding: '10px 14px',
+                            marginBottom: '14px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '10px'
+                          }}>
+                            <div>
+                              <div style={{ fontWeight: 'bold', fontSize: '13px', color: estaFacturado ? '#166534' : '#854d0e', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {estaFacturado ? '✅ Facturado a Obra Social' : '⏳ Pendiente de Facturación a Obra Social'}
+                              </div>
+                              <div style={{ fontSize: '12px', color: estaFacturado ? '#15803d' : '#a16207', marginTop: '2px' }}>
+                                {estaFacturado
+                                  ? (acuerdo.observaciones?.match(/\[FACTURADO[^\]]+\]/)?.[0] || 'Facturación registrada en la cuenta corriente de la Obra Social.')
+                                  : 'Este acuerdo no genera deuda personal en la ficha del paciente ($0). Debe facturarse a la Obra Social para ingresar a su cuenta corriente.'}
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => abrirModalFacturarOS(acuerdo)}
+                              style={{
+                                background: estaFacturado ? '#059669' : '#d97706',
+                                color: '#fff',
+                                border: 'none',
+                                padding: '6px 14px',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: 'bold',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                              }}
+                            >
+                              📄 {estaFacturado ? 'Modificar / Facturar O.S.' : 'Facturar a Obra Social'}
+                            </button>
+                          </div>
+                        )}
 
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' }}>
                           <div>
@@ -4334,6 +4527,170 @@ const confirmarRegistroPago = async () => {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PARA FACTURACIÓN A OBRA SOCIAL */}
+      {modalFacturarOS && acuerdoAFacturar && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: '12px',
+            maxWidth: '540px',
+            width: '100%',
+            padding: '24px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📄 Facturar a Obra Social
+                </h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                  Paciente: <strong>{pacienteSeleccionado?.nombre_apellido}</strong> | Acuerdo ID: #{acuerdoAFacturar.id_acuerdo}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setModalFacturarOS(false); setAcuerdoAFacturar(null); }}
+                style={{ background: 'transparent', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#64748b' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={guardarFacturacionOS}>
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', marginBottom: '16px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '13px', color: '#334155' }}>
+                  <strong>Prestación:</strong> {acuerdoAFacturar.nombre_prestacion}
+                </div>
+                <div style={{ fontSize: '12px', color: '#0284c7', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  ℹ️ Este importe se derivará a la <strong>Cuenta Corriente de la Obra Social</strong>. El paciente mantendrá saldo $0.
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '13px', color: '#334155' }}>
+                  Obra Social Destino *
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: SANCOR SALUD, SUBSIDIO DE SALUD, etc."
+                  value={formFacturarOS.obraSocial}
+                  onChange={(e) => setFormFacturarOS({ ...formFacturarOS, obraSocial: e.target.value })}
+                  style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', fontWeight: 'bold' }}
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '13px', color: '#334155' }}>
+                    Monto Facturado ($) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="Ej: 150000"
+                    value={formFacturarOS.monto}
+                    onChange={(e) => setFormFacturarOS({ ...formFacturarOS, monto: e.target.value })}
+                    style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '15px', fontWeight: 'bold', color: '#15803d' }}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '13px', color: '#334155' }}>
+                    Fecha de Facturación *
+                  </label>
+                  <input
+                    type="date"
+                    value={formFacturarOS.fecha}
+                    onChange={(e) => setFormFacturarOS({ ...formFacturarOS, fecha: e.target.value })}
+                    style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '13px', color: '#334155' }}>
+                  N° de Factura / Lote / Liquidación
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: FAC-0001-00045892 o Lote Sep-2026"
+                  value={formFacturarOS.nroFactura}
+                  onChange={(e) => setFormFacturarOS({ ...formFacturarOS, nroFactura: e.target.value })}
+                  style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '13px', color: '#334155' }}>
+                  Observaciones adicionales
+                </label>
+                <textarea
+                  rows="2"
+                  placeholder="Detalles sobre la factura o expediente..."
+                  value={formFacturarOS.observaciones}
+                  onChange={(e) => setFormFacturarOS({ ...formFacturarOS, observaciones: e.target.value })}
+                  style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+                <button
+                  type="button"
+                  onClick={() => { setModalFacturarOS(false); setAcuerdoAFacturar(null); }}
+                  disabled={guardandoFacturaOS}
+                  style={{
+                    padding: '9px 16px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    background: '#f1f5f9',
+                    color: '#334155',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '13px'
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardandoFacturaOS}
+                  style={{
+                    padding: '9px 20px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: '#059669',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '13px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {guardandoFacturaOS ? 'Guardando...' : 'Confirmar y Enviar a O.S.'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

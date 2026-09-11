@@ -19,6 +19,7 @@ import Presupuesto from './components/Presupuesto.jsx'
 import PresupuestoPublico from './components/PresupuestoPublico.jsx'
 import PlanillaGastos from './components/PlanillaGastos.jsx'
 import BotonPantallaCompleta from './components/BotonPantallaCompleta.jsx'
+import CuentasObrasSociales from './components/CuentasObrasSociales.jsx'
 
 // Locks para evitar ejecuciones concurrentes de los motores
 let motorRecargosLock = false;
@@ -1670,6 +1671,12 @@ function App() {
           </div>
         )}
 
+        {crinAccion === 'CUENTAS_OBRAS_SOCIALES' && (
+          <div style={{ width: '100%', maxWidth: '1400px' }}>
+            <CuentasObrasSociales onVolver={() => setCrinAccion(null)} usuario={userData?.nombre || session?.user?.email || 'Usuario'} />
+          </div>
+        )}
+
         {crinAccion === 'CONSULTA_DEUDA' && deudaConsultadaData && (
           <div style={{ width: '100%', maxWidth: '950px', background: '#ffffff', padding: '30px', borderRadius: '20px', border: '1px solid #e2e8f0', boxShadow: '0 10px 25px rgba(0,0,0,0.08)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #0f766e', paddingBottom: '15px', marginBottom: '20px' }}>
@@ -2334,6 +2341,39 @@ function App() {
             >
               <div style={{ fontSize: '36px', marginBottom: '12px' }}>📝⚙️</div>
               AJUSTE MASIVO
+            </button>
+
+            {/* Button: CUENTAS OBRAS SOCIALES */}
+            <button 
+              onClick={() => handleAccionClick('CUENTAS_OBRAS_SOCIALES')}
+              style={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '30px 15px', 
+                background: 'linear-gradient(135deg, #eff6ff 100%, #dbeafe 0%)', 
+                color: '#1d4ed8', 
+                border: '2px solid #93c5fd', 
+                borderRadius: '16px', 
+                cursor: 'pointer', 
+                fontWeight: '800', 
+                fontSize: '15px', 
+                textAlign: 'center',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                transition: 'transform 0.2s, box-shadow 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'scale(1.03)';
+                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+              }}
+            >
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>🏛️📋</div>
+              OBRAS SOCIALES
             </button>
 
             {/* Button 13: REPORTE COBRANZAS */}

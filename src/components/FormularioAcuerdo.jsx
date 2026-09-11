@@ -24,6 +24,17 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
   const [prestacionSeleccionada, setPrestacionSeleccionada] = useState(null)
   const [guardando, setGuardando] = useState(false)
 
+  // Estados para creación rápida de prestación
+  const [modalNuevaPrestacion, setModalNuevaPrestacion] = useState(false)
+  const [nuevaPrestacionForm, setNuevaPrestacionForm] = useState({
+    nombre: '',
+    tipo: 'UNICO',
+    esObraSocial: false,
+    obraSocialNombre: ''
+  })
+  const [creandoPrestacion, setCreandoPrestacion] = useState(false)
+  const [obrasSocialesDisponibles, setObrasSocialesDisponibles] = useState([])
+
   useEffect(() => {
     async function cargarDatosIniciales() {
       const { data: dataPacientes, error: errPac } = await supabase
@@ -32,7 +43,11 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
         .order('nombre_apellido', { ascending: true })
 
       if (errPac) console.error('Error al cargar pacientes:', errPac.message)
-      else setPacientes(dataPacientes || [])
+      else {
+        setPacientes(dataPacientes || [])
+        const listaOS = Array.from(new Set((dataPacientes || []).map(p => (p.obra_social || '').trim()).filter(Boolean))).sort()
+        setObrasSocialesDisponibles(listaOS)
+      }
 
       const { data: dataPrestaciones, error: errPres } = await supabase
         .from('prestaciones_motor')
@@ -109,13 +124,18 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
       const esUnicoPrestacion = prestacionObj.tipo_prestacion?.toLowerCase().includes('unico') || 
                                 prestacionObj.tipo_prestacion?.toLowerCase().includes('único')
 
+      const esOS = prestacionObj.nombre_prestacion?.toUpperCase().startsWith('OS-') ||
+                   prestacionObj.nombre_prestacion?.toUpperCase().startsWith('OS ') ||
+                   prestacionObj.observaciones?.includes('OBRA_SOCIAL')
+
       setForm({
         ...form,
         id_prestacion: prestacionObj.id || prestacionObj.id_prestacion,
         tipo_acuerdo: prestacionObj.tipo_prestacion || '',
-        monto_cuota_base: '',
-        importe_actual: '',
-        dia_vencimiento: esUnicoPrestacion ? '' : form.dia_vencimiento
+        monto_cuota_base: esOS ? '0' : '',
+        importe_actual: esOS ? '0' : '',
+        dia_vencimiento: (esUnicoPrestacion || esOS) ? '' : form.dia_vencimiento,
+        admite_recargo: esOS ? 'NO' : form.admite_recargo
       })
     } else {
       setPrestacionSeleccionada(null)
@@ -137,6 +157,87 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
   const esUnico = prestacionSeleccionada?.tipo_prestacion?.toLowerCase().includes('unico') || 
                   prestacionSeleccionada?.tipo_prestacion?.toLowerCase().includes('único')
   const esMensual = prestacionSeleccionada?.tipo_prestacion?.toLowerCase().includes('mensual')
+
+  const esObraSocial = Boolean(
+    prestacionSeleccionada && (
+      prestacionSeleccionada.nombre_prestacion?.toUpperCase().startsWith('OS-') ||
+      prestacionSeleccionada.nombre_prestacion?.toUpperCase().startsWith('OS ') ||
+      prestacionSeleccionada.observaciones?.includes('OBRA_SOCIAL')
+    )
+  )
+
+  const guardarNuevaPrestacion = async (e) => {
+    if (e) e.preventDefault()
+    const nombre = (nuevaPrestacionForm.nombre || '').trim().toUpperCase()
+    if (!nombre) {
+      alert('Por favor, ingresá el nombre de la prestación.')
+      return
+    }
+
+    try {
+      setCreandoPrestacion(true)
+
+      // 1. Obtener de forma segura MAX(id_prestacion) + 1
+      const { data: maxRows, error: errMax } = await supabase
+        .from('prestaciones_motor')
+        .select('id_prestacion')
+        .order('id_prestacion', { ascending: false })
+        .limit(1)
+
+      if (errMax) throw errMax
+      const nextId = (maxRows && maxRows[0]?.id_prestacion ? maxRows[0].id_prestacion : 0) + 1
+
+      const esOS = nuevaPrestacionForm.esObraSocial || nombre.startsWith('OS-') || nombre.startsWith('OS ')
+      const osNombre = (nuevaPrestacionForm.obraSocialNombre || '').trim().toUpperCase()
+
+      const nuevaFila = {
+        id_prestacion: nextId,
+        nombre_prestacion: nombre,
+        tipo_prestacion: nuevaPrestacionForm.tipo,
+        activa: 'SI',
+        flujo_obligatorio: 'DIRECTO',
+        prestacion_inicial: 'NO',
+        observaciones: esOS ? (osNombre ? `OBRA_SOCIAL:${osNombre}` : 'OBRA_SOCIAL') : null,
+        tipo_vencimiento: nuevaPrestacionForm.tipo === 'UNICO' ? '1' : null
+      }
+
+      const { data: dataInsert, error: errInsert } = await supabase
+        .from('prestaciones_motor')
+        .insert([nuevaFila])
+        .select()
+
+      if (errInsert) throw errInsert
+
+      const creada = (dataInsert && dataInsert[0]) || nuevaFila
+
+      // Actualizar lista y seleccionar
+      const listaActualizada = [...prestaciones, creada].sort((a, b) => 
+        (a.nombre_prestacion || '').localeCompare(b.nombre_prestacion || '')
+      )
+      setPrestaciones(listaActualizada)
+      setPrestacionSeleccionada(creada)
+
+      setForm(prev => ({
+        ...prev,
+        id_prestacion: creada.id_prestacion,
+        tipo_acuerdo: creada.tipo_prestacion || '',
+        monto_cuota_base: esOS ? '0' : '',
+        importe_actual: esOS ? '0' : '',
+        dia_vencimiento: '',
+        admite_recargo: 'NO',
+        observaciones: esOS ? `Cobertura Obra Social: ${osNombre || 'O.S.'}` : prev.observaciones
+      }))
+
+      setModalNuevaPrestacion(false)
+      setNuevaPrestacionForm({ nombre: '', tipo: 'UNICO', esObraSocial: false, obraSocialNombre: '' })
+      alert(`✅ Prestación "${nombre}" (ID #${creada.id_prestacion}) creada con éxito y seleccionada.`)
+    } catch (err) {
+      console.error('Error al crear prestación:', err)
+      alert('Error al crear la prestación: ' + (err.message || err))
+    } finally {
+      setCreandoPrestacion(false)
+    }
+  }
 
   // Función interna para calcular el vencimiento de la cuota inicial por tercios (10, 20 o fin de mes)
   function calcularVencimientoCuotaInicial(fechaAcuerdoStr) {
@@ -172,13 +273,15 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
       alert('Por favor, selecciona una prestación.')
       return
     }
-    if (!form.monto_cuota_base) {
-      alert('Por favor, completa el monto/importe base.')
-      return
-    }
-    if (!esUnico && (form.dia_vencimiento === '' || form.dia_vencimiento === null)) {
-      alert('Por favor, indica el día de vencimiento.')
-      return
+    if (!esObraSocial) {
+      if (!form.monto_cuota_base) {
+        alert('Por favor, completa el monto/importe base.')
+        return
+      }
+      if (!esUnico && (form.dia_vencimiento === '' || form.dia_vencimiento === null)) {
+        alert('Por favor, indica el día de vencimiento.')
+        return
+      }
     }
 
     setGuardando(true)
@@ -186,7 +289,7 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
     let fechaAcuerdoFinal = form.fecha_acuerdo;
     let esMensualDiferido = false;
 
-    if (esMensual) {
+    if (esMensual && !esObraSocial) {
       const [anioStr, mesStr, diaStr] = form.fecha_acuerdo.split('-').map(Number);
       if (diaStr >= 25) {
         esMensualDiferido = true;
@@ -209,15 +312,17 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
       }
     }
 
+    const montoCuotaFinal = esObraSocial ? '0' : String(form.monto_cuota_base || '0');
+
     const datosGuardar = {
       id_paciente: parseInt(form.id_paciente, 10),
       id_prestacion: parseInt(form.id_prestacion, 10),
       fecha_acuerdo: fechaAcuerdoFinal,
       tipo_acuerdo: form.tipo_acuerdo,
-      monto_cuota_base: String(form.monto_cuota_base), 
-      importe_actual: String(form.monto_cuota_base), 
-      dia_vencimiento: esUnico ? null : parseInt(form.dia_vencimiento, 10),
-      admite_recargo: esUnico ? 'NO' : form.admite_recargo,
+      monto_cuota_base: montoCuotaFinal, 
+      importe_actual: montoCuotaFinal, 
+      dia_vencimiento: (esUnico || esObraSocial) ? null : parseInt(form.dia_vencimiento, 10),
+      admite_recargo: (esUnico || esObraSocial) ? 'NO' : form.admite_recargo,
       estado: form.estado || 'ACTIVO',
       observaciones: form.observaciones || '',
       usuario: form.usuario || 'Admin'
@@ -250,7 +355,8 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
       if (error) throw error;
 
       // Generación del renglón inicial en movimientoscuenta_motor para nuevos acuerdos
-      if (!idAcuerdoEditar && idAcuerdoRegistrado && (esMensual || esUnico)) {
+      // REGLA CLAVE OBRA SOCIAL: Si es prestación por Obra Social, NO se genera deuda a cargo del paciente!
+      if (!idAcuerdoEditar && idAcuerdoRegistrado && (esMensual || esUnico) && !esObraSocial) {
         const { data: ultMov } = await supabase
           .from('movimientoscuenta_motor')
           .select('id_movimiento')
@@ -386,6 +492,19 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
           )}
         </div>
 
+        {/* AVISO DE PRESTACIÓN POR OBRA SOCIAL */}
+        {esObraSocial && (
+          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', padding: '12px 16px', borderRadius: '8px', color: '#166534', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '24px' }}>🏛️</span>
+            <div>
+              <strong>Prestación por Obra Social detectada:</strong>
+              <p style={{ margin: '2px 0 0 0', color: '#15803d' }}>
+                Esta prestación no genera deuda personal en la cuenta del paciente ($0). La facturación se registrará en la cuenta de la Obra Social cuando se emita la factura.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* SECCIÓN 2: DATOS DEL ACUERDO */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '15px' }}>
           
@@ -402,7 +521,37 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
           </div>
 
           <div>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Tipo de Prestación *</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+              <label style={{ fontWeight: 'bold', fontSize: '14px' }}>Tipo de Prestación *</label>
+              <button
+                type="button"
+                onClick={() => {
+                  const osPac = pacienteSeleccionadoObj?.obra_social?.trim() || '';
+                  setNuevaPrestacionForm({
+                    nombre: osPac ? `OS-${osPac.toUpperCase()} ` : 'OS-',
+                    tipo: 'UNICO',
+                    esObraSocial: true,
+                    obraSocialNombre: osPac ? osPac.toUpperCase() : ''
+                  });
+                  setModalNuevaPrestacion(true);
+                }}
+                style={{
+                  background: '#eff6ff',
+                  color: '#2563eb',
+                  border: '1px solid #bfdbfe',
+                  padding: '3px 8px',
+                  borderRadius: '5px',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                ➕ Nueva Prestación
+              </button>
+            </div>
             <select 
               name="id_prestacion" 
               value={form.id_prestacion || ''} 
@@ -411,11 +560,14 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
               required
             >
               <option value="">-- Seleccionar Prestación --</option>
-              {prestaciones.map((p) => (
-                <option key={p.id || p.id_prestacion} value={p.id || p.id_prestacion}>
-                  {p.nombre_prestacion} ({p.tipo_prestacion})
-                </option>
-              ))}
+              {prestaciones.map((p) => {
+                const isOS = p.nombre_prestacion?.toUpperCase().startsWith('OS-') || p.observaciones?.includes('OBRA_SOCIAL');
+                return (
+                  <option key={p.id || p.id_prestacion} value={p.id || p.id_prestacion}>
+                    {isOS ? '🏛️ ' : ''}{p.nombre_prestacion} ({p.tipo_prestacion})
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -433,41 +585,50 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
 
           <div>
             <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>
-              {esUnico ? 'Monto de la Prestación Única *' : esMensual ? 'Monto Cuota Base *' : 'Monto / Importe Base *'}
+              {esObraSocial 
+                ? 'Monto a cargo del Paciente ($) [Cubierto por O.S.]' 
+                : (esUnico ? 'Monto de la Prestación Única *' : esMensual ? 'Monto Cuota Base *' : 'Monto / Importe Base *')}
             </label>
             <input 
               type="number" 
               step="0.01"
               name="monto_cuota_base" 
-              value={form.monto_cuota_base || ''} 
+              value={esObraSocial ? '0' : (form.monto_cuota_base || '')} 
               onChange={handleChange} 
-              disabled={!form.id_prestacion}
-              placeholder={!form.id_prestacion ? 'Selecciona una prestación primero' : 'Ej: 15000'} 
+              disabled={!form.id_prestacion || esObraSocial}
+              placeholder={esObraSocial ? '0 (Cubierto por O.S.)' : (!form.id_prestacion ? 'Selecciona una prestación primero' : 'Ej: 15000')} 
               style={{ 
                 width: '100%', 
                 padding: '9px', 
                 borderRadius: '6px', 
                 border: '1px solid #cbd5e1',
-                backgroundColor: !form.id_prestacion ? '#f1f5f9' : '#fff' 
+                backgroundColor: (!form.id_prestacion || esObraSocial) ? '#f1f5f9' : '#fff',
+                color: esObraSocial ? '#166534' : '#000',
+                fontWeight: esObraSocial ? 'bold' : 'normal'
               }} 
-              required 
+              required={!esObraSocial} 
             />
+            {esObraSocial && (
+              <span style={{ fontSize: '11px', color: '#16a34a', display: 'block', marginTop: '3px' }}>
+                ✓ No genera deuda personal para el paciente. Se facturará a la O.S.
+              </span>
+            )}
           </div>
 
           <div>
             <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Admite Recargo</label>
             <select 
               name="admite_recargo" 
-              value={esUnico ? 'NO' : (form.admite_recargo || 'NO')} 
+              value={(esUnico || esObraSocial) ? 'NO' : (form.admite_recargo || 'NO')} 
               onChange={handleChange} 
-              disabled={esUnico}
+              disabled={esUnico || esObraSocial}
               style={{ 
                 width: '100%', 
                 padding: '10px', 
                 borderRadius: '6px', 
                 border: '1px solid #cbd5e1', 
-                backgroundColor: esUnico ? '#f1f5f9' : '#fff',
-                cursor: esUnico ? 'not-allowed' : 'pointer'
+                backgroundColor: (esUnico || esObraSocial) ? '#f1f5f9' : '#fff',
+                cursor: (esUnico || esObraSocial) ? 'not-allowed' : 'pointer'
               }}
             >
               <option value="SI">Sí</option>
@@ -477,26 +638,26 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
 
           <div>
             <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>
-              Día de Vencimiento Fijo (Meses Subsiguientes) {esUnico ? '(No aplica)' : '*'}
+              Día de Vencimiento Fijo {(esUnico || esObraSocial) ? '(No aplica)' : '*'}
             </label>
             <input 
               type="number" 
               min="1" 
-              max="31"
+              max="31" 
               name="dia_vencimiento" 
-              value={esUnico ? '' : (form.dia_vencimiento || '')} 
+              value={(esUnico || esObraSocial) ? '' : (form.dia_vencimiento || '')} 
               onChange={handleChange} 
-              disabled={esUnico}
-              placeholder={esUnico ? 'No aplica para pago único' : 'Ej: 15 (para meses siguientes)'} 
+              disabled={esUnico || esObraSocial} 
+              placeholder={(esUnico || esObraSocial) ? 'No aplica para obra social / único' : 'Ej: 15 (para meses siguientes)'} 
               style={{ 
                 width: '100%', 
                 padding: '9px', 
                 borderRadius: '6px', 
-                border: '1px solid #cbd5e1',
-                backgroundColor: esUnico ? '#f1f5f9' : '#fff',
-                cursor: esUnico ? 'not-allowed' : 'pointer'
+                border: '1px solid #cbd5e1', 
+                backgroundColor: (esUnico || esObraSocial) ? '#f1f5f9' : '#fff', 
+                cursor: (esUnico || esObraSocial) ? 'not-allowed' : 'pointer' 
               }} 
-              required={!esUnico}
+              required={!esUnico && !esObraSocial} 
             />
           </div>
 
@@ -532,6 +693,159 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
         </div>
 
       </form>
+
+      {/* MODAL PARA ALTA RÁPIDA DE NUEVA PRESTACIÓN */}
+      {modalNuevaPrestacion && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: '12px',
+            maxWidth: '520px',
+            width: '100%',
+            padding: '24px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                ✨ Nueva Prestación
+              </h3>
+              <button
+                type="button"
+                onClick={() => setModalNuevaPrestacion(false)}
+                style={{ background: 'transparent', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#64748b' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={guardarNuevaPrestacion}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold', fontSize: '13px', color: '#334155' }}>
+                  Nombre de la Prestación *
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: OS-SANCOR SALUD SETIEMBRE 2026 o PSICOMOTRICIDAD"
+                  value={nuevaPrestacionForm.nombre}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const esOS = val.toUpperCase().startsWith('OS-') || val.toUpperCase().startsWith('OS ');
+                    setNuevaPrestacionForm(prev => ({
+                      ...prev,
+                      nombre: val,
+                      esObraSocial: esOS ? true : prev.esObraSocial
+                    }));
+                  }}
+                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }}
+                  required
+                />
+                <span style={{ fontSize: '11px', color: '#64748b', display: 'block', marginTop: '4px' }}>
+                  💡 Tip: Si empieza con <code>OS-</code> se catalogará como prestación cubierta por Obra Social.
+                </span>
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold', fontSize: '13px', color: '#334155' }}>
+                  Tipo de Período *
+                </label>
+                <select
+                  value={nuevaPrestacionForm.tipo}
+                  onChange={(e) => setNuevaPrestacionForm(prev => ({ ...prev, tipo: e.target.value }))}
+                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', background: '#fff' }}
+                  required
+                >
+                  <option value="UNICO">ÚNICO (Monto fijo / Pago por única vez o por mes cerrado)</option>
+                  <option value="MENSUAL">MENSUAL (Cuota mensual recurrente)</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '16px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', color: '#1e293b' }}>
+                  <input
+                    type="checkbox"
+                    checked={nuevaPrestacionForm.esObraSocial}
+                    onChange={(e) => setNuevaPrestacionForm(prev => ({ ...prev, esObraSocial: e.target.checked }))}
+                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                  <span>🏛️ ¿Es prestación cubierta por Obra Social? (Sin cargo paciente)</span>
+                </label>
+
+                {nuevaPrestacionForm.esObraSocial && (
+                  <div style={{ marginTop: '10px' }}>
+                    <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px', color: '#475569', fontWeight: 'bold' }}>
+                      Obra Social asociada:
+                    </label>
+                    <input
+                      type="text"
+                      list="lista-os-sugeridas"
+                      placeholder="Ej: SANCOR SALUD, SUBSIDIO DE SALUD, etc."
+                      value={nuevaPrestacionForm.obraSocialNombre}
+                      onChange={(e) => setNuevaPrestacionForm(prev => ({ ...prev, obraSocialNombre: e.target.value }))}
+                      style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#fff' }}
+                    />
+                    <datalist id="lista-os-sugeridas">
+                      {obrasSocialesDisponibles.map(os => (
+                        <option key={os} value={os} />
+                      ))}
+                    </datalist>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+                <button
+                  type="button"
+                  onClick={() => setModalNuevaPrestacion(false)}
+                  disabled={creandoPrestacion}
+                  style={{
+                    padding: '9px 16px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    background: '#f1f5f9',
+                    color: '#334155',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '13px'
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={creandoPrestacion}
+                  style={{
+                    padding: '9px 20px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: '#2563eb',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '13px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {creandoPrestacion ? 'Guardando...' : 'Guardar y Seleccionar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
