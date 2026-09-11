@@ -57,15 +57,22 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
       const movs = movsData || [];
       setMovimientos(movs);
 
-      // 3. Cargar prestadores activos
+      // 3. Cargar prestadores activos (solo profesionales, excluyendo auxiliares que cobran por hora)
       const { data: prestData, error: errPrest } = await supabase
         .from('prestadores_motor')
         .select('*')
         .order('nombre_prestador', { ascending: true });
 
+      const AUXILIARES_LIST = ['PULITTA', 'SOTO', 'LIZARRAGA', 'SORANE', 'MASCARENO', 'MASCAREÑO', 'ALBORNOZ', 'LOBO'];
+
       if (!errPrest && prestData) {
-        const activos = prestData.filter(p => !p.estado || (p.estado || '').trim().toUpperCase() === 'ACTIVO');
-        setPrestadoresList(activos);
+        const profesionalesActivos = prestData.filter(p => {
+          const esActivo = !p.estado || (p.estado || '').trim().toUpperCase() === 'ACTIVO';
+          const normNombre = (p.nombre_prestador || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const esAux = AUXILIARES_LIST.some(aux => normNombre.includes(aux));
+          return esActivo && !esAux;
+        });
+        setPrestadoresList(profesionalesActivos);
       }
 
       // Extraer todas las obras sociales que aparecen en los movimientos
@@ -198,6 +205,15 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
           const { data: users } = await supabase.from('users').select('*');
           const idViviana = lista.find(p => p.nombre_prestador.toUpperCase().includes('VIVIANA'))?.id_prestador || lista[0]?.id_prestador;
 
+          const AUXILIARES_LIST = ['PULITTA', 'SOTO', 'LIZARRAGA', 'SORANE', 'MASCARENO', 'MASCAREÑO', 'ALBORNOZ', 'LOBO'];
+
+          const esAuxiliar = (prof) => {
+            if (!prof) return true;
+            if ((prof.rol || '').toUpperCase().includes('AUXILIAR')) return true;
+            const normNombre = (prof.nombre || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            return AUXILIARES_LIST.some(aux => normNombre.includes(aux));
+          };
+
           const encontrarPrestadorId = (usuarioNombre) => {
             if (!usuarioNombre) return null;
             const normalizedUser = usuarioNombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
@@ -222,14 +238,21 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
 
           sesiones.forEach(s => {
             const prof = (users || []).find(u => u.id === s.profesional_id);
-            if (prof) {
-              const matchedId = encontrarPrestadorId(prof.nombre);
-              if (matchedId) {
-                sesActual[matchedId] = (sesActual[matchedId] || 0) + 1;
-                return;
+
+            // Regla de Negocio: Si la sesión es de un AUXILIAR (Pulitta, Soto, Lizarraga, Sorane, Mascareño, Albornoz, Lobo o rol AUXILIAR),
+            // se considera SIEMPRE como sesión de VIVIANA JIMENEZ (el centro). Al auxiliar se le paga por aparte valor hora/fijo.
+            if (esAuxiliar(prof)) {
+              if (idViviana) {
+                sesActual[idViviana] = (sesActual[idViviana] || 0) + 1;
               }
+              return;
             }
-            if (idViviana) {
+
+            // Si es un PROFESIONAL, cobra de la liquidación de la factura de ese paciente
+            const matchedId = encontrarPrestadorId(prof.nombre);
+            if (matchedId) {
+              sesActual[matchedId] = (sesActual[matchedId] || 0) + 1;
+            } else if (idViviana) {
               sesActual[idViviana] = (sesActual[idViviana] || 0) + 1;
             }
           });
