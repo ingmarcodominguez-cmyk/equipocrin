@@ -155,10 +155,44 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
   }, []);
 
   const parsearMoneda = (val) => {
-    if (!val) return 0;
+    if (val === null || val === undefined || val === '') return 0;
     if (typeof val === 'number') return val;
-    const limpio = String(val).replace(/\./g, '').replace(',', '.').replace(/[^0-9.-]/g, '');
-    const num = parseFloat(limpio);
+    
+    const str = String(val).replace(/\$/g, '').trim();
+    
+    // Si contiene coma, asumimos formato en español (ej: 246.607,68 o 246607,68)
+    if (str.includes(',')) {
+      const limpio = str.replace(/\./g, '').replace(',', '.');
+      const num = Number(limpio);
+      return isNaN(num) ? 0 : num;
+    }
+    
+    // Si no contiene coma pero contiene puntos
+    if (str.includes('.')) {
+      const partes = str.split('.');
+      // Si hay más de un punto, son separadores de miles (ej: 1.246.607)
+      if (partes.length > 2) {
+        const limpio = str.replace(/\./g, '');
+        const num = Number(limpio);
+        return isNaN(num) ? 0 : num;
+      }
+      
+      // Si hay un solo punto, puede ser decimal (246607.68) o miles (246.607)
+      // Si la parte decimal tiene exactamente 3 dígitos, se asume que es miles (ej: 246.607 o 1.500)
+      const decimales = partes[1];
+      if (decimales.length === 3) {
+        const limpio = str.replace(/\./g, '');
+        const num = Number(limpio);
+        return isNaN(num) ? 0 : num;
+      }
+      
+      // En cualquier otro caso (ej: 246607.68, 16770.6, 15.5), el punto es decimal
+      const num = Number(str);
+      return isNaN(num) ? 0 : num;
+    }
+    
+    // Si no tiene puntos ni comas, es un número entero limpio
+    const num = Number(str);
     return isNaN(num) ? 0 : num;
   };
 
@@ -936,6 +970,22 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
         await supabase.from('movimientoscuenta_motor').delete().eq('id_pago', mov.id_pago);
       }
 
+      if (mov.id_acuerdo) {
+        const { data: acActual } = await supabase
+          .from('acuerdos_motor')
+          .select('observaciones')
+          .eq('id_acuerdo', mov.id_acuerdo)
+          .maybeSingle();
+        let obsLimpia = (acActual?.observaciones || '').replace(/\s*\[FACTURADO[^\]]*\]/gi, '').trim();
+        await supabase
+          .from('acuerdos_motor')
+          .update({
+            importe_actual: '0,00',
+            observaciones: obsLimpia || null
+          })
+          .eq('id_acuerdo', mov.id_acuerdo);
+      }
+
       const { error } = await supabase
         .from('movimientoscuenta_motor')
         .delete()
@@ -946,6 +996,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
       setMensaje({ texto: 'Registro #' + mov.id_movimiento + ' eliminado exitosamente.', tipo: 'exito' });
       setTimeout(() => setMensaje({ texto: '', tipo: '' }), 3500);
 
+      await cargarDatos();
     } catch (err) {
       console.error('Error al anular movimiento:', err);
       alert('Error al anular: ' + err.message);
