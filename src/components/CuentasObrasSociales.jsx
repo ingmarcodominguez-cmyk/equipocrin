@@ -196,15 +196,68 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
     return isNaN(num) ? 0 : num;
   };
 
+  // Mapeo detallado de facturas con su estado de cobro
+  const facturasMapeadas = useMemo(() => {
+    const facturas = movimientos.filter(m => m.tipo_movimiento === 'FACTURA_OS' || parsearMoneda(m.debe) > 0);
+    const cobros = movimientos.filter(m => m.tipo_movimiento === 'PAGO_OS' || parsearMoneda(m.haber) > 0);
+
+    const mapa = {};
+    facturas.forEach(f => {
+      const montoFactura = parsearMoneda(f.debe);
+      // Buscar cobros asociados por id_origen o por id_acuerdo
+      const cobrosAsociados = cobros.filter(c => 
+        (c.id_origen && String(c.id_origen) === String(f.id_movimiento)) ||
+        (f.id_acuerdo && c.id_acuerdo && String(c.id_acuerdo) === String(f.id_acuerdo))
+      );
+      const totalCobrado = cobrosAsociados.reduce((sum, c) => sum + parsearMoneda(c.haber), 0);
+      const saldoPendiente = Math.max(0, montoFactura - totalCobrado);
+      const estaSaldada = saldoPendiente <= 0.01;
+      const esParcial = totalCobrado > 0 && !estaSaldada;
+
+      mapa[f.id_movimiento] = {
+        ...f,
+        montoFactura,
+        totalCobrado,
+        saldoPendiente,
+        estaSaldada,
+        esParcial,
+        cobrosAsociados
+      };
+    });
+
+    return mapa;
+  }, [movimientos]);
+
+  // Facturas pendientes de cobro y cálculo de saldos
+  const facturasPendientes = useMemo(() => {
+    return Object.values(facturasMapeadas).filter(f => !f.estaSaldada);
+  }, [facturasMapeadas]);
+
+  // Facturas totalmente saldadas
+  const facturasSaldadas = useMemo(() => {
+    return Object.values(facturasMapeadas).filter(f => f.estaSaldada);
+  }, [facturasMapeadas]);
+
   // Filtrado de movimientos
   const movimientosFiltrados = useMemo(() => {
     return movimientos.filter(m => {
       const osMov = (m.subtipo || '').trim().toUpperCase();
       const coincideOS = obraSocialSeleccionada === 'TODAS' || osMov === obraSocialSeleccionada;
       
-      const coincideTipo = filtroTipo === 'TODOS' || 
-        (filtroTipo === 'FACTURAS' && (m.tipo_movimiento === 'FACTURA_OS' || parsearMoneda(m.debe) > 0)) ||
-        (filtroTipo === 'COBROS' && (m.tipo_movimiento === 'PAGO_OS' || parsearMoneda(m.haber) > 0));
+      const infoFac = facturasMapeadas[m.id_movimiento];
+      const esFactura = m.tipo_movimiento === 'FACTURA_OS' || parsearMoneda(m.debe) > 0;
+      const esCobro = m.tipo_movimiento === 'PAGO_OS' || parsearMoneda(m.haber) > 0;
+
+      let coincideTipo = true;
+      if (filtroTipo === 'PENDIENTES') {
+        coincideTipo = esFactura && infoFac && !infoFac.estaSaldada;
+      } else if (filtroTipo === 'COBRADAS') {
+        coincideTipo = esFactura && infoFac && infoFac.estaSaldada;
+      } else if (filtroTipo === 'FACTURAS') {
+        coincideTipo = esFactura;
+      } else if (filtroTipo === 'COBROS') {
+        coincideTipo = esCobro;
+      }
 
       const q = busqueda.toLowerCase().trim();
       const coincideTexto = !q ||
@@ -214,7 +267,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
 
       return coincideOS && coincideTipo && coincideTexto;
     });
-  }, [movimientos, obraSocialSeleccionada, filtroTipo, busqueda]);
+  }, [movimientos, obraSocialSeleccionada, filtroTipo, busqueda, facturasMapeadas]);
 
   // Filtrado de acuerdos de Obra Social
   const acuerdosOSPendientesFiltrados = useMemo(() => {
@@ -250,31 +303,6 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
 
     return { totalDebe, totalHaber, saldoPendiente };
   }, [movimientosFiltrados]);
-
-  // Facturas pendientes de cobro y cálculo de saldos
-  const facturasPendientes = useMemo(() => {
-    const facturas = movimientos.filter(m => m.tipo_movimiento === 'FACTURA_OS' || parsearMoneda(m.debe) > 0);
-    const cobros = movimientos.filter(m => m.tipo_movimiento === 'PAGO_OS' || parsearMoneda(m.haber) > 0);
-
-    return facturas.map(f => {
-      const montoFactura = parsearMoneda(f.debe);
-      // Buscar cobros asociados por id_origen o por id_acuerdo
-      const cobrosAsociados = cobros.filter(c => 
-        (c.id_origen && String(c.id_origen) === String(f.id_movimiento)) ||
-        (f.id_acuerdo && c.id_acuerdo && String(c.id_acuerdo) === String(f.id_acuerdo))
-      );
-      const totalCobrado = cobrosAsociados.reduce((sum, c) => sum + parsearMoneda(c.haber), 0);
-      const saldoPendiente = Math.max(0, montoFactura - totalCobrado);
-
-      return {
-        ...f,
-        montoFactura,
-        totalCobrado,
-        saldoPendiente,
-        estaSaldada: saldoPendiente <= 0.01
-      };
-    }).filter(f => !f.estaSaldada);
-  }, [movimientos]);
 
   // Facturas pendientes filtradas según la obra social activa en el modal
   const facturasPendientesModal = useMemo(() => {
@@ -1144,58 +1172,112 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
           {/* TARJETAS KPI */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '15px', marginBottom: '20px' }}>
         
-        <div style={{ background: '#fff', padding: '18px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        <div 
+          onClick={() => setFiltroTipo('FACTURAS')}
+          style={{ 
+            background: '#fff', 
+            padding: '18px', 
+            borderRadius: '10px', 
+            border: filtroTipo === 'FACTURAS' ? '2px solid #2563eb' : '1px solid #e2e8f0', 
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+          title="Click para ver solo Facturas Emitidas"
+        >
           <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>
             💼 Total Facturado a O.S. (Debe)
           </span>
           <div style={{ fontSize: '24px', fontWeight: '800', color: '#2563eb', marginTop: '6px' }}>
             {'$' + totales.totalDebe.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
           </div>
-          <span style={{ fontSize: '11px', color: '#94a3b8' }}>Facturas emitidas a cobrar</span>
+          <span style={{ fontSize: '11px', color: '#94a3b8' }}>Facturas emitidas a cobrar (Click para filtrar)</span>
         </div>
 
-        <div style={{ background: '#fff', padding: '18px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        <div 
+          onClick={() => setFiltroTipo('COBROS')}
+          style={{ 
+            background: '#fff', 
+            padding: '18px', 
+            borderRadius: '10px', 
+            border: filtroTipo === 'COBROS' ? '2px solid #16a34a' : '1px solid #e2e8f0', 
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+          title="Click para ver solo Cobros Recibidos"
+        >
           <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>
             💵 Total Cobrado / Liquidado (Haber)
           </span>
           <div style={{ fontSize: '24px', fontWeight: '800', color: '#16a34a', marginTop: '6px' }}>
             {'$' + totales.totalHaber.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
           </div>
-          <span style={{ fontSize: '11px', color: '#94a3b8' }}>Cobranzas y transferencias ingresadas</span>
+          <span style={{ fontSize: '11px', color: '#94a3b8' }}>Cobranzas y transferencias ingresadas (Click para filtrar)</span>
         </div>
 
-        <div style={{ 
-          background: totales.saldoPendiente > 0 ? '#fffbeb' : '#f0fdf4', 
-          padding: '18px', 
-          borderRadius: '10px', 
-          border: '1px solid ' + (totales.saldoPendiente > 0 ? '#fde047' : '#bbf7d0'), 
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)' 
-        }}>
-          <span style={{ fontSize: '12px', fontWeight: 'bold', color: totales.saldoPendiente > 0 ? '#854d0e' : '#166534', textTransform: 'uppercase' }}>
-            ⏳ Saldo a Cobrar de O.S.
-          </span>
+        <div 
+          onClick={() => setFiltroTipo('PENDIENTES')}
+          style={{ 
+            background: totales.saldoPendiente > 0 ? '#fffbeb' : '#f0fdf4', 
+            padding: '18px', 
+            borderRadius: '10px', 
+            border: filtroTipo === 'PENDIENTES' ? '2px solid #d97706' : ('1px solid ' + (totales.saldoPendiente > 0 ? '#fde047' : '#bbf7d0')), 
+            boxShadow: '0 2px 4px rgba(217,119,6,0.15)',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+          title="Click para ver SOLO facturas pendientes de cobro"
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: totales.saldoPendiente > 0 ? '#854d0e' : '#166534', textTransform: 'uppercase' }}>
+              ⏳ Saldo a Cobrar de O.S.
+            </span>
+            <span style={{
+              background: '#d97706',
+              color: '#fff',
+              fontSize: '10px',
+              fontWeight: 'bold',
+              padding: '2px 7px',
+              borderRadius: '8px'
+            }}>
+              {facturasPendientes.length} pend.
+            </span>
+          </div>
           <div style={{ fontSize: '24px', fontWeight: '800', color: totales.saldoPendiente > 0 ? '#d97706' : '#15803d', marginTop: '6px' }}>
             {'$' + totales.saldoPendiente.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
           </div>
-          <span style={{ fontSize: '11px', color: totales.saldoPendiente > 0 ? '#b45309' : '#166534' }}>
-            {totales.saldoPendiente > 0 ? 'Monto neto adeudado por Obras Sociales' : 'Cuentas al día'}
+          <span style={{ fontSize: '11px', fontWeight: 'bold', color: totales.saldoPendiente > 0 ? '#b45309' : '#166534' }}>
+            {totales.saldoPendiente > 0 ? '👉 Click aquí para filtrar solo pendientes' : 'Cuentas al día'}
           </span>
         </div>
 
-        <div style={{ background: '#fff', padding: '18px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        <div 
+          onClick={() => setFiltroTipo('TODOS')}
+          style={{ 
+            background: '#fff', 
+            padding: '18px', 
+            borderRadius: '10px', 
+            border: filtroTipo === 'TODOS' ? '2px solid #475569' : '1px solid #e2e8f0', 
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+          title="Click para ver todos los movimientos"
+        >
           <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>
             📋 Registros Listados
           </span>
           <div style={{ fontSize: '24px', fontWeight: '800', color: '#475569', marginTop: '6px' }}>
             {movimientosFiltrados.length}
           </div>
-          <span style={{ fontSize: '11px', color: '#94a3b8' }}>Filtrados según selección</span>
+          <span style={{ fontSize: '11px', color: '#94a3b8' }}>Filtrados según selección (Click para resetear)</span>
         </div>
 
       </div>
 
       {/* BARRA DE FILTROS */}
-      <div style={{ background: '#fff', padding: '16px 20px', borderRadius: '10px', marginBottom: '20px', border: '1px solid #e2e8f0', display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ background: '#fff', padding: '16px 20px', borderRadius: '10px', marginBottom: '15px', border: '1px solid #e2e8f0', display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
         
         <div style={{ minWidth: '240px', flex: 1 }}>
           <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>
@@ -1213,18 +1295,20 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
           </select>
         </div>
 
-        <div style={{ minWidth: '180px' }}>
+        <div style={{ minWidth: '220px' }}>
           <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>
-            Tipo de Movimiento:
+            Tipo / Estado de Movimiento:
           </label>
           <select
             value={filtroTipo}
             onChange={(e) => setFiltroTipo(e.target.value)}
-            style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', background: '#fff' }}
+            style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', background: '#fff', fontWeight: '600' }}
           >
-            <option value="TODOS">Todos los tipos</option>
-            <option value="FACTURAS">Solo Facturas Emitidas (Debe)</option>
-            <option value="COBROS">Solo Cobros Recibidos (Haber)</option>
+            <option value="TODOS">📋 Todos los movimientos</option>
+            <option value="PENDIENTES">⏳ Facturas Pendientes de Cobro ({facturasPendientes.length})</option>
+            <option value="COBRADAS">✅ Facturas Cobradas / Saldadas ({facturasSaldadas.length})</option>
+            <option value="FACTURAS">📄 Todas las Facturas Emitidas (Debe)</option>
+            <option value="COBROS">💵 Solo Cobros Recibidos (Haber)</option>
           </select>
         </div>
 
@@ -1252,11 +1336,137 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
 
       </div>
 
+      {/* BOTONES RÁPIDOS DE FILTRADO POR ESTADO */}
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
+        <button
+          type="button"
+          onClick={() => setFiltroTipo('TODOS')}
+          style={{
+            padding: '7px 14px',
+            borderRadius: '20px',
+            fontSize: '13px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            border: filtroTipo === 'TODOS' ? '2px solid #2563eb' : '1px solid #cbd5e1',
+            background: filtroTipo === 'TODOS' ? '#eff6ff' : '#fff',
+            color: filtroTipo === 'TODOS' ? '#1d4ed8' : '#64748b',
+            boxShadow: filtroTipo === 'TODOS' ? '0 1px 3px rgba(37,99,235,0.2)' : 'none',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          📋 Todos ({movimientos.length})
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setFiltroTipo('PENDIENTES')}
+          style={{
+            padding: '7px 14px',
+            borderRadius: '20px',
+            fontSize: '13px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            border: filtroTipo === 'PENDIENTES' ? '2px solid #d97706' : '1px solid #fed7aa',
+            background: filtroTipo === 'PENDIENTES' ? '#fef3c7' : '#fffbeb',
+            color: filtroTipo === 'PENDIENTES' ? '#92400e' : '#b45309',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            boxShadow: filtroTipo === 'PENDIENTES' ? '0 2px 4px rgba(217,119,6,0.25)' : 'none',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <span>⏳ Facturas Pendientes de Cobro</span>
+          <span style={{
+            background: facturasPendientes.length > 0 ? '#d97706' : '#10b981',
+            color: '#fff',
+            padding: '2px 8px',
+            borderRadius: '10px',
+            fontSize: '11px',
+            fontWeight: 'bold'
+          }}>
+            {facturasPendientes.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setFiltroTipo('COBRADAS')}
+          style={{
+            padding: '7px 14px',
+            borderRadius: '20px',
+            fontSize: '13px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            border: filtroTipo === 'COBRADAS' ? '2px solid #16a34a' : '1px solid #bbf7d0',
+            background: filtroTipo === 'COBRADAS' ? '#dcfce7' : '#f0fdf4',
+            color: filtroTipo === 'COBRADAS' ? '#15803d' : '#166534',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            boxShadow: filtroTipo === 'COBRADAS' ? '0 1px 3px rgba(22,163,74,0.2)' : 'none',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <span>✅ Facturas Cobradas / Saldadas</span>
+          <span style={{
+            background: '#16a34a',
+            color: '#fff',
+            padding: '2px 8px',
+            borderRadius: '10px',
+            fontSize: '11px',
+            fontWeight: 'bold'
+          }}>
+            {facturasSaldadas.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setFiltroTipo('FACTURAS')}
+          style={{
+            padding: '7px 14px',
+            borderRadius: '20px',
+            fontSize: '13px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            border: filtroTipo === 'FACTURAS' ? '2px solid #2563eb' : '1px solid #cbd5e1',
+            background: filtroTipo === 'FACTURAS' ? '#eff6ff' : '#fff',
+            color: filtroTipo === 'FACTURAS' ? '#1d4ed8' : '#64748b',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          📄 Todas las Facturas ({Object.keys(facturasMapeadas).length})
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setFiltroTipo('COBROS')}
+          style={{
+            padding: '7px 14px',
+            borderRadius: '20px',
+            fontSize: '13px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            border: filtroTipo === 'COBROS' ? '2px solid #059669' : '1px solid #cbd5e1',
+            background: filtroTipo === 'COBROS' ? '#ecfdf5' : '#fff',
+            color: filtroTipo === 'COBROS' ? '#047857' : '#64748b',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          💵 Solo Cobros Recibidos ({movimientos.filter(m => m.tipo_movimiento === 'PAGO_OS' || parsearMoneda(m.haber) > 0).length})
+        </button>
+      </div>
+
       {/* TABLA DE MOVIMIENTOS */}
       <div style={{ background: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
         <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h4 style={{ margin: 0, color: '#1e293b', fontSize: '15px' }}>
             Libro de Movimientos de Cuenta Corriente ({obraSocialSeleccionada})
+            {filtroTipo === 'PENDIENTES' && <span style={{ marginLeft: '10px', color: '#d97706', fontSize: '13px', fontWeight: 'bold' }}>• ⏳ Solo Facturas Pendientes</span>}
+            {filtroTipo === 'COBRADAS' && <span style={{ marginLeft: '10px', color: '#16a34a', fontSize: '13px', fontWeight: 'bold' }}>• ✅ Solo Facturas Saldadas</span>}
+            {filtroTipo === 'FACTURAS' && <span style={{ marginLeft: '10px', color: '#2563eb', fontSize: '13px', fontWeight: 'bold' }}>• 📄 Solo Facturas Emitidas</span>}
+            {filtroTipo === 'COBROS' && <span style={{ marginLeft: '10px', color: '#059669', fontSize: '13px', fontWeight: 'bold' }}>• 💵 Solo Cobros</span>}
           </h4>
           <span style={{ fontSize: '12px', color: '#64748b' }}>
             {movimientosFiltrados.length} fila(s) encontradas
@@ -1278,7 +1488,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                 <tr style={{ background: '#f1f5f9', color: '#475569', borderBottom: '1px solid #cbd5e1' }}>
                   <th style={{ padding: '12px 14px' }}>Fecha</th>
                   <th style={{ padding: '12px 14px' }}>Obra Social</th>
-                  <th style={{ padding: '12px 14px' }}>Tipo</th>
+                  <th style={{ padding: '12px 14px' }}>Tipo / Estado</th>
                   <th style={{ padding: '12px 14px' }}>Detalle / Concepto</th>
                   <th style={{ padding: '12px 14px', textAlign: 'right' }}>Facturado (Debe)</th>
                   <th style={{ padding: '12px 14px', textAlign: 'right' }}>Cobrado (Haber)</th>
@@ -1291,9 +1501,10 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                   const debeVal = parsearMoneda(m.debe);
                   const haberVal = parsearMoneda(m.haber);
                   const esFactura = m.tipo_movimiento === 'FACTURA_OS' || debeVal > 0;
+                  const infoFac = facturasMapeadas[m.id_movimiento];
 
                   return (
-                    <tr key={m.id_movimiento} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <tr key={m.id_movimiento} style={{ borderBottom: '1px solid #f1f5f9', background: esFactura && infoFac && !infoFac.estaSaldada ? '#fffdf7' : 'transparent' }}>
                       <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', fontWeight: '500', color: '#334155' }}>
                         {m.fecha_movimiento || (m.fecha_registro ? m.fecha_registro.split('T')[0] : 'S/D')}
                       </td>
@@ -1307,11 +1518,27 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                             borderRadius: '4px',
                             fontSize: '11px',
                             fontWeight: 'bold',
-                            background: esFactura ? '#dbeafe' : '#dcfce7',
-                            color: esFactura ? '#1e40af' : '#15803d'
+                            background: esFactura ? (infoFac?.estaSaldada ? '#f1f5f9' : '#dbeafe') : '#dcfce7',
+                            color: esFactura ? (infoFac?.estaSaldada ? '#475569' : '#1e40af') : '#15803d'
                           }}>
                             {esFactura ? '📄 FACTURA' : '💵 COBRO'}
                           </span>
+                          {esFactura && (
+                            <span style={{
+                              fontSize: '10px',
+                              padding: '2px 7px',
+                              borderRadius: '4px',
+                              fontWeight: '700',
+                              background: infoFac?.estaSaldada ? '#dcfce7' : (infoFac?.esParcial ? '#fef3c7' : '#fee2e2'),
+                              color: infoFac?.estaSaldada ? '#15803d' : (infoFac?.esParcial ? '#b45309' : '#b91c1c')
+                            }}>
+                              {infoFac?.estaSaldada 
+                                ? '✅ SALDADA' 
+                                : (infoFac?.esParcial 
+                                    ? `🟡 PARCIAL (Resta $${infoFac.saldoPendiente.toLocaleString('es-AR', { minimumFractionDigits: 2 })})` 
+                                    : `⏳ PENDIENTE ($${(infoFac?.saldoPendiente || debeVal).toLocaleString('es-AR', { minimumFractionDigits: 2 })})`)}
+                            </span>
+                          )}
                           {!esFactura && m.id_pago && (
                             <span style={{
                               fontSize: '10px',
@@ -1340,37 +1567,56 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                       </td>
                       <td style={{ padding: '12px 14px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                         {esFactura && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const facPend = facturasPendientes.find(f => f.id_movimiento === m.id_movimiento) || {
-                                ...m,
-                                montoFactura: parsearMoneda(m.debe),
-                                saldoPendiente: parsearMoneda(m.debe)
-                              };
-                              abrirModalCobro(facPend);
-                            }}
-                            title="Registrar cobro para esta factura"
-                            style={{
-                              background: '#ecfdf5',
-                              color: '#059669',
-                              border: '1px solid #a7f3d0',
+                          infoFac?.estaSaldada ? (
+                            <span style={{
+                              background: '#f0fdf4',
+                              color: '#16a34a',
+                              border: '1px solid #bbf7d0',
                               padding: '4px 10px',
                               borderRadius: '6px',
                               fontSize: '12px',
                               fontWeight: 'bold',
-                              cursor: 'pointer',
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '4px',
-                              marginRight: '6px',
-                              transition: 'all 0.15s ease'
-                            }}
-                            onMouseOver={(e) => { e.currentTarget.style.background = '#059669'; e.currentTarget.style.color = '#fff'; }}
-                            onMouseOut={(e) => { e.currentTarget.style.background = '#ecfdf5'; e.currentTarget.style.color = '#059669'; }}
-                          >
-                            💵 Cobrar
-                          </button>
+                              marginRight: '6px'
+                            }} title="Factura cancelada al 100%">
+                              ✅ Cobrada
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const facPend = infoFac || {
+                                  ...m,
+                                  montoFactura: parsearMoneda(m.debe),
+                                  saldoPendiente: parsearMoneda(m.debe)
+                                };
+                                abrirModalCobro(facPend);
+                              }}
+                              title="Registrar cobro para esta factura pendiente"
+                              style={{
+                                background: '#ecfdf5',
+                                color: '#059669',
+                                border: '1px solid #a7f3d0',
+                                padding: '5px 12px',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: 'bold',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                marginRight: '6px',
+                                boxShadow: '0 1px 2px rgba(5,150,105,0.2)',
+                                transition: 'all 0.15s ease'
+                              }}
+                              onMouseOver={(e) => { e.currentTarget.style.background = '#059669'; e.currentTarget.style.color = '#fff'; }}
+                              onMouseOut={(e) => { e.currentTarget.style.background = '#ecfdf5'; e.currentTarget.style.color = '#059669'; }}
+                            >
+                              💵 Cobrar {infoFac?.saldoPendiente ? `($${infoFac.saldoPendiente.toLocaleString('es-AR')})` : ''}
+                            </button>
+                          )
                         )}
                         <button
                           type="button"
