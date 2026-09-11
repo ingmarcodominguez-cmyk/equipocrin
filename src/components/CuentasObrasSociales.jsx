@@ -11,6 +11,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
 
   // Estados para Modal de Cobro a O.S.
   const [modalCobroAbierto, setModalCobroAbierto] = useState(false);
+  const [facturaSeleccionada, setFacturaSeleccionada] = useState(null);
   const [formCobro, setFormCobro] = useState({
     obraSocial: '',
     monto: '',
@@ -108,6 +109,82 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
     return { totalDebe, totalHaber, saldoPendiente };
   }, [movimientosFiltrados]);
 
+  // Facturas pendientes de cobro y cálculo de saldos
+  const facturasPendientes = useMemo(() => {
+    const facturas = movimientos.filter(m => m.tipo_movimiento === 'FACTURA_OS' || parsearMoneda(m.debe) > 0);
+    const cobros = movimientos.filter(m => m.tipo_movimiento === 'PAGO_OS' || parsearMoneda(m.haber) > 0);
+
+    return facturas.map(f => {
+      const montoFactura = parsearMoneda(f.debe);
+      // Buscar cobros asociados por id_origen o por id_acuerdo
+      const cobrosAsociados = cobros.filter(c => 
+        (c.id_origen && String(c.id_origen) === String(f.id_movimiento)) ||
+        (f.id_acuerdo && c.id_acuerdo && String(c.id_acuerdo) === String(f.id_acuerdo))
+      );
+      const totalCobrado = cobrosAsociados.reduce((sum, c) => sum + parsearMoneda(c.haber), 0);
+      const saldoPendiente = Math.max(0, montoFactura - totalCobrado);
+
+      return {
+        ...f,
+        montoFactura,
+        totalCobrado,
+        saldoPendiente,
+        estaSaldada: saldoPendiente <= 0.01
+      };
+    }).filter(f => !f.estaSaldada);
+  }, [movimientos]);
+
+  // Facturas pendientes filtradas según la obra social activa en el modal
+  const facturasPendientesModal = useMemo(() => {
+    const osActual = (formCobro.obraSocial || '').trim().toUpperCase();
+    if (!osActual) return facturasPendientes;
+    return facturasPendientes.filter(f => (f.subtipo || '').trim().toUpperCase() === osActual);
+  }, [facturasPendientes, formCobro.obraSocial]);
+
+  const abrirModalCobro = (factura = null) => {
+    if (factura) {
+      setFacturaSeleccionada(factura);
+      const nroFac = factura.concepto?.split(' - ')[0] || ('Factura #' + factura.id_movimiento);
+      const saldo = factura.saldoPendiente !== undefined ? factura.saldoPendiente : parsearMoneda(factura.debe);
+      setFormCobro({
+        obraSocial: factura.subtipo || '',
+        monto: String(saldo || ''),
+        nroComprobante: '',
+        formaPago: 'TRANSFERENCIA BANCARIA',
+        fecha: new Date().toISOString().split('T')[0],
+        observaciones: `Cancelación ${nroFac}`
+      });
+    } else {
+      setFacturaSeleccionada(null);
+      const osDefault = obraSocialSeleccionada !== 'TODAS' ? obraSocialSeleccionada : '';
+      setFormCobro({
+        obraSocial: osDefault,
+        monto: '',
+        nroComprobante: '',
+        formaPago: 'TRANSFERENCIA BANCARIA',
+        fecha: new Date().toISOString().split('T')[0],
+        observaciones: ''
+      });
+    }
+    setModalCobroAbierto(true);
+  };
+
+  const seleccionarFacturaEnModal = (fac) => {
+    if (facturaSeleccionada?.id_movimiento === fac.id_movimiento) {
+      setFacturaSeleccionada(null);
+      setFormCobro(prev => ({ ...prev, monto: '', observaciones: '' }));
+    } else {
+      setFacturaSeleccionada(fac);
+      const nroFac = fac.concepto?.split(' - ')[0] || ('Factura #' + fac.id_movimiento);
+      setFormCobro(prev => ({
+        ...prev,
+        obraSocial: fac.subtipo || prev.obraSocial,
+        monto: String(fac.saldoPendiente || fac.montoFactura || ''),
+        observaciones: `Cancelación ${nroFac}`
+      }));
+    }
+  };
+
   // Handler para registrar cobro / liquidación de Obra Social
   const guardarCobroOS = async (e) => {
     e.preventDefault();
@@ -134,11 +211,17 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
       if (errUlt) throw errUlt;
       const nextId = (ultMov && ultMov[0]?.id_movimiento ? ultMov[0].id_movimiento : 0) + 1;
 
-      const conceptoCobro = 'Cobro / Liquidación O.S. ' + osNombre + ' - Comp: #' + (formCobro.nroComprobante || 'S/N') + ' (' + formCobro.formaPago + ')' + (formCobro.observaciones ? ' - ' + formCobro.observaciones : '');
+      const refFactura = facturaSeleccionada 
+        ? ` (Cancela ${facturaSeleccionada.concepto?.split(' - ')[0] || ('Factura #' + facturaSeleccionada.id_movimiento)})` 
+        : '';
+
+      const conceptoCobro = 'Cobro / Liquidación O.S. ' + osNombre + refFactura + ' - Comp: #' + (formCobro.nroComprobante || 'S/N') + ' (' + formCobro.formaPago + ')' + (formCobro.observaciones ? ' - ' + formCobro.observaciones : '');
 
       const nuevoMov = {
         id_movimiento: nextId,
         id_paciente: 0,
+        id_acuerdo: facturaSeleccionada?.id_acuerdo || null,
+        id_origen: facturaSeleccionada?.id_movimiento || null,
         tipo_movimiento: 'PAGO_OS',
         subtipo: osNombre,
         concepto: conceptoCobro,
@@ -157,6 +240,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
       if (errInsert) throw errInsert;
 
       setModalCobroAbierto(false);
+      setFacturaSeleccionada(null);
       setFormCobro({
         obraSocial: '',
         monto: '',
@@ -227,13 +311,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
 
         <div style={{ display: 'flex', gap: '10px' }}>
           <button
-            onClick={() => {
-              setFormCobro(prev => ({
-                ...prev,
-                obraSocial: obraSocialSeleccionada !== 'TODAS' ? obraSocialSeleccionada : (obrasSocialesLista[0] || 'SANCOR SALUD')
-              }));
-              setModalCobroAbierto(true);
-            }}
+            onClick={() => abrirModalCobro()}
             style={{
               background: '#059669',
               color: '#fff',
@@ -471,7 +549,40 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                       <td style={{ padding: '12px 14px', color: '#64748b', fontSize: '12px' }}>
                         {m.usuario || 'Admin'}
                       </td>
-                      <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                      <td style={{ padding: '12px 14px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                        {esFactura && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const facPend = facturasPendientes.find(f => f.id_movimiento === m.id_movimiento) || {
+                                ...m,
+                                montoFactura: parsearMoneda(m.debe),
+                                saldoPendiente: parsearMoneda(m.debe)
+                              };
+                              abrirModalCobro(facPend);
+                            }}
+                            title="Registrar cobro para esta factura"
+                            style={{
+                              background: '#ecfdf5',
+                              color: '#059669',
+                              border: '1px solid #a7f3d0',
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              marginRight: '6px',
+                              transition: 'all 0.15s ease'
+                            }}
+                            onMouseOver={(e) => { e.currentTarget.style.background = '#059669'; e.currentTarget.style.color = '#fff'; }}
+                            onMouseOut={(e) => { e.currentTarget.style.background = '#ecfdf5'; e.currentTarget.style.color = '#059669'; }}
+                          >
+                            💵 Cobrar
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => anularMovimientoOS(m)}
@@ -480,9 +591,9 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                             background: '#fee2e2',
                             color: '#dc2626',
                             border: '1px solid #fca5a5',
-                            padding: '3px 8px',
-                            borderRadius: '4px',
-                            fontSize: '11px',
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            fontSize: '12px',
                             fontWeight: 'bold',
                             cursor: 'pointer'
                           }}
@@ -517,18 +628,25 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
           <div style={{
             background: '#fff',
             borderRadius: '12px',
-            maxWidth: '520px',
+            maxWidth: '620px',
             width: '100%',
             padding: '24px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
             boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                💵 Registrar Cobro / Liquidación de O.S.
-              </h3>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  💵 Registrar Cobro / Liquidación de O.S.
+                </h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                  Seleccioná la factura que abona la entidad o ingresá un cobro general a cuenta.
+                </p>
+              </div>
               <button
                 type="button"
-                onClick={() => setModalCobroAbierto(false)}
+                onClick={() => { setModalCobroAbierto(false); setFacturaSeleccionada(null); }}
                 style={{ background: 'transparent', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#64748b' }}
               >
                 ✕
@@ -543,9 +661,14 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                 <input
                   type="text"
                   list="lista-os-cobro"
-                  placeholder="Ej: SANCOR SALUD, SUBSIDIO DE SALUD, etc."
+                  placeholder="Ej: BOREAL, SANCOR SALUD, SUBSIDIO DE SALUD, etc."
                   value={formCobro.obraSocial}
-                  onChange={(e) => setFormCobro({ ...formCobro, obraSocial: e.target.value })}
+                  onChange={(e) => {
+                    setFormCobro({ ...formCobro, obraSocial: e.target.value });
+                    if (facturaSeleccionada && (facturaSeleccionada.subtipo || '').trim().toUpperCase() !== e.target.value.trim().toUpperCase()) {
+                      setFacturaSeleccionada(null);
+                    }
+                  }}
                   style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', fontWeight: 'bold' }}
                   required
                 />
@@ -554,6 +677,95 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                     <option key={os} value={os} />
                   ))}
                 </datalist>
+              </div>
+
+              {/* LISTADO DE FACTURAS PENDIENTES DE COBRO */}
+              <div style={{ marginBottom: '16px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ fontWeight: 'bold', fontSize: '13px', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>📑 Facturas Pendientes de Cobro</span>
+                    {formCobro.obraSocial && (
+                      <span style={{ fontSize: '11px', background: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: '4px' }}>
+                        {formCobro.obraSocial}
+                      </span>
+                    )}
+                  </label>
+                  {facturaSeleccionada && (
+                    <button
+                      type="button"
+                      onClick={() => seleccionarFacturaEnModal(facturaSeleccionada)}
+                      style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold', textDecoration: 'underline' }}
+                    >
+                      ✕ Desmarcar factura
+                    </button>
+                  )}
+                </div>
+
+                {facturasPendientesModal.length === 0 ? (
+                  <div style={{ padding: '10px 12px', background: '#fff', borderRadius: '6px', border: '1px dashed #cbd5e1', fontSize: '12px', color: '#64748b' }}>
+                    ℹ️ No hay facturas pendientes {formCobro.obraSocial ? `para ${formCobro.obraSocial}` : 'registradas'}. Podés ingresar un importe manual como pago o anticipo a cuenta corriente.
+                  </div>
+                ) : (
+                  <div style={{ maxHeight: '170px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {facturasPendientesModal.map(fac => {
+                      const isSelected = facturaSeleccionada?.id_movimiento === fac.id_movimiento;
+                      return (
+                        <div
+                          key={fac.id_movimiento}
+                          onClick={() => seleccionarFacturaEnModal(fac)}
+                          style={{
+                            padding: '10px 12px',
+                            borderRadius: '6px',
+                            border: `2px solid ${isSelected ? '#059669' : '#cbd5e1'}`,
+                            background: isSelected ? '#ecfdf5' : '#ffffff',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            boxShadow: isSelected ? '0 2px 4px rgba(5, 150, 105, 0.15)' : '0 1px 2px rgba(0,0,0,0.03)',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <div style={{ flex: 1, marginRight: '10px' }}>
+                            <div style={{ fontWeight: 'bold', fontSize: '13px', color: isSelected ? '#065f46' : '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span>{isSelected ? '✅' : '📄'}</span>
+                              <span>{fac.concepto?.split(' - ')[0] || `Factura #${fac.id_movimiento}`}</span>
+                              {!formCobro.obraSocial && (
+                                <span style={{ fontSize: '10px', background: '#e0e7ff', color: '#3730a3', padding: '1px 6px', borderRadius: '4px' }}>
+                                  {fac.subtipo}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#475569', marginTop: '3px', lineHeight: '1.3' }}>
+                              {fac.concepto}
+                            </div>
+                            <div style={{ fontSize: '10px', color: '#64748b', marginTop: '3px' }}>
+                              Emisión: {fac.fecha_movimiento} • Total facturado: ${fac.montoFactura.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right', minWidth: '105px' }}>
+                            <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '600' }}>Saldo a cobrar:</div>
+                            <div style={{ fontSize: '14px', fontWeight: '800', color: '#059669' }}>
+                              ${fac.saldoPendiente.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                            </div>
+                            <span style={{
+                              fontSize: '10px',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              background: isSelected ? '#059669' : '#f1f5f9',
+                              color: isSelected ? '#fff' : '#475569',
+                              fontWeight: 'bold',
+                              marginTop: '4px',
+                              display: 'inline-block'
+                            }}>
+                              {isSelected ? 'SELECCIONADA' : 'Hacé clic aquí'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>

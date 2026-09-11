@@ -901,15 +901,28 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
   const abrirModalFacturarOS = (acuerdo) => {
     setAcuerdoAFacturar(acuerdo);
     
-    // Extraer obra social sugerida
-    let osSugerida = (pacienteSeleccionado?.obra_social || '').trim();
-    if (acuerdo.observaciones && acuerdo.observaciones.includes('OBRA_SOCIAL:')) {
-      const match = acuerdo.observaciones.match(/OBRA_SOCIAL:([^\s,\]]+)/);
+    // Extraer obra social sugerida con prioridad correcta
+    let osSugerida = '';
+    if (acuerdo.observaciones && acuerdo.observaciones.toUpperCase().includes('OBRA_SOCIAL:')) {
+      const match = acuerdo.observaciones.match(/OBRA_SOCIAL:([^\s,\]]+)/i);
       if (match && match[1]) osSugerida = match[1];
-    } else if (acuerdo.nombre_prestacion?.toUpperCase().startsWith('OS-')) {
-      const parteOS = acuerdo.nombre_prestacion.substring(3).trim();
-      const palabras = parteOS.split(' ');
-      if (palabras.length > 0) osSugerida = palabras.slice(0, 2).join(' ');
+    } else if (acuerdo.observaciones && acuerdo.observaciones.toUpperCase().includes('COBERTURA OBRA SOCIAL:')) {
+      const match = acuerdo.observaciones.match(/COBERTURA OBRA SOCIAL:\s*([^\s,\]\[]+)/i);
+      if (match && match[1]) osSugerida = match[1];
+    } else if (pacienteSeleccionado?.obra_social && pacienteSeleccionado.obra_social.trim() !== '') {
+      osSugerida = pacienteSeleccionado.obra_social.trim();
+    } else if (acuerdo.nombre_prestacion) {
+      const nom = acuerdo.nombre_prestacion.toUpperCase();
+      if (nom.includes('BOREAL')) osSugerida = 'BOREAL';
+      else if (nom.includes('SANCOR')) osSugerida = 'SANCOR SALUD';
+      else if (nom.includes('SUBSIDIO')) osSugerida = 'SUBSIDIO DE SALUD';
+      else if (nom.includes('OSDE')) osSugerida = 'OSDE';
+      else if (nom.includes('SWISS')) osSugerida = 'SWISS MEDICAL';
+      else if (nom.includes('PREVENCION')) osSugerida = 'PREVENCION SALUD';
+      else if (nom.startsWith('OS-')) {
+        const parte = nom.substring(3).trim();
+        osSugerida = parte.split(' ')[0];
+      }
     }
 
     setFormFacturarOS({
@@ -4608,12 +4621,23 @@ const confirmarRegistroPago = async () => {
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej: SANCOR SALUD, SUBSIDIO DE SALUD, etc."
+                  list="lista-os-factura"
+                  placeholder="Ej: BOREAL, SANCOR SALUD, SUBSIDIO DE SALUD, etc."
                   value={formFacturarOS.obraSocial}
                   onChange={(e) => setFormFacturarOS({ ...formFacturarOS, obraSocial: e.target.value })}
                   style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', fontWeight: 'bold' }}
                   required
                 />
+                <datalist id="lista-os-factura">
+                  <option value="BOREAL" />
+                  <option value="SANCOR SALUD" />
+                  <option value="SUBSIDIO DE SALUD" />
+                  <option value="OSDE" />
+                  <option value="SWISS MEDICAL" />
+                  <option value="PREVENCION SALUD" />
+                  <option value="MEDIFE" />
+                  <option value="PAMI" />
+                </datalist>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
