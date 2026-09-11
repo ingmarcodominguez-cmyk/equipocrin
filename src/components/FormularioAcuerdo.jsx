@@ -34,6 +34,7 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
   })
   const [creandoPrestacion, setCreandoPrestacion] = useState(false)
   const [obrasSocialesDisponibles, setObrasSocialesDisponibles] = useState([])
+  const [obraSocialAcuerdo, setObraSocialAcuerdo] = useState('')
 
   useEffect(() => {
     async function cargarDatosIniciales() {
@@ -137,6 +138,15 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
         dia_vencimiento: (esUnicoPrestacion || esOS) ? '' : form.dia_vencimiento,
         admite_recargo: esOS ? 'NO' : form.admite_recargo
       })
+
+      if (esOS) {
+        let osPrevia = '';
+        if (prestacionObj.observaciones && prestacionObj.observaciones.includes('OBRA_SOCIAL:')) {
+          const match = prestacionObj.observaciones.match(/OBRA_SOCIAL:([^\s,\]]+)/i);
+          if (match && match[1]) osPrevia = match[1];
+        }
+        if (osPrevia) setObraSocialAcuerdo(osPrevia);
+      }
     } else {
       setPrestacionSeleccionada(null)
       setForm({
@@ -228,6 +238,10 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
         observaciones: esOS ? `Cobertura Obra Social: ${osNombre || 'O.S.'}` : prev.observaciones
       }))
 
+      if (esOS && osNombre) {
+        setObraSocialAcuerdo(osNombre);
+      }
+
       setModalNuevaPrestacion(false)
       setNuevaPrestacionForm({ nombre: '', tipo: 'UNICO', esObraSocial: false, obraSocialNombre: '' })
       alert(`✅ Prestación "${nombre}" (ID #${creada.id_prestacion}) creada con éxito y seleccionada.`)
@@ -314,6 +328,12 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
 
     const montoCuotaFinal = esObraSocial ? '0' : String(form.monto_cuota_base || '0');
 
+    const osParaGuardar = obraSocialAcuerdo ? obraSocialAcuerdo.trim().toUpperCase() : '';
+    let obsFinal = form.observaciones || '';
+    if (esObraSocial && osParaGuardar && !obsFinal.toUpperCase().includes(osParaGuardar)) {
+      obsFinal = `Cobertura Obra Social: ${osParaGuardar}${obsFinal ? ' - ' + obsFinal : ''}`;
+    }
+
     const datosGuardar = {
       id_paciente: parseInt(form.id_paciente, 10),
       id_prestacion: parseInt(form.id_prestacion, 10),
@@ -324,7 +344,7 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
       dia_vencimiento: (esUnico || esObraSocial) ? null : parseInt(form.dia_vencimiento, 10),
       admite_recargo: (esUnico || esObraSocial) ? 'NO' : form.admite_recargo,
       estado: form.estado || 'ACTIVO',
-      observaciones: form.observaciones || '',
+      observaciones: obsFinal,
       usuario: form.usuario || 'Admin'
     }
 
@@ -498,15 +518,40 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
           )}
         </div>
 
-        {/* AVISO DE PRESTACIÓN POR OBRA SOCIAL */}
+        {/* AVISO DE PRESTACIÓN POR OBRA SOCIAL Y SELECTOR DE OBRA SOCIAL DE LA ORDEN */}
         {esObraSocial && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', padding: '12px 16px', borderRadius: '8px', color: '#166534', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '24px' }}>🏛️</span>
+          <div style={{ background: '#eff6ff', border: '1px solid #93c5fd', padding: '14px 16px', borderRadius: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+              <span style={{ fontSize: '24px' }}>🏛️</span>
+              <div>
+                <strong style={{ color: '#1e40af', fontSize: '14px' }}>Prestación por Obra Social (Sin cargo paciente):</strong>
+                <p style={{ margin: '2px 0 0 0', color: '#1d4ed8', fontSize: '12px' }}>
+                  El costo no genera deuda en la cuenta del paciente ($0) y se derivará a la cuenta de la Obra Social.
+                </p>
+              </div>
+            </div>
+
             <div>
-              <strong>Prestación por Obra Social detectada:</strong>
-              <p style={{ margin: '2px 0 0 0', color: '#15803d' }}>
-                Esta prestación no genera deuda personal en la cuenta del paciente ($0). La facturación se registrará en la cuenta de la Obra Social cuando se emita la factura.
-              </p>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '13px', color: '#1e3a8a' }}>
+                Obra Social de la orden presentada (Padre, Madre, Tío o Familiar) *
+              </label>
+              <input
+                type="text"
+                list="lista-os-acuerdo"
+                placeholder="Elegí o escribí la Obra Social de la orden: BOREAL, SANCOR SALUD, SUBSIDIO, etc."
+                value={obraSocialAcuerdo}
+                onChange={(e) => setObraSocialAcuerdo(e.target.value)}
+                style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #60a5fa', fontSize: '14px', fontWeight: 'bold', background: '#fff' }}
+                required={esObraSocial}
+              />
+              <datalist id="lista-os-acuerdo">
+                {obrasSocialesDisponibles.map(os => (
+                  <option key={os} value={os} />
+                ))}
+              </datalist>
+              <span style={{ fontSize: '11px', color: '#2563eb', display: 'block', marginTop: '4px' }}>
+                💡 Indicá la Obra Social que emitió la orden/cobertura para el tratamiento del niño (independiente de la que figure en su ficha personal).
+              </span>
             </div>
           </div>
         )}
@@ -532,12 +577,11 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
               <button
                 type="button"
                 onClick={() => {
-                  const osPac = pacienteSeleccionadoObj?.obra_social?.trim() || '';
                   setNuevaPrestacionForm({
-                    nombre: osPac ? `OS-${osPac.toUpperCase()} ` : 'OS-',
+                    nombre: 'OS-',
                     tipo: 'UNICO',
                     esObraSocial: true,
-                    obraSocialNombre: osPac ? osPac.toUpperCase() : ''
+                    obraSocialNombre: ''
                   });
                   setModalNuevaPrestacion(true);
                 }}

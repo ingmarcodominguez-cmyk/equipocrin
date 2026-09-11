@@ -926,7 +926,7 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
     }
 
     setFormFacturarOS({
-      obraSocial: osSugerida.toUpperCase() || 'SANCOR SALUD',
+      obraSocial: osSugerida ? osSugerida.toUpperCase() : '',
       monto: acuerdo.importe_actual && parsearMoneda(acuerdo.importe_actual) > 0 ? String(acuerdo.importe_actual) : '',
       nroFactura: '',
       fecha: new Date().toISOString().split('T')[0],
