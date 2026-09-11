@@ -418,7 +418,13 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
         }
       }
 
-      alert(idAcuerdoEditar ? '¡Acuerdo actualizado con éxito!' : '¡Acuerdo registrado con éxito y deuda inicial generada en cuenta corriente!');
+      alert(
+        idAcuerdoEditar 
+          ? '¡Acuerdo actualizado con éxito!' 
+          : esObraSocial 
+            ? '¡Acuerdo de Obra Social registrado con éxito! El paciente no tiene deuda. Queda visible en la pestaña Acuerdos para facturar a la entidad.' 
+            : '¡Acuerdo registrado con éxito y deuda inicial generada en cuenta corriente!'
+      );
       if (onGuardadoExitoso) {
         onGuardadoExitoso(idAcuerdoRegistrado);
       } else if (onVolver) {

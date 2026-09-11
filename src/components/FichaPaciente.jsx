@@ -573,6 +573,7 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
         const esOS = Boolean(
           acuerdo.nombre_prestacion?.toUpperCase().startsWith('OS-') ||
           acuerdo.nombre_prestacion?.toUpperCase().startsWith('OS ') ||
+          acuerdo.observaciones?.toUpperCase().includes('OBRA SOCIAL') ||
           acuerdo.observaciones?.includes('OBRA_SOCIAL') ||
           acuerdo.observaciones?.includes('FACTURADO')
         );
@@ -1748,14 +1749,32 @@ const confirmarRegistroPago = async () => {
   };
 
   const handleNuevoAcuerdoGuardado = async (newIdAcuerdo) => {
-    // 1. Recargar el paciente
+    // 1. Cambiar a la pestaña acuerdos para que el usuario vea la tarjeta creada
+    setVistaActiva('acuerdos');
+
+    // 2. Recargar el paciente
     await seleccionarPacientePorId({ target: { value: pacienteSeleccionado.id_paciente } });
     
-    // 2. Esperar a que se actualicen las deudas en el estado local de React
+    // 3. Verificar si el nuevo acuerdo es de Obra Social o sin cargo al paciente
+    const { data: acNuevo } = await supabase
+      .from('acuerdos_motor')
+      .select('id_acuerdo, importe_actual, observaciones')
+      .eq('id_acuerdo', newIdAcuerdo)
+      .maybeSingle();
+
+    const esOS = acNuevo && (
+      parseFloat(acNuevo.importe_actual || 0) === 0 ||
+      acNuevo.observaciones?.toUpperCase().includes('OBRA SOCIAL') ||
+      acNuevo.observaciones?.includes('OBRA_SOCIAL') ||
+      acNuevo.observaciones?.includes('FACTURADO')
+    );
+
+    // Si es de Obra Social, NO abrir modal de cobro (el paciente no debe pagar nada)
+    if (esOS) return;
+
+    // 4. Si es acuerdo particular con deuda, abrir modal de cobro/pago
     setTimeout(() => {
-      // 3. Abrir el modal de cobro/pago
       setModalPagoAbierto(true);
-      // 4. Intentar seleccionar la nueva deuda en el select (que estará en deudasAgrupadas)
       supabase.from('movimientoscuenta_motor')
         .select('id_deuda, debe')
         .eq('id_acuerdo', newIdAcuerdo)
@@ -2588,6 +2607,7 @@ const confirmarRegistroPago = async () => {
                     const esOS = Boolean(
                       acuerdo.nombre_prestacion?.toUpperCase().startsWith('OS-') ||
                       acuerdo.nombre_prestacion?.toUpperCase().startsWith('OS ') ||
+                      acuerdo.observaciones?.toUpperCase().includes('OBRA SOCIAL') ||
                       acuerdo.observaciones?.includes('OBRA_SOCIAL') ||
                       acuerdo.observaciones?.includes('FACTURADO')
                     );
