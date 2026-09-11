@@ -32,41 +32,52 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
   const [montosPrestadores, setMontosPrestadores] = useState({});
   const [cargandoPrestadores, setCargandoPrestadores] = useState(false);
 
+  // Pestañas y Acuerdos de Obra Social
+  const [tabActiva, setTabActiva] = useState('libro'); // 'libro' | 'pendientes'
+  const [acuerdosOS, setAcuerdosOS] = useState([]);
+  const [acuerdosOSPendientes, setAcuerdosOSPendientes] = useState([]);
+  const [busquedaPendientes, setBusquedaPendientes] = useState('');
+  const [filtroOSAcuerdos, setFiltroOSAcuerdos] = useState('TODAS');
+  const [filtroEstadoAcuerdos, setFiltroEstadoAcuerdos] = useState('PENDIENTES'); // 'PENDIENTES' | 'TODOS'
+
+  // Modal Facturar Acuerdo (a Cobrar)
+  const [modalFacturarAbierto, setModalFacturarAbierto] = useState(false);
+  const [acuerdoAFacturar, setAcuerdoAFacturar] = useState(null);
+  const [formFactura, setFormFactura] = useState({
+    nroFactura: 'AGOSTO 2026',
+    monto: '',
+    fecha: new Date().toISOString().split('T')[0]
+  });
+  const [guardandoFactura, setGuardandoFactura] = useState(false);
+
+  // Acuerdo en proceso de Facturar y Cobrar en 1 Paso
+  const [acuerdoAFacturarCobrar, setAcuerdoAFacturarCobrar] = useState(null);
+
   const cargarDatos = async () => {
     try {
       setCargando(true);
 
-      // 1. Cargar lista de Obras Sociales registradas en pacientes_motor
-      const { data: pacsData } = await supabase
-        .from('pacientes_motor')
-        .select('obra_social');
+      // 1. Cargar datos en paralelo: pacientes, prestaciones, acuerdos y movimientos
+      const [resPacs, resPres, resAcuerdos, resMovs, resPrest] = await Promise.all([
+        supabase.from('pacientes_motor').select('id_paciente, nombre_apellido, dni, obra_social'),
+        supabase.from('prestaciones_motor').select('*'),
+        supabase.from('acuerdos_motor').select('*').order('id_acuerdo', { ascending: false }),
+        supabase.from('movimientoscuenta_motor').select('*').eq('id_paciente', 0).order('fecha_movimiento', { ascending: false }),
+        supabase.from('prestadores_motor').select('*').order('nombre_prestador', { ascending: true })
+      ]);
 
-      const osPacientes = (pacsData || [])
-        .map(p => (p.obra_social || '').trim().toUpperCase())
-        .filter(Boolean);
+      if (resMovs.error) throw resMovs.error;
 
-      // 2. Cargar movimientos de obras sociales (id_paciente = 0)
-      const { data: movsData, error: errMovs } = await supabase
-        .from('movimientoscuenta_motor')
-        .select('*')
-        .eq('id_paciente', 0)
-        .order('fecha_movimiento', { ascending: false });
-
-      if (errMovs) throw errMovs;
-
-      const movs = movsData || [];
+      const pacsData = resPacs.data || [];
+      const presData = resPres.data || [];
+      const acData = resAcuerdos.data || [];
+      const movs = resMovs.data || [];
       setMovimientos(movs);
 
-      // 3. Cargar prestadores activos (solo profesionales, excluyendo auxiliares que cobran por hora)
-      const { data: prestData, error: errPrest } = await supabase
-        .from('prestadores_motor')
-        .select('*')
-        .order('nombre_prestador', { ascending: true });
-
+      // 2. Procesar prestadores activos (excluyendo auxiliares que cobran por hora)
       const AUXILIARES_LIST = ['PULITTA', 'SOTO', 'LIZARRAGA', 'SORANE', 'MASCARENO', 'MASCAREÑO', 'ALBORNOZ', 'LOBO'];
-
-      if (!errPrest && prestData) {
-        const profesionalesActivos = prestData.filter(p => {
+      if (!resPrest.error && resPrest.data) {
+        const profesionalesActivos = resPrest.data.filter(p => {
           const esActivo = !p.estado || (p.estado || '').trim().toUpperCase() === 'ACTIVO';
           const normNombre = (p.nombre_prestador || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
           const esAux = AUXILIARES_LIST.some(aux => normNombre.includes(aux));
@@ -75,11 +86,61 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
         setPrestadoresList(profesionalesActivos);
       }
 
-      // Extraer todas las obras sociales que aparecen en los movimientos
-      const osMovimientos = movs.map(m => (m.subtipo || '').trim().toUpperCase()).filter(Boolean);
-
-      const todasOS = Array.from(new Set([...osPacientes, ...osMovimientos, 'SANCOR SALUD', 'SUBSIDIO DE SALUD'])).sort();
+      // 3. Procesar lista de Obras Sociales únicas
+      const osPacientes = pacsData
+        .map(p => (p.obra_social || '').trim().toUpperCase())
+        .filter(Boolean);
+      const osMovimientos = movs
+        .map(m => (m.subtipo || '').trim().toUpperCase())
+        .filter(Boolean);
+      const todasOS = Array.from(new Set([...osPacientes, ...osMovimientos, 'CETINNE', 'BOREAL', 'SANCOR SALUD', 'SUBSIDIO DE SALUD'])).sort();
       setObrasSocialesLista(todasOS);
+
+      // 4. Identificar y procesar Acuerdos de Obra Social
+      const esAcuerdoOS = (ac) => {
+        const pr = presData.find(p => p.id_prestacion === ac.id_prestacion || p.id === ac.id_prestacion);
+        const prNombre = (pr?.nombre_prestacion || '').toUpperCase();
+        const obs = (ac.observaciones || '').toUpperCase();
+        const prObs = (pr?.observaciones || '').toUpperCase();
+        return prNombre.startsWith('OS-') || prNombre.startsWith('OS ') || obs.includes('OBRA SOCIAL') || obs.includes('OBRA_SOCIAL') || prObs.includes('OBRA_SOCIAL');
+      };
+
+      const acsOS = acData.filter(esAcuerdoOS);
+
+      const acuerdosMapeados = acsOS.map(ac => {
+        const pac = pacsData.find(p => p.id_paciente === ac.id_paciente);
+        const pr = presData.find(p => p.id_prestacion === ac.id_prestacion || p.id === ac.id_prestacion);
+
+        let osNombre = '';
+        if (ac.observaciones && ac.observaciones.includes('Cobertura Obra Social:')) {
+          const match = ac.observaciones.match(/Cobertura Obra Social:\s*([^[,\n]+)/i);
+          if (match && match[1]) osNombre = match[1].trim();
+        }
+        if (!osNombre && pr?.observaciones && pr.observaciones.includes('OBRA_SOCIAL:')) {
+          const match = pr.observaciones.match(/OBRA_SOCIAL:([^\s,\]]+)/i);
+          if (match && match[1]) osNombre = match[1].trim();
+        }
+        if (!osNombre && pac?.obra_social) {
+          osNombre = (pac.obra_social || '').trim();
+        }
+        if (!osNombre) osNombre = 'CETINNE';
+
+        // Detectar si ya fue facturado en movimientoscuenta_motor
+        const facturaMov = movs.find(m => m.id_acuerdo === ac.id_acuerdo && (m.tipo_movimiento === 'FACTURA_OS' || parsearMoneda(m.debe) > 0));
+
+        return {
+          ...ac,
+          paciente: pac,
+          prestacion: pr,
+          obraSocialNombre: osNombre.toUpperCase(),
+          estaFacturado: Boolean(facturaMov),
+          facturaMov: facturaMov || null
+        };
+      });
+
+      setAcuerdosOS(acuerdosMapeados);
+      const pendientes = acuerdosMapeados.filter(ac => !ac.estaFacturado && ac.estado !== 'FINALIZADO' && ac.estado !== 'RESCINDIDO');
+      setAcuerdosOSPendientes(pendientes);
 
     } catch (err) {
       console.error('Error al cargar datos de Obras Sociales:', err);
@@ -120,6 +181,26 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
       return coincideOS && coincideTipo && coincideTexto;
     });
   }, [movimientos, obraSocialSeleccionada, filtroTipo, busqueda]);
+
+  // Filtrado de acuerdos de Obra Social
+  const acuerdosOSPendientesFiltrados = useMemo(() => {
+    return acuerdosOS.filter(ac => {
+      if (filtroEstadoAcuerdos === 'PENDIENTES' && ac.estaFacturado) return false;
+      if (filtroEstadoAcuerdos === 'FACTURADOS' && !ac.estaFacturado) return false;
+
+      if (filtroOSAcuerdos !== 'TODAS' && ac.obraSocialNombre !== filtroOSAcuerdos) return false;
+
+      const q = busquedaPendientes.toLowerCase().trim();
+      if (!q) return true;
+
+      const pacNom = (ac.paciente?.nombre_apellido || '').toLowerCase();
+      const pacDni = String(ac.paciente?.dni || '');
+      const prestNom = (ac.prestacion?.nombre_prestacion || '').toLowerCase();
+      const osNom = (ac.obraSocialNombre || '').toLowerCase();
+
+      return pacNom.includes(q) || pacDni.includes(q) || prestNom.includes(q) || osNom.includes(q);
+    });
+  }, [acuerdosOS, filtroEstadoAcuerdos, filtroOSAcuerdos, busquedaPendientes]);
 
   // Cálculos de Totales y KPIs
   const totales = useMemo(() => {
@@ -435,14 +516,29 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
         .limit(1);
 
       if (errUlt) throw errUlt;
-      const nextIdMov = (ultMov && ultMov[0]?.id_movimiento ? ultMov[0].id_movimiento : 0) + 1;
+      let nextIdMov = (ultMov && ultMov[0]?.id_movimiento ? ultMov[0].id_movimiento : 0) + 1;
 
-      // 3. Resolver datos del paciente y acuerdo de la factura seleccionada
+      // 2b. Obtener nextIdDeuda para imputar en paciente
+      const { data: maxDeudaData } = await supabase
+        .from('movimientoscuenta_motor')
+        .select('id_deuda')
+        .not('id_deuda', 'is', null)
+        .order('id_deuda', { ascending: false })
+        .limit(1);
+      const nextIdDeuda = (maxDeudaData?.[0]?.id_deuda ? parseInt(maxDeudaData[0].id_deuda) : 0) + 1;
+
+      // 3. Resolver datos del paciente y acuerdo
       let pacienteId = null;
       let pacienteNombre = '';
-      let acuerdoNombre = facturaSeleccionada ? (facturaSeleccionada.concepto?.split(' - ')[0] || ('Factura #' + facturaSeleccionada.id_movimiento)) : `Cobro O.S. ${osNombre}`;
+      let idAcuerdoFinal = facturaSeleccionada?.id_acuerdo || acuerdoAFacturarCobrar?.id_acuerdo || null;
+      let acuerdoNombre = facturaSeleccionada ? (facturaSeleccionada.concepto?.split(' - ')[0] || ('Factura #' + facturaSeleccionada.id_movimiento)) : (acuerdoAFacturarCobrar ? (acuerdoAFacturarCobrar.prestacion?.nombre_prestacion || 'Prestación O.S.') : `Cobro O.S. ${osNombre}`);
+      let idMovFactura = facturaSeleccionada?.id_movimiento || null;
 
-      if (facturaSeleccionada) {
+      if (acuerdoAFacturarCobrar) {
+        pacienteId = acuerdoAFacturarCobrar.id_paciente;
+        pacienteNombre = acuerdoAFacturarCobrar.paciente?.nombre_apellido || '';
+        idAcuerdoFinal = acuerdoAFacturarCobrar.id_acuerdo;
+      } else if (facturaSeleccionada) {
         // Intentar extraer de concepto
         const matchPac = facturaSeleccionada.concepto?.match(/Pac:\s*([^(]+)\s*\(ID\s*(\d+)\)/i);
         if (matchPac) {
@@ -463,30 +559,62 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
             .maybeSingle();
           if (acRow?.id_paciente) {
             pacienteId = acRow.id_paciente;
-            if (!pacienteNombre) {
-              const { data: pacRow } = await supabase
-                .from('pacientes_motor')
-                .select('nombre_apellido')
-                .eq('id_paciente', pacienteId)
-                .maybeSingle();
-              if (pacRow) pacienteNombre = pacRow.nombre_apellido;
-            }
           }
         }
+        if (pacienteId && !pacienteNombre) {
+          const { data: pacRow } = await supabase
+            .from('pacientes_motor')
+            .select('nombre_apellido')
+            .eq('id_paciente', pacienteId)
+            .maybeSingle();
+          if (pacRow) pacienteNombre = pacRow.nombre_apellido;
+        }
+      }
+
+      // Si es Facturar y Cobrar en 1 Paso, crear primero la FACTURA_OS en movimientoscuenta_motor
+      if (acuerdoAFacturarCobrar) {
+        const nroFacGenerada = (formCobro.nroFactura || 'AGOSTO 2026').trim();
+        const movFacOS = {
+          id_movimiento: nextIdMov,
+          id_paciente: 0,
+          id_acuerdo: idAcuerdoFinal,
+          id_deuda: null,
+          fecha_cuota_origen: null,
+          fecha_vencimiento: null,
+          fecha_movimiento: formCobro.fecha || new Date().toISOString().split('T')[0],
+          ciclo_mora: 0,
+          escalon_mora: '0',
+          tipo_movimiento: 'FACTURA_OS',
+          subtipo: osNombre,
+          id_origen: null,
+          concepto: `Factura #${nroFacGenerada} - ${osNombre} - Pac: ${pacienteNombre} (ID ${pacienteId}) - Prestación: ${acuerdoNombre}`,
+          debe: montoNum.toString(),
+          haber: '0',
+          saldo: '0',
+          id_pago: null,
+          usuario: usuario || 'Admin',
+          fecha_registro: new Date().toISOString()
+        };
+
+        const { error: errFac } = await supabase.from('movimientoscuenta_motor').insert([movFacOS]);
+        if (errFac) throw errFac;
+
+        idMovFactura = nextIdMov;
+        nextIdMov++;
       }
 
       const refFactura = facturaSeleccionada 
         ? ` (Cancela ${facturaSeleccionada.concepto?.split(' - ')[0] || ('Factura #' + facturaSeleccionada.id_movimiento)})` 
-        : '';
+        : (acuerdoAFacturarCobrar ? ` (Factura #${formCobro.nroFactura || 'AGOSTO 2026'})` : '');
 
       const conceptoCobro = 'Cobro / Liquidación O.S. ' + osNombre + refFactura + ' - Comp: #' + (formCobro.nroComprobante || 'S/N') + ' (' + formCobro.formaPago + ')' + (formCobro.observaciones ? ' - ' + formCobro.observaciones : '');
 
-      // 4. Insertar movimiento en cuenta de Obra Social (movimientoscuenta_motor)
-      const nuevoMov = {
+      // 4. Insertar movimiento en cuenta de Obra Social (id_paciente: 0)
+      const nuevoMovOS = {
         id_movimiento: nextIdMov,
         id_paciente: 0,
-        id_acuerdo: facturaSeleccionada?.id_acuerdo || null,
-        id_origen: facturaSeleccionada?.id_movimiento || null,
+        id_acuerdo: idAcuerdoFinal,
+        id_origen: idMovFactura,
         tipo_movimiento: 'PAGO_OS',
         subtipo: osNombre,
         concepto: conceptoCobro,
@@ -501,9 +629,68 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
 
       const { error: errInsertMov } = await supabase
         .from('movimientoscuenta_motor')
-        .insert([nuevoMov]);
+        .insert([nuevoMovOS]);
 
       if (errInsertMov) throw errInsertMov;
+      nextIdMov++;
+
+      // 4b. IMPACTO EN EL DEBE Y HABER DE LA CUENTA DEL PACIENTE
+      if (pacienteId) {
+        const fechaMov = formCobro.fecha || new Date().toISOString().split('T')[0];
+        const cicloMora = parseInt(fechaMov.replace(/-/g, '').substring(0, 6), 10) || 0;
+        const conceptoDebePac = `Prestación O.S. ${osNombre} - ${refFactura ? refFactura.replace(/^\s*\(/, '').replace(/\)$/, '') : acuerdoNombre}`;
+        const conceptoHaberPac = `Pago / Cobertura O.S. ${osNombre} - Comp: #${formCobro.nroComprobante || 'S/N'}`;
+
+        const movsPaciente = [
+          {
+            id_movimiento: nextIdMov,
+            id_paciente: pacienteId,
+            id_acuerdo: idAcuerdoFinal,
+            id_deuda: nextIdDeuda,
+            fecha_cuota_origen: fechaMov,
+            fecha_vencimiento: null,
+            fecha_movimiento: fechaMov,
+            ciclo_mora: cicloMora,
+            escalon_mora: '0',
+            tipo_movimiento: 'cuota',
+            subtipo: 'cobertura_os',
+            id_origen: null,
+            concepto: conceptoDebePac,
+            debe: montoNum.toString(),
+            haber: '0',
+            saldo: '0',
+            id_pago: null,
+            usuario: usuario || 'Admin',
+            fecha_registro: new Date().toISOString()
+          },
+          {
+            id_movimiento: nextIdMov + 1,
+            id_paciente: pacienteId,
+            id_acuerdo: idAcuerdoFinal,
+            id_deuda: nextIdDeuda,
+            fecha_cuota_origen: fechaMov,
+            fecha_vencimiento: fechaMov,
+            fecha_movimiento: fechaMov,
+            ciclo_mora: 0,
+            escalon_mora: '0',
+            tipo_movimiento: 'pago',
+            subtipo: 'pago_os',
+            id_origen: null,
+            concepto: conceptoHaberPac,
+            debe: '0',
+            haber: montoNum.toString(),
+            saldo: '0',
+            id_pago: nextIdPago,
+            usuario: usuario || 'Admin',
+            fecha_registro: new Date().toISOString()
+          }
+        ];
+
+        const { error: errPacMovs } = await supabase.from('movimientoscuenta_motor').insert(movsPaciente);
+        if (errPacMovs) {
+          console.warn('Aviso al registrar movimientos en paciente:', errPacMovs);
+        }
+      }
 
       // 5. Insertar distribución a prestadores en movprestadores_motor
       if (prestadoresAcreditar.length > 0) {
@@ -512,7 +699,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
           id_paciente: pacienteId || null,
           fecha: formCobro.fecha || new Date().toISOString().split('T')[0],
           id_pago: nextIdPago,
-          concepto: `Liquidación O.S. ${osNombre}${pacienteNombre ? ' - Pac: ' + pacienteNombre : ''}${facturaSeleccionada ? ' - ' + (facturaSeleccionada.concepto?.split(' - ')[0] || ('Fac #' + facturaSeleccionada.id_movimiento)) : ''}`,
+          concepto: `Liquidación O.S. ${osNombre}${pacienteNombre ? ' - Pac: ' + pacienteNombre : ''}${refFactura}`,
           debe: '0',
           haber: (importesFinales[p.id_prestador] || 0).toString(),
           saldo: '0.00',
@@ -538,7 +725,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
         forma_pago: formCobro.formaPago.toUpperCase(),
         usuario: usuario || 'Admin',
         fecha_registro: new Date().toISOString(),
-        id_acuerdo: facturaSeleccionada?.id_acuerdo || null,
+        id_acuerdo: idAcuerdoFinal,
         estado: 'ACTIVO'
       };
 
@@ -564,12 +751,25 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
         if (errBanco) console.warn('Aviso banco:', errBanco);
       }
 
+      // 8. Actualizar acuerdos_motor con el importe y estado
+      if (idAcuerdoFinal) {
+        await supabase
+          .from('acuerdos_motor')
+          .update({
+            importe_actual: String(montoNum),
+            observaciones: `Cobertura Obra Social: ${osNombre} [FACTURADO Y COBRADO O.S: $${montoNum.toLocaleString('es-AR')} - Pago #${nextIdPago}]`
+          })
+          .eq('id_acuerdo', idAcuerdoFinal);
+      }
+
       setModalCobroAbierto(false);
       setFacturaSeleccionada(null);
+      setAcuerdoAFacturarCobrar(null);
       setFormCobro({
         obraSocial: '',
         monto: '',
         nroComprobante: '',
+        nroFactura: 'AGOSTO 2026',
         formaPago: 'TRANSFERENCIA BANCARIA',
         banco: 'GALICIA',
         fecha: new Date().toISOString().split('T')[0],
@@ -578,12 +778,13 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
 
       const cantPrestDist = prestadoresAcreditar.length;
       setMensaje({
-        texto: `✅ Cobro de $${montoNum.toLocaleString('es-AR')} registrado con éxito en ${osNombre}.${cantPrestDist > 0 ? ` Se acreditaron honorarios a ${cantPrestDist} prestador(es).` : ''}`,
+        texto: `✅ Cobro de $${montoNum.toLocaleString('es-AR')} registrado con éxito en ${osNombre} e impactado en la cuenta del paciente.${cantPrestDist > 0 ? ` Se acreditaron honorarios a ${cantPrestDist} prestador(es).` : ''}`,
         tipo: 'exito'
       });
       setTimeout(() => setMensaje({ texto: '', tipo: '' }), 5000);
 
       await cargarDatos();
+      setTabActiva('libro');
 
     } catch (err) {
       console.error('Error al guardar cobro de O.S.:', err);
@@ -593,13 +794,136 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
     }
   };
 
+  // Handler para Facturar Acuerdo de O.S. (a Cobrar en diferido)
+  const guardarFacturaOS = async (e) => {
+    e.preventDefault();
+    if (!acuerdoAFacturar) return;
+
+    const montoNum = parsearMoneda(formFactura.monto);
+    if (!montoNum || montoNum <= 0) {
+      alert('Por favor, ingresá un importe válido mayor a 0.');
+      return;
+    }
+    const nroFac = (formFactura.nroFactura || '').trim();
+    if (!nroFac) {
+      alert('Por favor, ingresá el número de factura o período (ej: AGOSTO 2026).');
+      return;
+    }
+
+    try {
+      setGuardandoFactura(true);
+
+      // Obtener nextIdMovimiento
+      const { data: ultMov, error: errUlt } = await supabase
+        .from('movimientoscuenta_motor')
+        .select('id_movimiento')
+        .order('id_movimiento', { ascending: false })
+        .limit(1);
+      if (errUlt) throw errUlt;
+      const nextIdMov = (ultMov && ultMov[0]?.id_movimiento ? ultMov[0].id_movimiento : 0) + 1;
+
+      const ac = acuerdoAFacturar;
+      const osNombre = ac.obraSocialNombre || 'OBRA SOCIAL';
+      const pacNombre = ac.paciente?.nombre_apellido || `ID ${ac.id_paciente}`;
+      const prestNombre = ac.prestacion?.nombre_prestacion || `Prestación #${ac.id_prestacion}`;
+
+      const nuevoMovFactura = {
+        id_movimiento: nextIdMov,
+        id_paciente: 0,
+        id_acuerdo: ac.id_acuerdo,
+        id_deuda: null,
+        fecha_cuota_origen: null,
+        fecha_vencimiento: null,
+        fecha_movimiento: formFactura.fecha || new Date().toISOString().split('T')[0],
+        ciclo_mora: 0,
+        escalon_mora: '0',
+        tipo_movimiento: 'FACTURA_OS',
+        subtipo: osNombre,
+        id_origen: null,
+        concepto: `Factura #${nroFac} - ${osNombre} - Pac: ${pacNombre} (ID ${ac.id_paciente}) - Prestación: ${prestNombre}`,
+        debe: montoNum.toString(),
+        haber: '0',
+        saldo: '0',
+        id_pago: null,
+        usuario: usuario || 'Admin',
+        fecha_registro: new Date().toISOString()
+      };
+
+      const { error: errInsert } = await supabase
+        .from('movimientoscuenta_motor')
+        .insert([nuevoMovFactura]);
+      if (errInsert) throw errInsert;
+
+      // Actualizar acuerdos_motor con el importe asignado
+      const obsFacturado = `Cobertura Obra Social: ${osNombre} [FACTURADO O.S: $${montoNum.toLocaleString('es-AR')} - Factura: ${nroFac} - O.S: ${osNombre} - Fecha: ${formFactura.fecha}]`;
+      await supabase
+        .from('acuerdos_motor')
+        .update({
+          importe_actual: String(montoNum),
+          observaciones: obsFacturado
+        })
+        .eq('id_acuerdo', ac.id_acuerdo);
+
+      setModalFacturarAbierto(false);
+      setAcuerdoAFacturar(null);
+      setMensaje({
+        texto: `✅ Factura #${nroFac} por $${montoNum.toLocaleString('es-AR')} emitida a ${osNombre}. Se ha incorporado al Libro Mayor como pendiente de cobro.`,
+        tipo: 'exito'
+      });
+      setTimeout(() => setMensaje({ texto: '', tipo: '' }), 5000);
+
+      await cargarDatos();
+      setTabActiva('libro');
+    } catch (err) {
+      console.error('Error al facturar acuerdo:', err);
+      alert('Error al facturar: ' + err.message);
+    } finally {
+      setGuardandoFactura(false);
+    }
+  };
+
+  // Handler para abrir modal de Facturar y Cobrar en 1 Paso
+  const abrirFacturarYCobrar = (acuerdo) => {
+    setAcuerdoAFacturarCobrar(acuerdo);
+    setFacturaSeleccionada(null);
+
+    // Inicializar montos y sesiones de prestadores
+    const montosZero = {};
+    const sesZero = {};
+    prestadoresList.forEach(p => {
+      montosZero[p.id_prestador] = '';
+      sesZero[p.id_prestador] = 0;
+    });
+    setMontosPrestadores(montosZero);
+    setSesionesPrestadores(sesZero);
+    setDistribuirAPrestadores(true);
+    setDistribucionPorMonto(false);
+
+    const osDefault = acuerdo.obraSocialNombre || '';
+    const importeSugerido = parsearMoneda(acuerdo.importe_actual) > 0 ? String(parsearMoneda(acuerdo.importe_actual)) : '';
+
+    setFormCobro({
+      obraSocial: osDefault,
+      monto: importeSugerido,
+      nroComprobante: '',
+      nroFactura: 'AGOSTO 2026',
+      formaPago: 'TRANSFERENCIA BANCARIA',
+      banco: 'GALICIA',
+      fecha: new Date().toISOString().split('T')[0],
+      observaciones: `Facturación y Cobro O.S. - Pac: ${acuerdo.paciente?.nombre_apellido || acuerdo.id_paciente}`
+    });
+
+    autocompletarSesionesFactura({ id_acuerdo: acuerdo.id_acuerdo, id_paciente: acuerdo.id_paciente }, prestadoresList);
+    setModalCobroAbierto(true);
+  };
+
   // Handler para anular movimiento de obra social
   const anularMovimientoOS = async (mov) => {
     const confirmar = window.confirm(
       '¿Está seguro de que desea eliminar este registro de la cuenta corriente de ' + mov.subtipo + '?' +
       '\n\n• Concepto: ' + mov.concepto +
       '\n• Importe: $' + (parsearMoneda(mov.debe) || parsearMoneda(mov.haber)).toLocaleString('es-AR') +
-      '\n\nEsta acción modificará el saldo consolidado de la Obra Social' + (mov.id_pago ? ' y revertirá las liquidaciones asociadas a prestadores.' : '.')
+      '\n\nEsta acción modificará el saldo consolidado de la Obra Social' + (mov.id_pago ? ' y revertirá las liquidaciones asociadas a prestadores y movimientos del paciente.' : '.')
     );
 
     if (!confirmar) return;
@@ -609,6 +933,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
         await supabase.from('movprestadores_motor').delete().eq('id_pago', mov.id_pago);
         await supabase.from('pagos_motor').delete().eq('id_pago', mov.id_pago);
         await supabase.from('bancos_motor').delete().eq('id_pago', mov.id_pago);
+        await supabase.from('movimientoscuenta_motor').delete().eq('id_pago', mov.id_pago);
       }
 
       const { error } = await supabase
@@ -621,7 +946,6 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
       setMensaje({ texto: 'Registro #' + mov.id_movimiento + ' eliminado exitosamente.', tipo: 'exito' });
       setTimeout(() => setMensaje({ texto: '', tipo: '' }), 3500);
 
-      await cargarDatos();
     } catch (err) {
       console.error('Error al anular movimiento:', err);
       alert('Error al anular: ' + err.message);
@@ -691,16 +1015,83 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
           marginBottom: '16px',
           fontWeight: 'bold',
           fontSize: '14px',
-          background: mensaje.tipo === 'error' ? '#fee2e2' : '#dcfce7',
-          color: mensaje.tipo === 'error' ? '#991b1b' : '#166534',
           border: '1px solid ' + (mensaje.tipo === 'error' ? '#fca5a5' : '#86efac')
         }}>
           {mensaje.texto}
         </div>
       )}
 
-      {/* TARJETAS KPI */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+      {/* SELECTOR DE PESTAÑAS */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>
+        <button
+          type="button"
+          onClick={() => setTabActiva('libro')}
+          style={{
+            background: tabActiva === 'libro' ? '#2563eb' : '#fff',
+            color: tabActiva === 'libro' ? '#fff' : '#475569',
+            border: `1px solid ${tabActiva === 'libro' ? '#2563eb' : '#cbd5e1'}`,
+            padding: '10px 20px',
+            borderRadius: '8px',
+            fontWeight: 'bold',
+            fontSize: '14px',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: tabActiva === 'libro' ? '0 2px 4px rgba(37,99,235,0.2)' : 'none',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <span>📑 Libro Mayor y Cobranzas</span>
+          <span style={{
+            background: tabActiva === 'libro' ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+            color: tabActiva === 'libro' ? '#fff' : '#334155',
+            padding: '2px 8px',
+            borderRadius: '12px',
+            fontSize: '11px',
+            fontWeight: 'bold'
+          }}>
+            {movimientosFiltrados.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setTabActiva('pendientes')}
+          style={{
+            background: tabActiva === 'pendientes' ? '#d97706' : '#fff',
+            color: tabActiva === 'pendientes' ? '#fff' : '#92400e',
+            border: `1px solid ${tabActiva === 'pendientes' ? '#d97706' : '#fde68a'}`,
+            padding: '10px 20px',
+            borderRadius: '8px',
+            fontWeight: 'bold',
+            fontSize: '14px',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: tabActiva === 'pendientes' ? '0 2px 4px rgba(217,119,6,0.25)' : 'none',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <span>⏳ Acuerdos Pendientes de Facturar</span>
+          <span style={{
+            background: tabActiva === 'pendientes' ? 'rgba(255,255,255,0.3)' : (acuerdosOSPendientes.length > 0 ? '#ef4444' : '#10b981'),
+            color: '#fff',
+            padding: '2px 8px',
+            borderRadius: '12px',
+            fontSize: '11px',
+            fontWeight: 'bold'
+          }}>
+            {acuerdosOSPendientes.length}
+          </span>
+        </button>
+      </div>
+
+      {tabActiva === 'libro' && (
+        <>
+          {/* TARJETAS KPI */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '15px', marginBottom: '20px' }}>
         
         <div style={{ background: '#fff', padding: '18px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
           <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>
@@ -956,6 +1347,388 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
           </div>
         )}
       </div>
+      </>
+      )}
+
+      {/* VISTA DE ACUERDOS DE OBRA SOCIAL */}
+      {tabActiva === 'pendientes' && (
+        <div>
+          {/* TARJETAS RESUMEN DE ACUERDOS */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+            <div style={{ background: '#fff', padding: '18px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+              <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>
+                ⏳ Acuerdos Pendientes de Facturar
+              </span>
+              <div style={{ fontSize: '26px', fontWeight: '800', color: acuerdosOSPendientes.length > 0 ? '#d97706' : '#16a34a', marginTop: '6px' }}>
+                {acuerdosOSPendientes.length}
+              </div>
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>Requieren emitir factura a la entidad</span>
+            </div>
+
+            <div style={{ background: '#fff', padding: '18px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+              <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>
+                ✅ Acuerdos ya Facturados / Cobrados
+              </span>
+              <div style={{ fontSize: '26px', fontWeight: '800', color: '#2563eb', marginTop: '6px' }}>
+                {acuerdosOS.filter(a => a.estaFacturado).length}
+              </div>
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>En libro mayor de O.S.</span>
+            </div>
+
+            <div style={{ background: '#fff', padding: '18px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+              <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>
+                📋 Total Acuerdos de Obra Social
+              </span>
+              <div style={{ fontSize: '26px', fontWeight: '800', color: '#334155', marginTop: '6px' }}>
+                {acuerdosOS.length}
+              </div>
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>Registrados en el centro médico</span>
+            </div>
+          </div>
+
+          {/* BARRA DE FILTROS DE ACUERDOS */}
+          <div style={{ background: '#fff', padding: '16px 20px', borderRadius: '10px', marginBottom: '20px', border: '1px solid #e2e8f0', display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ minWidth: '220px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>
+                Estado:
+              </label>
+              <select
+                value={filtroEstadoAcuerdos}
+                onChange={(e) => setFiltroEstadoAcuerdos(e.target.value)}
+                style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', background: '#fff', fontWeight: 'bold' }}
+              >
+                <option value="PENDIENTES">⏳ Solo Pendientes de Facturar ({acuerdosOSPendientes.length})</option>
+                <option value="TODOS">📋 Todos los Acuerdos de O.S. ({acuerdosOS.length})</option>
+                <option value="FACTURADOS">✅ Solo Ya Facturados ({acuerdosOS.filter(a => a.estaFacturado).length})</option>
+              </select>
+            </div>
+
+            <div style={{ minWidth: '220px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>
+                Filtrar por Obra Social:
+              </label>
+              <select
+                value={filtroOSAcuerdos}
+                onChange={(e) => setFiltroOSAcuerdos(e.target.value)}
+                style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', background: '#fff' }}
+              >
+                <option value="TODAS">-- TODAS LAS OBRAS SOCIALES --</option>
+                {obrasSocialesLista.map(os => (
+                  <option key={os} value={os}>{os}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ minWidth: '260px', flex: 1 }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>
+                Buscar paciente o prestación:
+              </label>
+              <input
+                type="text"
+                placeholder="Ej: Pérez, 40123456, CETINNE..."
+                value={busquedaPendientes}
+                onChange={(e) => setBusquedaPendientes(e.target.value)}
+                style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }}
+              />
+            </div>
+          </div>
+
+          {/* TABLA DE ACUERDOS */}
+          <div style={{ background: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h4 style={{ margin: 0, color: '#1e293b', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>{filtroEstadoAcuerdos === 'PENDIENTES' ? '⏳ Acuerdos Pendientes de Facturación' : '📋 Listado de Acuerdos de O.S.'}</span>
+              </h4>
+              <span style={{ fontSize: '12px', color: '#64748b' }}>
+                {acuerdosOSPendientesFiltrados.length} fila(s) encontradas
+              </span>
+            </div>
+
+            {cargando ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                Cargando acuerdos de obras sociales...
+              </div>
+            ) : acuerdosOSPendientesFiltrados.length === 0 ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', fontStyle: 'italic' }}>
+                {filtroEstadoAcuerdos === 'PENDIENTES'
+                  ? '🎉 ¡No hay acuerdos de Obra Social pendientes de facturar para el filtro seleccionado!'
+                  : 'No se encontraron acuerdos con los criterios seleccionados.'}
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ background: '#f1f5f9', color: '#475569', borderBottom: '1px solid #cbd5e1' }}>
+                      <th style={{ padding: '12px 14px' }}>Fecha</th>
+                      <th style={{ padding: '12px 14px' }}>Paciente</th>
+                      <th style={{ padding: '12px 14px' }}>Obra Social</th>
+                      <th style={{ padding: '12px 14px' }}>Prestación</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'center' }}>Estado</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right' }}>Importe ($)</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'center' }}>Acciones para Facturar / Cobrar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {acuerdosOSPendientesFiltrados.map((ac) => {
+                      const yaFacturado = ac.estaFacturado;
+                      const imp = parsearMoneda(ac.importe_actual);
+
+                      return (
+                        <tr key={ac.id_acuerdo} style={{ borderBottom: '1px solid #f1f5f9', background: yaFacturado ? '#fafafa' : '#fff' }}>
+                          <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', color: '#334155' }}>
+                            {ac.fecha_acuerdo || (ac.fecha_registro ? ac.fecha_registro.split('T')[0] : 'S/D')}
+                          </td>
+                          <td style={{ padding: '12px 14px' }}>
+                            <div style={{ fontWeight: 'bold', color: '#0f172a' }}>
+                              {ac.paciente?.nombre_apellido || `Paciente ID ${ac.id_paciente}`}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#64748b' }}>
+                              DNI: {ac.paciente?.dni || 'S/D'} • ID: {ac.id_paciente}
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px 14px' }}>
+                            <span style={{ fontWeight: 'bold', color: '#1e40af', background: '#dbeafe', padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>
+                              🏛️ {ac.obraSocialNombre}
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 14px', color: '#334155', fontWeight: '500' }}>
+                            {ac.prestacion?.nombre_prestacion || `Prestación ID ${ac.id_prestacion}`}
+                          </td>
+                          <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                            {yaFacturado ? (
+                              <span style={{ padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', background: '#dcfce7', color: '#15803d' }}>
+                                ✅ Facturado
+                              </span>
+                            ) : (
+                              <span style={{ padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', background: '#fef3c7', color: '#92400e' }}>
+                                ⏳ Pendiente
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 'bold', color: imp > 0 ? '#0f172a' : '#94a3b8' }}>
+                            {imp > 0 ? ('$' + imp.toLocaleString('es-AR', { minimumFractionDigits: 2 })) : '$ 0,00'}
+                          </td>
+                          <td style={{ padding: '12px 14px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            {yaFacturado ? (
+                              <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
+                                <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 'bold' }}>
+                                  Factura en Libro Mayor
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setTabActiva('libro')}
+                                  style={{
+                                    background: '#eff6ff',
+                                    color: '#2563eb',
+                                    border: '1px solid #bfdbfe',
+                                    padding: '4px 8px',
+                                    borderRadius: '6px',
+                                    fontSize: '11px',
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  Ver en Libro ↗
+                                </button>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'inline-flex', gap: '8px', alignItems: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAcuerdoAFacturar(ac);
+                                    setFormFactura({
+                                      nroFactura: 'AGOSTO 2026',
+                                      monto: imp > 0 ? String(imp) : '',
+                                      fecha: new Date().toISOString().split('T')[0]
+                                    });
+                                    setModalFacturarAbierto(true);
+                                  }}
+                                  style={{
+                                    background: '#eff6ff',
+                                    color: '#2563eb',
+                                    border: '1px solid #93c5fd',
+                                    padding: '5px 12px',
+                                    borderRadius: '6px',
+                                    fontSize: '12px',
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                                  }}
+                                  title="Ingresar N° factura e importe para que quede pendiente de cobro en el Libro Mayor"
+                                >
+                                  📄 Facturar (a Cobrar)
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => abrirFacturarYCobrar(ac)}
+                                  style={{
+                                    background: '#ecfdf5',
+                                    color: '#059669',
+                                    border: '1px solid #a7f3d0',
+                                    padding: '5px 12px',
+                                    borderRadius: '6px',
+                                    fontSize: '12px',
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                                  }}
+                                  title="Facturar, cobrar y liquidar a prestadores en 1 solo paso"
+                                >
+                                  ⚡ Facturar y Cobrar
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL FACTURAR ACUERDO DE O.S. (A COBRAR) */}
+      {modalFacturarAbierto && acuerdoAFacturar && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: '12px',
+            maxWidth: '520px',
+            width: '100%',
+            padding: '24px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📄 Facturar Acuerdo a Obra Social
+                </h3>
+                <p style={{ margin: '3px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                  Emite la factura a cobrar y la incorpora a la cuenta corriente de la entidad.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setModalFacturarAbierto(false); setAcuerdoAFacturar(null); }}
+                style={{ background: 'transparent', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#64748b' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '16px', fontSize: '13px' }}>
+              <div style={{ marginBottom: '4px' }}>
+                <span style={{ color: '#64748b' }}>Paciente: </span>
+                <strong style={{ color: '#0f172a' }}>{acuerdoAFacturar.paciente?.nombre_apellido || `ID ${acuerdoAFacturar.id_paciente}`}</strong>
+                <span style={{ color: '#64748b' }}> (DNI: {acuerdoAFacturar.paciente?.dni || 'S/D'})</span>
+              </div>
+              <div style={{ marginBottom: '4px' }}>
+                <span style={{ color: '#64748b' }}>Obra Social: </span>
+                <strong style={{ color: '#1e40af' }}>{acuerdoAFacturar.obraSocialNombre}</strong>
+              </div>
+              <div>
+                <span style={{ color: '#64748b' }}>Prestación: </span>
+                <strong style={{ color: '#0f172a' }}>{acuerdoAFacturar.prestacion?.nombre_prestacion || `ID ${acuerdoAFacturar.id_prestacion}`}</strong>
+              </div>
+            </div>
+
+            <form onSubmit={guardarFacturaOS}>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#334155', marginBottom: '5px' }}>
+                  N° de Factura / Período *
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: AGOSTO 2026, Factura 0001-00004523"
+                  value={formFactura.nroFactura}
+                  onChange={(e) => setFormFactura({ ...formFactura, nroFactura: e.target.value })}
+                  style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', fontWeight: 'bold' }}
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#334155', marginBottom: '5px' }}>
+                    Importe a Facturar ($) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="Ej: 146465"
+                    value={formFactura.monto}
+                    onChange={(e) => setFormFactura({ ...formFactura, monto: e.target.value })}
+                    style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '15px', fontWeight: 'bold', color: '#2563eb' }}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#334155', marginBottom: '5px' }}>
+                    Fecha de Emisión *
+                  </label>
+                  <input
+                    type="date"
+                    value={formFactura.fecha}
+                    onChange={(e) => setFormFactura({ ...formFactura, fecha: e.target.value })}
+                    style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
+                <button
+                  type="button"
+                  onClick={() => { setModalFacturarAbierto(false); setAcuerdoAFacturar(null); }}
+                  style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '9px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', color: '#475569' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardandoFactura}
+                  style={{
+                    background: '#2563eb',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '9px 20px',
+                    borderRadius: '6px',
+                    cursor: guardandoFactura ? 'not-allowed' : 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '13px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {guardandoFactura ? 'Generando Factura...' : '📄 Confirmar y Emitir Factura'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL REGISTRAR COBRO / PAGO DE OBRA SOCIAL */}
       {modalCobroAbierto && (
@@ -993,7 +1766,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
               </div>
               <button
                 type="button"
-                onClick={() => { setModalCobroAbierto(false); setFacturaSeleccionada(null); }}
+                onClick={() => { setModalCobroAbierto(false); setFacturaSeleccionada(null); setAcuerdoAFacturarCobrar(null); }}
                 style={{ background: 'transparent', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#64748b' }}
               >
                 ✕
@@ -1001,6 +1774,23 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
             </div>
 
             <form onSubmit={guardarCobroOS}>
+              {acuerdoAFacturarCobrar && (
+                <div style={{ background: '#fef3c7', border: '1px solid #fde047', borderRadius: '8px', padding: '12px 16px', marginBottom: '16px' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#92400e', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    ⚡ Facturar y Cobrar en 1 Paso
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#78350f', marginTop: '4px' }}>
+                    Paciente: <strong>{acuerdoAFacturarCobrar.paciente?.nombre_apellido || `ID ${acuerdoAFacturarCobrar.id_paciente}`}</strong> (DNI: {acuerdoAFacturarCobrar.paciente?.dni || 'S/D'})
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#78350f', marginTop: '2px' }}>
+                    Prestación: <strong>{acuerdoAFacturarCobrar.prestacion?.nombre_prestacion}</strong> • Obra Social: <strong>{acuerdoAFacturarCobrar.obraSocialNombre}</strong>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#b45309', marginTop: '6px', fontStyle: 'italic' }}>
+                    💡 Esta acción emitirá la factura a la Obra Social, registrará el cobro, distribuirá a profesionales (auxiliares a Viviana Jiménez) e impactará en el DEBE y HABER del paciente dejándolo saldado ($0).
+                  </div>
+                </div>
+              )}
+
               <div style={{ marginBottom: '14px' }}>
                 <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '13px', color: '#334155' }}>
                   Obra Social que realiza el pago *
@@ -1026,94 +1816,112 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                 </datalist>
               </div>
 
-              {/* LISTADO DE FACTURAS PENDIENTES DE COBRO */}
-              <div style={{ marginBottom: '16px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <label style={{ fontWeight: 'bold', fontSize: '13px', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>📑 Facturas Pendientes de Cobro</span>
-                    {formCobro.obraSocial && (
-                      <span style={{ fontSize: '11px', background: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: '4px' }}>
-                        {formCobro.obraSocial}
-                      </span>
-                    )}
+              {acuerdoAFacturarCobrar && (
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '13px', color: '#334155' }}>
+                    N° de Factura / Período a Emitir *
                   </label>
-                  {facturaSeleccionada && (
-                    <button
-                      type="button"
-                      onClick={() => seleccionarFacturaEnModal(facturaSeleccionada)}
-                      style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold', textDecoration: 'underline' }}
-                    >
-                      ✕ Desmarcar factura
-                    </button>
+                  <input
+                    type="text"
+                    placeholder="Ej: AGOSTO 2026"
+                    value={formCobro.nroFactura || ''}
+                    onChange={(e) => setFormCobro({ ...formCobro, nroFactura: e.target.value })}
+                    style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', fontWeight: 'bold' }}
+                    required
+                  />
+                </div>
+              )}
+
+              {/* LISTADO DE FACTURAS PENDIENTES DE COBRO (solo si no es Facturar y Cobrar) */}
+              {!acuerdoAFacturarCobrar && (
+                <div style={{ marginBottom: '16px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label style={{ fontWeight: 'bold', fontSize: '13px', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>📑 Facturas Pendientes de Cobro</span>
+                      {formCobro.obraSocial && (
+                        <span style={{ fontSize: '11px', background: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: '4px' }}>
+                          {formCobro.obraSocial}
+                        </span>
+                      )}
+                    </label>
+                    {facturaSeleccionada && (
+                      <button
+                        type="button"
+                        onClick={() => seleccionarFacturaEnModal(facturaSeleccionada)}
+                        style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold', textDecoration: 'underline' }}
+                      >
+                        ✕ Desmarcar factura
+                      </button>
+                    )}
+                  </div>
+
+                  {facturasPendientesModal.length === 0 ? (
+                    <div style={{ padding: '10px 12px', background: '#fff', borderRadius: '6px', border: '1px dashed #cbd5e1', fontSize: '12px', color: '#64748b' }}>
+                      ℹ️ No hay facturas pendientes {formCobro.obraSocial ? `para ${formCobro.obraSocial}` : 'registradas'}. Podés ingresar un importe manual como pago o anticipo a cuenta corriente.
+                    </div>
+                  ) : (
+                    <div style={{ maxHeight: '170px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {facturasPendientesModal.map(fac => {
+                        const isSelected = facturaSeleccionada?.id_movimiento === fac.id_movimiento;
+                        return (
+                          <div
+                            key={fac.id_movimiento}
+                            onClick={() => seleccionarFacturaEnModal(fac)}
+                            style={{
+                              padding: '10px 12px',
+                              borderRadius: '6px',
+                              border: `2px solid ${isSelected ? '#059669' : '#cbd5e1'}`,
+                              background: isSelected ? '#ecfdf5' : '#ffffff',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              boxShadow: isSelected ? '0 2px 4px rgba(5, 150, 105, 0.15)' : '0 1px 2px rgba(0,0,0,0.03)',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            <div style={{ flex: 1, marginRight: '10px' }}>
+                              <div style={{ fontWeight: 'bold', fontSize: '13px', color: isSelected ? '#065f46' : '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span>{isSelected ? '✅' : '📄'}</span>
+                                <span>{fac.concepto?.split(' - ')[0] || `Factura #${fac.id_movimiento}`}</span>
+                                {!formCobro.obraSocial && (
+                                  <span style={{ fontSize: '10px', background: '#e0e7ff', color: '#3730a3', padding: '1px 6px', borderRadius: '4px' }}>
+                                    {fac.subtipo}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: '11px', color: '#475569', marginTop: '3px', lineHeight: '1.3' }}>
+                                {fac.concepto}
+                              </div>
+                              <div style={{ fontSize: '10px', color: '#64748b', marginTop: '3px' }}>
+                                Emisión: {fac.fecha_movimiento} • Total facturado: ${fac.montoFactura.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                              </div>
+                            </div>
+                            <div style={{ textAlign: 'right', minWidth: '105px' }}>
+                              <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '600' }}>Saldo a cobrar:</div>
+                              <div style={{ fontSize: '14px', fontWeight: '800', color: '#059669' }}>
+                                ${fac.saldoPendiente.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                              </div>
+                              <span style={{
+                                fontSize: '10px',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                background: isSelected ? '#059669' : '#f1f5f9',
+                                color: isSelected ? '#fff' : '#475569',
+                                fontWeight: 'bold',
+                                marginTop: '4px',
+                                display: 'inline-block'
+                              }}>
+                                {isSelected ? 'SELECCIONADA' : 'Hacé clic aquí'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
-
-                {facturasPendientesModal.length === 0 ? (
-                  <div style={{ padding: '10px 12px', background: '#fff', borderRadius: '6px', border: '1px dashed #cbd5e1', fontSize: '12px', color: '#64748b' }}>
-                    ℹ️ No hay facturas pendientes {formCobro.obraSocial ? `para ${formCobro.obraSocial}` : 'registradas'}. Podés ingresar un importe manual como pago o anticipo a cuenta corriente.
-                  </div>
-                ) : (
-                  <div style={{ maxHeight: '170px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {facturasPendientesModal.map(fac => {
-                      const isSelected = facturaSeleccionada?.id_movimiento === fac.id_movimiento;
-                      return (
-                        <div
-                          key={fac.id_movimiento}
-                          onClick={() => seleccionarFacturaEnModal(fac)}
-                          style={{
-                            padding: '10px 12px',
-                            borderRadius: '6px',
-                            border: `2px solid ${isSelected ? '#059669' : '#cbd5e1'}`,
-                            background: isSelected ? '#ecfdf5' : '#ffffff',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            boxShadow: isSelected ? '0 2px 4px rgba(5, 150, 105, 0.15)' : '0 1px 2px rgba(0,0,0,0.03)',
-                            transition: 'all 0.15s ease'
-                          }}
-                        >
-                          <div style={{ flex: 1, marginRight: '10px' }}>
-                            <div style={{ fontWeight: 'bold', fontSize: '13px', color: isSelected ? '#065f46' : '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span>{isSelected ? '✅' : '📄'}</span>
-                              <span>{fac.concepto?.split(' - ')[0] || `Factura #${fac.id_movimiento}`}</span>
-                              {!formCobro.obraSocial && (
-                                <span style={{ fontSize: '10px', background: '#e0e7ff', color: '#3730a3', padding: '1px 6px', borderRadius: '4px' }}>
-                                  {fac.subtipo}
-                                </span>
-                              )}
-                            </div>
-                            <div style={{ fontSize: '11px', color: '#475569', marginTop: '3px', lineHeight: '1.3' }}>
-                              {fac.concepto}
-                            </div>
-                            <div style={{ fontSize: '10px', color: '#64748b', marginTop: '3px' }}>
-                              Emisión: {fac.fecha_movimiento} • Total facturado: ${fac.montoFactura.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                            </div>
-                          </div>
-                          <div style={{ textAlign: 'right', minWidth: '105px' }}>
-                            <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '600' }}>Saldo a cobrar:</div>
-                            <div style={{ fontSize: '14px', fontWeight: '800', color: '#059669' }}>
-                              ${fac.saldoPendiente.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                            </div>
-                            <span style={{
-                              fontSize: '10px',
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              background: isSelected ? '#059669' : '#f1f5f9',
-                              color: isSelected ? '#fff' : '#475569',
-                              fontWeight: 'bold',
-                              marginTop: '4px',
-                              display: 'inline-block'
-                            }}>
-                              {isSelected ? 'SELECCIONADA' : 'Hacé clic aquí'}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
                 <div>
@@ -1417,7 +2225,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
                 <button
                   type="button"
-                  onClick={() => setModalCobroAbierto(false)}
+                  onClick={() => { setModalCobroAbierto(false); setFacturaSeleccionada(null); setAcuerdoAFacturarCobrar(null); }}
                   disabled={guardandoCobro}
                   style={{
                     padding: '9px 16px',
@@ -1439,7 +2247,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                     padding: '9px 20px',
                     borderRadius: '6px',
                     border: 'none',
-                    background: '#059669',
+                    background: acuerdoAFacturarCobrar ? '#059669' : '#059669',
                     color: '#fff',
                     cursor: 'pointer',
                     fontWeight: 'bold',
@@ -1449,7 +2257,10 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                     gap: '6px'
                   }}
                 >
-                  {guardandoCobro ? 'Guardando...' : 'Registrar Cobro en O.S.'}
+                  {guardandoCobro
+                    ? 'Procesando...'
+                    : (acuerdoAFacturarCobrar ? '⚡ Confirmar Factura y Cobro' : 'Registrar Cobro en O.S.')
+                  }
                 </button>
               </div>
             </form>

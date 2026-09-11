@@ -2697,67 +2697,44 @@ const confirmarRegistroPago = async () => {
 
                         {esOS && (
                           <div style={{
-                            background: estaFacturado ? '#f0fdf4' : '#fffbeb',
-                            border: `1px solid ${estaFacturado ? '#bbf7d0' : '#fef08a'}`,
+                            background: '#f8fafc',
+                            border: '1px solid #e2e8f0',
                             borderRadius: '6px',
-                            padding: '10px 14px',
+                            padding: '8px 12px',
                             marginBottom: '14px',
                             display: 'flex',
-                            justifyContent: 'space-between',
                             alignItems: 'center',
+                            justifyContent: 'space-between',
                             flexWrap: 'wrap',
-                            gap: '10px'
+                            gap: '8px',
+                            fontSize: '12px',
+                            color: '#475569'
                           }}>
-                            <div>
-                              <div style={{ fontWeight: 'bold', fontSize: '13px', color: estaFacturado ? '#166534' : '#854d0e', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                {estaFacturado ? '✅ Facturado a Obra Social' : '⏳ Pendiente de Facturación a Obra Social'}
-                              </div>
-                              <div style={{ fontSize: '12px', color: estaFacturado ? '#15803d' : '#a16207', marginTop: '2px' }}>
-                                {estaFacturado
-                                  ? (acuerdo.observaciones?.match(/\[FACTURADO[^\]]+\]/)?.[0] || 'Facturación registrada en la cuenta corriente de la Obra Social.')
-                                  : 'Este acuerdo no genera deuda personal en la ficha del paciente ($0). Debe facturarse a la Obra Social para ingresar a su cuenta corriente.'}
-                              </div>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => abrirModalFacturarOS(acuerdo)}
-                              style={{
-                                background: estaFacturado ? '#059669' : '#d97706',
-                                color: '#fff',
-                                border: 'none',
-                                padding: '6px 14px',
-                                borderRadius: '6px',
-                                fontSize: '12px',
-                                fontWeight: 'bold',
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-                              }}
-                            >
-                              📄 {estaFacturado ? 'Modificar / Facturar O.S.' : 'Facturar a Obra Social'}
-                            </button>
+                            <span>🏛️ Cobertura a cargo de Obra Social. No genera deuda personal en la ficha del paciente ($0).</span>
+                            <span style={{ fontWeight: 'bold', color: estaFacturado ? '#16a34a' : '#d97706' }}>
+                              {estaFacturado ? '✅ Facturado / Cobrado en Cuentas Corrientes' : '⏳ Pendiente de facturar en Cuentas Corrientes'}
+                            </span>
                           </div>
                         )}
 
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' }}>
                           <div>
                             <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '5px' }}>
-                              {esOS ? 'Importe O.S. ($)' : 'Importe Actual ($)'}
+                              {esOS ? 'Importe Cobertura O.S. ($)' : 'Importe Actual ($)'}
                             </label>
-                            {esOS && !estaFacturado ? (
+                            {esOS ? (
                               <div style={{
                                 padding: '8px 10px',
                                 background: '#f8fafc',
-                                border: '1px dashed #94a3b8',
+                                border: '1px solid #cbd5e1',
                                 borderRadius: '6px',
-                                color: '#475569',
+                                color: '#1e293b',
                                 fontSize: '13px',
-                                fontWeight: '600'
+                                fontWeight: 'bold'
                               }}>
-                                $0.00 (Pendiente de facturación)
+                                {parsearMoneda(acuerdo.importe_actual) > 0
+                                  ? `$ ${parsearMoneda(acuerdo.importe_actual).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+                                  : '$ 0,00 (A liquidar por O.S.)'}
                               </div>
                             ) : (
                               <input
@@ -2769,7 +2746,7 @@ const confirmarRegistroPago = async () => {
                             )}
                             <span style={{ fontSize: '11px', color: '#64748b' }}>
                               {esOS
-                                ? (estaFacturado ? 'Importe facturado a la entidad' : 'Se asigna al pulsar "Facturar a Obra Social"')
+                                ? 'Gestión centralizada desde Cuentas Corrientes de O.S.'
                                 : 'Clic fuera para guardar'}
                             </span>
                           </div>
