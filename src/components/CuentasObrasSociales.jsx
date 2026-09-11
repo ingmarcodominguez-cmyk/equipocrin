@@ -50,6 +50,17 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
   });
   const [guardandoFactura, setGuardandoFactura] = useState(false);
 
+  // Modal Editar Factura Emitida
+  const [modalEditarFacturaAbierto, setModalEditarFacturaAbierto] = useState(false);
+  const [facturaAEditar, setFacturaAEditar] = useState(null);
+  const [formEditarFactura, setFormEditarFactura] = useState({
+    nroFactura: '',
+    monto: '',
+    fecha: '',
+    observaciones: ''
+  });
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+
   // Acuerdo en proceso de Facturar y Cobrar en 1 Paso
   const [acuerdoAFacturarCobrar, setAcuerdoAFacturarCobrar] = useState(null);
 
@@ -944,6 +955,102 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
     }
   };
 
+  // Handler para abrir modal de edición de factura emitida
+  const abrirEditarFactura = (mov) => {
+    setFacturaAEditar(mov);
+    let nro = '';
+    const matchNro = (mov.concepto || '').match(/Factura\s*#?([^-]+)/i);
+    if (matchNro && matchNro[1]) {
+      nro = matchNro[1].trim();
+    } else {
+      nro = 'AGOSTO 2026';
+    }
+
+    setFormEditarFactura({
+      nroFactura: nro,
+      monto: String(parsearMoneda(mov.debe) || ''),
+      fecha: mov.fecha_movimiento || (mov.fecha_registro ? mov.fecha_registro.split('T')[0] : new Date().toISOString().split('T')[0]),
+      observaciones: ''
+    });
+    setModalEditarFacturaAbierto(true);
+  };
+
+  // Handler para guardar cambios de la factura emitida
+  const guardarEdicionFactura = async (e) => {
+    e.preventDefault();
+    if (!facturaAEditar) return;
+
+    const montoNum = parsearMoneda(formEditarFactura.monto);
+    if (!montoNum || montoNum <= 0) {
+      alert('Por favor, ingresá un importe válido y mayor a 0.');
+      return;
+    }
+    const nroFac = (formEditarFactura.nroFactura || '').trim();
+    if (!nroFac) {
+      alert('Por favor, ingresá el número de factura o período.');
+      return;
+    }
+
+    const infoFac = facturasMapeadas[facturaAEditar.id_movimiento];
+    if (infoFac && infoFac.totalCobrado > (montoNum + 0.01)) {
+      alert(`El nuevo importe ($${montoNum.toLocaleString('es-AR')}) no puede ser menor a lo que ya fue cobrado ($${infoFac.totalCobrado.toLocaleString('es-AR')}).`);
+      return;
+    }
+
+    try {
+      setGuardandoEdicion(true);
+
+      let nuevoConcepto = facturaAEditar.concepto || '';
+      if (nuevoConcepto.includes(' - ')) {
+        const partes = nuevoConcepto.split(' - ');
+        partes[0] = `Factura #${nroFac}`;
+        nuevoConcepto = partes.join(' - ');
+      } else {
+        nuevoConcepto = `Factura #${nroFac} - ${facturaAEditar.subtipo}`;
+      }
+
+      // 1. Actualizar movimientoscuenta_motor
+      const { error: errMov } = await supabase
+        .from('movimientoscuenta_motor')
+        .update({
+          debe: montoNum.toString(),
+          fecha_movimiento: formEditarFactura.fecha,
+          concepto: nuevoConcepto
+        })
+        .eq('id_movimiento', facturaAEditar.id_movimiento);
+
+      if (errMov) throw errMov;
+
+      // 2. Si tiene id_acuerdo, actualizar acuerdos_motor
+      if (facturaAEditar.id_acuerdo) {
+        const obsFacturado = `Cobertura Obra Social: ${facturaAEditar.subtipo} [FACTURADO O.S: $${montoNum.toLocaleString('es-AR', { minimumFractionDigits: 2 })} - Factura: ${nroFac} - O.S: ${facturaAEditar.subtipo} - Fecha: ${formEditarFactura.fecha}]`;
+        await supabase
+          .from('acuerdos_motor')
+          .update({
+            importe_actual: String(montoNum),
+            observaciones: obsFacturado
+          })
+          .eq('id_acuerdo', facturaAEditar.id_acuerdo);
+      }
+
+      setMensaje({
+        texto: `✅ Factura #${nroFac} actualizada correctamente ($${montoNum.toLocaleString('es-AR')}).`,
+        tipo: 'exito'
+      });
+      setTimeout(() => setMensaje({ texto: '', tipo: '' }), 4000);
+
+      setModalEditarFacturaAbierto(false);
+      setFacturaAEditar(null);
+      await cargarDatos();
+
+    } catch (err) {
+      console.error('Error al editar factura:', err);
+      alert('Error al guardar cambios de la factura: ' + err.message);
+    } finally {
+      setGuardandoEdicion(false);
+    }
+  };
+
   // Handler para abrir modal de Facturar y Cobrar en 1 Paso
   const abrirFacturarYCobrar = (acuerdo) => {
     setAcuerdoAFacturarCobrar(acuerdo);
@@ -1618,6 +1725,29 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                             </button>
                           )
                         )}
+                        {esFactura && (
+                          <button
+                            type="button"
+                            onClick={() => abrirEditarFactura(m)}
+                            title="Editar número de factura, importe o fecha de emisión"
+                            style={{
+                              background: '#eff6ff',
+                              color: '#2563eb',
+                              border: '1px solid #bfdbfe',
+                              padding: '4px 8px',
+                              borderRadius: '6px',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              marginRight: '6px',
+                              transition: 'all 0.15s ease'
+                            }}
+                            onMouseOver={(e) => { e.currentTarget.style.background = '#2563eb'; e.currentTarget.style.color = '#fff'; }}
+                            onMouseOut={(e) => { e.currentTarget.style.background = '#eff6ff'; e.currentTarget.style.color = '#2563eb'; }}
+                          >
+                            ✏️
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => anularMovimientoOS(m)}
@@ -2020,6 +2150,138 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                   }}
                 >
                   {guardandoFactura ? 'Generando Factura...' : '📄 Confirmar y Emitir Factura'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDITAR FACTURA DE OBRA SOCIAL */}
+      {modalEditarFacturaAbierto && facturaAEditar && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: '12px',
+            maxWidth: '520px',
+            width: '100%',
+            padding: '24px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  ✏️ Editar Factura de Obra Social
+                </h3>
+                <p style={{ margin: '3px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                  Modificá el número de factura, importe o fecha de emisión.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setModalEditarFacturaAbierto(false); setFacturaAEditar(null); }}
+                style={{ background: 'transparent', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#64748b' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '16px', fontSize: '13px' }}>
+              <div style={{ marginBottom: '4px' }}>
+                <span style={{ color: '#64748b' }}>Obra Social: </span>
+                <strong style={{ color: '#1e40af' }}>{facturaAEditar.subtipo}</strong>
+              </div>
+              <div style={{ marginBottom: '4px' }}>
+                <span style={{ color: '#64748b' }}>Detalle actual: </span>
+                <span style={{ color: '#334155' }}>{facturaAEditar.concepto}</span>
+              </div>
+              {facturasMapeadas[facturaAEditar.id_movimiento]?.totalCobrado > 0 && (
+                <div style={{ color: '#d97706', fontWeight: '600', marginTop: '6px' }}>
+                  ⚠️ Esta factura ya tiene cobranzas registradas por ${facturasMapeadas[facturaAEditar.id_movimiento].totalCobrado.toLocaleString('es-AR')}. El importe no puede ser menor a ese total.
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={guardarEdicionFactura}>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#334155', marginBottom: '5px' }}>
+                  N° de Factura / Período *
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: AGOSTO 2026, Factura 0005/00154"
+                  value={formEditarFactura.nroFactura}
+                  onChange={(e) => setFormEditarFactura({ ...formEditarFactura, nroFactura: e.target.value })}
+                  style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', fontWeight: 'bold' }}
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#334155', marginBottom: '5px' }}>
+                    Importe Facturado ($) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="Ej: 246607.68"
+                    value={formEditarFactura.monto}
+                    onChange={(e) => setFormEditarFactura({ ...formEditarFactura, monto: e.target.value })}
+                    style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '15px', fontWeight: 'bold', color: '#2563eb' }}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#334155', marginBottom: '5px' }}>
+                    Fecha de Emisión *
+                  </label>
+                  <input
+                    type="date"
+                    value={formEditarFactura.fecha}
+                    onChange={(e) => setFormEditarFactura({ ...formEditarFactura, fecha: e.target.value })}
+                    style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
+                <button
+                  type="button"
+                  onClick={() => { setModalEditarFacturaAbierto(false); setFacturaAEditar(null); }}
+                  style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '9px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', color: '#475569' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardandoEdicion}
+                  style={{
+                    background: '#2563eb',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '9px 20px',
+                    borderRadius: '6px',
+                    cursor: guardandoEdicion ? 'not-allowed' : 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '13px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {guardandoEdicion ? 'Guardando...' : '💾 Guardar Cambios'}
                 </button>
               </div>
             </form>
