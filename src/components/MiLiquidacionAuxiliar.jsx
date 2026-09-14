@@ -115,6 +115,16 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
   const [mapaPacientes, setMapaPacientes] = useState({});
   const [modalPacientesData, setModalPacientesData] = useState(null);
 
+  // Asistencia mensual de pacientes y modal por selección
+  const [asistenciasPacientesMes, setAsistenciasPacientesMes] = useState([]);
+  const [mapaAsistenciasPacientesMes, setMapaAsistenciasPacientesMes] = useState({});
+  const [modalAsistenciaMesAbierto, setModalAsistenciaMesAbierto] = useState(false);
+  const [filtroPacAsistMes, setFiltroPacAsistMes] = useState('');
+  const [filtroEstadoAsistMes, setFiltroEstadoAsistMes] = useState('TODOS'); // 'TODOS', 'PRESENTE', 'AUSENTE'
+  const [filtroSoloEsteAuxiliar, setFiltroSoloEsteAuxiliar] = useState(false);
+  const [filtroFechaAsistMes, setFiltroFechaAsistMes] = useState('');
+  const [busquedaTextoPacMes, setBusquedaTextoPacMes] = useState('');
+
   // Pestañas
   const [pestañaActiva, setPestañaActiva] = useState('mes_en_curso'); // 'mes_en_curso' o 'cuenta_corriente'
 
@@ -319,6 +329,40 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
         tipoLiq: aux.tipo_liq,
         esMesActual
       });
+
+      // Cargar asistencias de pacientes para el mes seleccionado (paginado para no perder registros)
+      let allPacsAsist = [];
+      let pagePacs = 0;
+      const pageSize = 1000;
+      while (true) {
+        const from = pagePacs * pageSize;
+        const to = from + pageSize - 1;
+        const { data: batchPacs, error: errBatchPacs } = await supabase
+          .from('asistencia_pacientes_motor')
+          .select('*')
+          .gte('fecha', primerDia)
+          .lte('fecha', ultimoDia)
+          .order('fecha', { ascending: true })
+          .range(from, to);
+        if (errBatchPacs) {
+          console.error("Error al consultar asistencias de pacientes del mes:", errBatchPacs);
+          break;
+        }
+        if (!batchPacs || batchPacs.length === 0) break;
+        allPacsAsist.push(...batchPacs);
+        if (batchPacs.length < pageSize) break;
+        pagePacs++;
+      }
+
+      setAsistenciasPacientesMes(allPacsAsist);
+
+      const mapaAsist = {};
+      allPacsAsist.forEach(p => {
+        if (p.fecha && p.id_paciente) {
+          mapaAsist[`${p.fecha}_${p.id_paciente}`] = p.estado;
+        }
+      });
+      setMapaAsistenciasPacientesMes(mapaAsist);
     } catch (err) {
       console.error("Error al cargar asistencias del mes:", err);
     } finally {
@@ -407,21 +451,35 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
   const renderCeldaObservaciones = (a) => {
     const { pacsIds, textoLimpio } = extraerDetallesObs(a.obs);
     if (pacsIds.length > 0) {
+      const asistieronCount = pacsIds.filter(id => mapaAsistenciasPacientesMes[`${a.fecha}_${id}`] === 'Presente').length;
+      const faltaronCount = pacsIds.length - asistieronCount;
+
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              const lista = pacsIds.map(id => mapaPacientes[id] || { id_paciente: id, nombre_apellido: `Paciente #${id}`, dni: 'S/D', obra_social: 'S/D' });
+              const lista = pacsIds.map(id => {
+                const pac = mapaPacientes[id] || { id_paciente: id, nombre_apellido: `Paciente #${id}`, dni: 'S/D', obra_social: 'S/D' };
+                const estadoAsist = mapaAsistenciasPacientesMes[`${a.fecha}_${id}`];
+                return {
+                  ...pac,
+                  estadoAsist: estadoAsist || 'Sin registro',
+                  asistio: estadoAsist === 'Presente'
+                };
+              });
               const fechaObj = new Date(a.fecha + 'T00:00:00');
               const diaSem = nombresDias[fechaObj.getDay()] || '';
               const parts = a.fecha.split('-');
               const fechaFormat = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : a.fecha;
               setModalPacientesData({
                 fecha: fechaFormat,
+                fechaIso: a.fecha,
                 diaSemana: diaSem,
                 pacientes: lista,
+                asistieronCount,
+                faltaronCount,
                 textoLimpio,
                 totalSesiones: a.sesiones || pacsIds.length
               });
@@ -446,6 +504,32 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
           >
             <span>👥</span> Ver {pacsIds.length} Paciente{pacsIds.length > 1 ? 's' : ''}
           </button>
+          <div style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}>
+            <span style={{
+              background: '#064e3b',
+              color: '#4ade80',
+              border: '1px solid #059669',
+              padding: '2px 6px',
+              borderRadius: '6px',
+              fontSize: '10px',
+              fontWeight: 'bold'
+            }} title="Pacientes que asistieron este día">
+              🟢 {asistieronCount}
+            </span>
+            {faltaronCount > 0 && (
+              <span style={{
+                background: '#7f1d1d',
+                color: '#f87171',
+                border: '1px solid #dc2626',
+                padding: '2px 6px',
+                borderRadius: '6px',
+                fontSize: '10px',
+                fontWeight: 'bold'
+              }} title="Pacientes ausentes o sin registro de asistencia">
+                🔴 {faltaronCount}
+              </span>
+            )}
+          </div>
           {textoLimpio && (
             <span style={{ fontSize: '11px', color: '#cbd5e1' }}>{textoLimpio}</span>
           )}
@@ -779,7 +863,7 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
                 borderRadius: '12px',
                 border: '1px solid #334155'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                   <label style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 'bold' }}>
                     Consultar Mes:
                   </label>
@@ -804,6 +888,37 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
                       </option>
                     ))}
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFiltroPacAsistMes('');
+                      setFiltroEstadoAsistMes('TODOS');
+                      setFiltroSoloEsteAuxiliar(false);
+                      setFiltroFechaAsistMes('');
+                      setBusquedaTextoPacMes('');
+                      setModalAsistenciaMesAbierto(true);
+                    }}
+                    style={{
+                      background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                      color: '#ffffff',
+                      border: '1px solid #10b981',
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                      fontSize: '13px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: '0 2px 5px rgba(5, 150, 105, 0.35)',
+                      transition: 'transform 0.15s'
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.filter = 'brightness(1.15)'}
+                    onMouseOut={(e) => e.currentTarget.style.filter = 'none'}
+                    title="Ver la planilla de asistencia de todos los pacientes en este mes"
+                  >
+                    <span>📋</span> Planilla Asistencias del Mes
+                  </button>
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -1483,7 +1598,19 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
                       <span>👥</span> Pacientes Atendidos
                     </h3>
                     <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
-                      {modalPacientesData.diaSemana} {modalPacientesData.fecha} • <strong style={{ color: '#34d399' }}>{modalPacientesData.pacientes.length} paciente(s) / sesiones</strong>
+                      {modalPacientesData.diaSemana} {modalPacientesData.fecha} • <strong style={{ color: '#38bdf8' }}>{modalPacientesData.pacientes.length} paciente(s) reportado(s)</strong>
+                      {modalPacientesData.asistieronCount !== undefined && (
+                        <>
+                          {' • '}
+                          <span style={{ color: '#4ade80', fontWeight: 'bold' }}>🟢 {modalPacientesData.asistieronCount} Asistieron</span>
+                          {modalPacientesData.faltaronCount > 0 && (
+                            <>
+                              {' • '}
+                              <span style={{ color: '#f87171', fontWeight: 'bold' }}>🔴 {modalPacientesData.faltaronCount} No asistieron</span>
+                            </>
+                          )}
+                        </>
+                      )}
                     </p>
                   </div>
                   <button
@@ -1503,6 +1630,26 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
 
                 {/* Lista de pacientes */}
                 <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+                  {modalPacientesData.faltaronCount > 0 && (
+                    <div style={{
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      border: '1px solid #ef4444',
+                      borderRadius: '10px',
+                      padding: '10px 14px',
+                      marginBottom: '16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      fontSize: '12px',
+                      color: '#fca5a5'
+                    }}>
+                      <span style={{ fontSize: '18px' }}>⚠️</span>
+                      <div>
+                        <strong style={{ color: '#f87171' }}>Discrepancia detectada:</strong> Hay <strong>{modalPacientesData.faltaronCount} paciente(s)</strong> en esta jornada que figuran como <strong>ausentes o sin asistencia confirmada</strong> en la planilla institucional.
+                      </div>
+                    </div>
+                  )}
+
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
                     <thead>
                       <tr style={{ background: '#0f172a', color: '#94a3b8', borderBottom: '1px solid #334155' }}>
@@ -1510,6 +1657,7 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
                         <th style={{ padding: '10px 12px' }}>Paciente</th>
                         <th style={{ padding: '10px 12px' }}>DNI</th>
                         <th style={{ padding: '10px 12px' }}>Obra Social</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>Asistencia en Planilla</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1532,6 +1680,39 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
                           </td>
                           <td style={{ padding: '10px 12px', color: '#94a3b8' }}>
                             {p.obra_social || 'S/D'}
+                          </td>
+                          <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            {p.asistio ? (
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                background: '#064e3b',
+                                color: '#4ade80',
+                                border: '1px solid #059669',
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                fontWeight: 'bold',
+                                fontSize: '11px'
+                              }}>
+                                🟢 Presente (Asistió)
+                              </span>
+                            ) : (
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                background: '#7f1d1d',
+                                color: '#fca5a5',
+                                border: '1px solid #dc2626',
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                fontWeight: 'bold',
+                                fontSize: '11px'
+                              }} title="Ausente o sin registro de asistencia en la planilla institucional">
+                                🔴 {p.estadoAsist || 'Sin registro / Ausente'}
+                              </span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -1581,6 +1762,457 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
               </div>
             </div>
           )}
+
+          {/* ========================================================= */}
+          {/* MODAL EMERGENTE: PLANILLA DE ASISTENCIA MENSUAL           */}
+          {/* ========================================================= */}
+          {modalAsistenciaMesAbierto && (() => {
+            const mapaAtendidosPorEsteAuxiliar = {};
+            asistenciasMes.forEach(a => {
+              const { pacsIds } = extraerDetallesObs(a.obs);
+              pacsIds.forEach(id => {
+                mapaAtendidosPorEsteAuxiliar[`${a.fecha}_${id}`] = true;
+              });
+            });
+
+            const pacientesUnicosMes = [...new Map(
+              asistenciasPacientesMes.map(item => [item.id_paciente, item.paciente_nombre])
+            ).entries()].map(([id, nombre]) => ({ id, nombre })).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+
+            const fechasUnicasMes = [...new Set(asistenciasPacientesMes.map(item => item.fecha))].sort();
+
+            const countPresentesMes = asistenciasPacientesMes.filter(i => i.estado === 'Presente').length;
+            const countAusentesMes = asistenciasPacientesMes.filter(i => i.estado !== 'Presente').length;
+
+            let countSesionesAuxiliar = 0;
+            let countAuxiliarPresentes = 0;
+            asistenciasMes.forEach(a => {
+              const { pacsIds } = extraerDetallesObs(a.obs);
+              pacsIds.forEach(id => {
+                countSesionesAuxiliar++;
+                if (mapaAsistenciasPacientesMes[`${a.fecha}_${id}`] === 'Presente') {
+                  countAuxiliarPresentes++;
+                }
+              });
+            });
+            const countAuxiliarAusentes = countSesionesAuxiliar - countAuxiliarPresentes;
+
+            const registrosAsistMesFiltrados = asistenciasPacientesMes.filter(item => {
+              if (filtroPacAsistMes && String(item.id_paciente) !== String(filtroPacAsistMes)) return false;
+              if (filtroFechaAsistMes && item.fecha !== filtroFechaAsistMes) return false;
+              if (filtroEstadoAsistMes === 'PRESENTE' && item.estado !== 'Presente') return false;
+              if (filtroEstadoAsistMes === 'AUSENTE' && item.estado === 'Presente') return false;
+              if (filtroSoloEsteAuxiliar && !mapaAtendidosPorEsteAuxiliar[`${item.fecha}_${item.id_paciente}`]) return false;
+              if (busquedaTextoPacMes && !((item.paciente_nombre || '') + ' ' + (item.obs || '')).toLowerCase().includes(busquedaTextoPacMes.toLowerCase())) return false;
+              return true;
+            });
+
+            return (
+              <div style={{
+                position: 'fixed',
+                top: 0, left: 0, right: 0, bottom: 0,
+                backgroundColor: 'rgba(0,0,0,0.85)',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                zIndex: 100000,
+                padding: '15px'
+              }}>
+                <div style={{
+                  background: '#1e293b',
+                  color: '#f8fafc',
+                  borderRadius: '16px',
+                  maxWidth: '950px',
+                  width: '100%',
+                  maxHeight: '90vh',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  border: '1px solid #10b981',
+                  boxShadow: '0 25px 50px -12px rgba(0,0,0,0.85)'
+                }}>
+                  {/* Header */}
+                  <div style={{
+                    padding: '16px 22px',
+                    borderBottom: '1px solid #334155',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    background: '#0f172a',
+                    borderRadius: '16px 16px 0 0'
+                  }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '18px', color: '#10b981', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>📋</span> Planilla Institucional de Asistencias — {periodosDisponibles.find(p => p.valor === mesSeleccionado)?.label || mesSeleccionado}
+                      </h3>
+                      <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#94a3b8' }}>
+                        Consultando asistencias de pacientes para este mes • {asistenciasPacientesMes.length} registros cargados
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setModalAsistenciaMesAbierto(false)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#94a3b8',
+                        fontSize: '22px',
+                        cursor: 'pointer',
+                        padding: '4px 8px'
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* KPI Bar */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                    gap: '10px',
+                    padding: '12px 22px',
+                    background: '#1e293b',
+                    borderBottom: '1px solid #334155'
+                  }}>
+                    <div style={{ background: '#0f172a', padding: '8px 12px', borderRadius: '8px', border: '1px solid #334155' }}>
+                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>Total Registros Mes</div>
+                      <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#38bdf8' }}>{asistenciasPacientesMes.length}</div>
+                    </div>
+                    <div style={{ background: '#064e3b', padding: '8px 12px', borderRadius: '8px', border: '1px solid #059669' }}>
+                      <div style={{ fontSize: '11px', color: '#a7f3d0' }}>🟢 Asistieron (Presentes)</div>
+                      <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#34d399' }}>{countPresentesMes}</div>
+                    </div>
+                    <div style={{ background: '#7f1d1d', padding: '8px 12px', borderRadius: '8px', border: '1px solid #dc2626' }}>
+                      <div style={{ fontSize: '11px', color: '#fecaca' }}>🔴 No Asistieron / Ausentes</div>
+                      <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#f87171' }}>{countAusentesMes}</div>
+                    </div>
+                    <div style={{
+                      background: countAuxiliarAusentes > 0 ? '#451a03' : '#0f172a',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: `1px solid ${countAuxiliarAusentes > 0 ? '#f59e0b' : '#334155'}`
+                    }}>
+                      <div style={{ fontSize: '11px', color: countAuxiliarAusentes > 0 ? '#fde68a' : '#94a3b8' }}>
+                        Sesiones Este Auxiliar
+                      </div>
+                      <div style={{ fontSize: '14px', fontWeight: 'bold', color: countAuxiliarAusentes > 0 ? '#fbbf24' : '#f8fafc' }}>
+                        {countSesionesAuxiliar} ses (🟢 {countAuxiliarPresentes} / 🔴 {countAuxiliarAusentes})
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Filtros */}
+                  <div style={{
+                    padding: '14px 22px',
+                    background: '#0f172a',
+                    borderBottom: '1px solid #334155',
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '12px',
+                    alignItems: 'center'
+                  }}>
+                    {/* Selector de Paciente */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <label style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'bold' }}>Filtrar Paciente:</label>
+                      <select
+                        value={filtroPacAsistMes}
+                        onChange={(e) => setFiltroPacAsistMes(e.target.value)}
+                        style={{
+                          background: '#1e293b',
+                          color: '#f8fafc',
+                          border: '1px solid #475569',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          maxWidth: '200px'
+                        }}
+                      >
+                        <option value="">-- Todos los Pacientes ({pacientesUnicosMes.length}) --</option>
+                        {pacientesUnicosMes.map(p => (
+                          <option key={p.id} value={p.id}>{p.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Selector de Fecha */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <label style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'bold' }}>Filtrar Fecha:</label>
+                      <select
+                        value={filtroFechaAsistMes}
+                        onChange={(e) => setFiltroFechaAsistMes(e.target.value)}
+                        style={{
+                          background: '#1e293b',
+                          color: '#f8fafc',
+                          border: '1px solid #475569',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          fontSize: '12px'
+                        }}
+                      >
+                        <option value="">-- Todas las Fechas ({fechasUnicasMes.length}) --</option>
+                        {fechasUnicasMes.map(f => {
+                          const [y, m, d] = f.split('-');
+                          return (
+                            <option key={f} value={f}>{`${d}/${m}/${y}`}</option>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    {/* Filtro de Estado */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <label style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'bold' }}>Estado Asistencia:</label>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setFiltroEstadoAsistMes('TODOS')}
+                          style={{
+                            background: filtroEstadoAsistMes === 'TODOS' ? '#3b82f6' : '#1e293b',
+                            color: '#fff',
+                            border: '1px solid #475569',
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            cursor: 'pointer',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          Todos
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFiltroEstadoAsistMes('PRESENTE')}
+                          style={{
+                            background: filtroEstadoAsistMes === 'PRESENTE' ? '#059669' : '#1e293b',
+                            color: '#fff',
+                            border: '1px solid #475569',
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            cursor: 'pointer',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          🟢 Presentes
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFiltroEstadoAsistMes('AUSENTE')}
+                          style={{
+                            background: filtroEstadoAsistMes === 'AUSENTE' ? '#dc2626' : '#1e293b',
+                            color: '#fff',
+                            border: '1px solid #475569',
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            cursor: 'pointer',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          🔴 Ausentes
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Botón Cruce con Auxiliar */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <label style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'bold' }}>Cruce Liquidación:</label>
+                      <button
+                        type="button"
+                        onClick={() => setFiltroSoloEsteAuxiliar(prev => !prev)}
+                        style={{
+                          background: filtroSoloEsteAuxiliar ? '#7c3aed' : '#1e293b',
+                          color: '#fff',
+                          border: `1px solid ${filtroSoloEsteAuxiliar ? '#a78bfa' : '#475569'}`,
+                          padding: '5px 10px',
+                          borderRadius: '6px',
+                          fontSize: '11px',
+                          cursor: 'pointer',
+                          fontWeight: 'bold',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px'
+                        }}
+                      >
+                        <span>{filtroSoloEsteAuxiliar ? '✓' : '👥'}</span> Solo reportados por {miAuxiliar?.nombre?.split(' ')[0] || 'este auxiliar'}
+                      </button>
+                    </div>
+
+                    {/* Buscador de texto */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: '140px' }}>
+                      <label style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'bold' }}>Buscar:</label>
+                      <input
+                        type="text"
+                        placeholder="Nombre paciente..."
+                        value={busquedaTextoPacMes}
+                        onChange={(e) => setBusquedaTextoPacMes(e.target.value)}
+                        style={{
+                          background: '#1e293b',
+                          color: '#f8fafc',
+                          border: '1px solid #475569',
+                          padding: '5px 10px',
+                          borderRadius: '6px',
+                          fontSize: '12px'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Tabla */}
+                  <div style={{ padding: '16px 22px', overflowY: 'auto', flex: 1 }}>
+                    {registrosAsistMesFiltrados.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic' }}>
+                        No se encontraron registros de asistencia con los filtros seleccionados.
+                      </div>
+                    ) : (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                        <thead>
+                          <tr style={{ background: '#0f172a', color: '#94a3b8', borderBottom: '1px solid #334155' }}>
+                            <th style={{ padding: '10px' }}>Fecha</th>
+                            <th style={{ padding: '10px' }}>Paciente</th>
+                            <th style={{ padding: '10px', textAlign: 'center' }}>Estado en Planilla</th>
+                            <th style={{ padding: '10px', textAlign: 'center' }}>Reportado por Auxiliar</th>
+                            <th style={{ padding: '10px' }}>Observaciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {registrosAsistMesFiltrados.map((item, idx) => {
+                            const esPresente = item.estado === 'Presente';
+                            const fueReportadoPorAux = !!mapaAtendidosPorEsteAuxiliar[`${item.fecha}_${item.id_paciente}`];
+                            const esDiscrepancia = fueReportadoPorAux && !esPresente;
+                            const pacInfo = mapaPacientes[item.id_paciente];
+                            const [y, m, d] = item.fecha.split('-');
+                            const fechaFmt = `${d}/${m}/${y}`;
+                            const fechaObj = new Date(item.fecha + 'T00:00:00');
+                            const diaSem = nombresDias[fechaObj.getDay()] || '';
+
+                            return (
+                              <tr
+                                key={item.id_asistencia || idx}
+                                style={{
+                                  borderBottom: '1px solid #334155',
+                                  background: esDiscrepancia
+                                    ? 'rgba(239, 68, 68, 0.18)'
+                                    : idx % 2 === 0 ? '#1e293b' : '#0f172a'
+                                }}
+                              >
+                                <td style={{ padding: '10px', whiteSpace: 'nowrap', color: '#cbd5e1', fontWeight: '500' }}>
+                                  📅 {fechaFmt} <span style={{ fontSize: '11px', color: '#94a3b8' }}>({diaSem})</span>
+                                </td>
+                                <td style={{ padding: '10px', color: '#f8fafc', fontWeight: 'bold' }}>
+                                  👤 {item.paciente_nombre}
+                                  {pacInfo?.dni && (
+                                    <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'normal' }}>
+                                      DNI: {pacInfo.dni}
+                                    </div>
+                                  )}
+                                </td>
+                                <td style={{ padding: '10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                  {esPresente ? (
+                                    <span style={{
+                                      background: '#064e3b',
+                                      color: '#4ade80',
+                                      border: '1px solid #059669',
+                                      padding: '3px 8px',
+                                      borderRadius: '6px',
+                                      fontWeight: 'bold',
+                                      fontSize: '11px',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}>
+                                      🟢 Presente
+                                    </span>
+                                  ) : (
+                                    <span style={{
+                                      background: '#7f1d1d',
+                                      color: '#fca5a5',
+                                      border: '1px solid #dc2626',
+                                      padding: '3px 8px',
+                                      borderRadius: '6px',
+                                      fontWeight: 'bold',
+                                      fontSize: '11px',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}>
+                                      🔴 {item.estado || 'Ausente'}
+                                    </span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                  {esDiscrepancia ? (
+                                    <span style={{
+                                      background: '#7f1d1d',
+                                      color: '#fecaca',
+                                      border: '1px solid #ef4444',
+                                      padding: '3px 8px',
+                                      borderRadius: '6px',
+                                      fontWeight: 'bold',
+                                      fontSize: '11px',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }} title="El auxiliar reportó haber atendido a este paciente este día, pero figura ausente en la planilla">
+                                      ⚠️ Reportado pero AUSENTE
+                                    </span>
+                                  ) : fueReportadoPorAux ? (
+                                    <span style={{
+                                      background: '#0284c7',
+                                      color: '#ffffff',
+                                      padding: '3px 8px',
+                                      borderRadius: '6px',
+                                      fontWeight: 'bold',
+                                      fontSize: '11px'
+                                    }}>
+                                      ✓ Sí (En liquidación)
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: '#64748b' }}>-</span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '10px', color: '#94a3b8', fontSize: '11px' }}>
+                                  {item.obs || '-'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  <div style={{
+                    padding: '14px 22px',
+                    borderTop: '1px solid #334155',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    background: '#0f172a',
+                    borderRadius: '0 0 16px 16px'
+                  }}>
+                    <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                      Mostrando <strong>{registrosAsistMesFiltrados.length}</strong> de <strong>{asistenciasPacientesMes.length}</strong> registros de asistencia del mes.
+                    </div>
+                    <button
+                      onClick={() => setModalAsistenciaMesAbierto(false)}
+                      style={{
+                        background: '#334155',
+                        color: '#fff',
+                        border: 'none',
+                        padding: '8px 20px',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        fontWeight: 'bold',
+                        fontSize: '13px'
+                      }}
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </>
       ) : null}
     </div>
