@@ -1709,12 +1709,96 @@ const confirmarRegistroPago = async () => {
     }
   };
 
+  const obtenerBadgeFormaPago = (forma) => {
+    if (!forma) {
+      return {
+        texto: 'No especificada',
+        icono: '💳',
+        bg: '#f1f5f9',
+        color: '#475569',
+        border: '#cbd5e1'
+      };
+    }
+
+    const f = forma.toString().toUpperCase().trim();
+
+    if (f.includes('EFECTIVO')) {
+      return {
+        texto: 'EFECTIVO',
+        icono: '💵',
+        bg: '#dcfce7',
+        color: '#166534',
+        border: '#86efac'
+      };
+    }
+    if (f.includes('TRANSF') || f.includes('DEPÓSITO') || f.includes('DEPOSITO') || f.includes('BANCO')) {
+      return {
+        texto: forma,
+        icono: '🏦',
+        bg: '#e0f2fe',
+        color: '#0369a1',
+        border: '#bae6fd'
+      };
+    }
+    if (f.includes('QR') || f.includes('MERCADO PAGO') || f.includes('MP')) {
+      return {
+        texto: forma,
+        icono: '📱',
+        bg: '#fef3c7',
+        color: '#92400e',
+        border: '#fde68a'
+      };
+    }
+    if (f.includes('COMBINADO')) {
+      return {
+        texto: 'COMBINADO',
+        icono: '🔀',
+        bg: '#f3e8ff',
+        color: '#7e22ce',
+        border: '#d8b4fe'
+      };
+    }
+    if (f.includes('MULTIPLE') || f.includes('MÚLTIPLE')) {
+      return {
+        texto: 'PAGO MÚLTIPLE',
+        icono: '💳',
+        bg: '#f1f5f9',
+        color: '#334155',
+        border: '#cbd5e1'
+      };
+    }
+
+    return {
+      texto: forma,
+      icono: '💳',
+      bg: '#f8fafc',
+      color: '#334155',
+      border: '#cbd5e1'
+    };
+  };
+
   const verDistribucionPago = async (idPago, montoPago, fechaPago) => {
     setDistPagoId(idPago);
     setModalDistPagoAbierto(true);
     setCargandoDistPago(true);
     setDistPagoInfo(null);
     try {
+      // 1. Consultar el pago en pagos_motor para recuperar la forma de pago, observacion y usuario
+      const { data: pagoData, error: errPago } = await supabase
+        .from('pagos_motor')
+        .select('*')
+        .eq('id_pago', idPago)
+        .maybeSingle();
+
+      if (errPago) {
+        console.warn("Aviso al consultar pago en pagos_motor:", errPago);
+      }
+
+      const formaPagoRecuperada = pagoData?.forma_pago || 'No especificada';
+      const observacionRecuperada = pagoData?.observacion || null;
+      const usuarioRecuperado = pagoData?.usuario || null;
+
+      // 2. Consultar distribuciones en movprestadores_motor
       const { data: movs, error: errMovs } = await supabase
         .from('movprestadores_motor')
         .select('*')
@@ -1727,6 +1811,9 @@ const confirmarRegistroPago = async () => {
           id_pago: idPago,
           monto: montoPago,
           fecha: fechaPago,
+          forma_pago: formaPagoRecuperada,
+          observacion: observacionRecuperada,
+          usuario: usuarioRecuperado,
           lineas: []
         });
         return;
@@ -1764,6 +1851,9 @@ const confirmarRegistroPago = async () => {
         id_pago: idPago,
         monto: montoPago,
         fecha: fechaPago,
+        forma_pago: formaPagoRecuperada,
+        observacion: observacionRecuperada,
+        usuario: usuarioRecuperado,
         lineas: lineasConSesiones
       });
     } catch (err) {
@@ -4374,15 +4464,49 @@ const confirmarRegistroPago = async () => {
               <p style={{ textAlign: 'center', padding: '30px', color: '#64748b', fontSize: '14px' }}>Cargando distribución de honorarios...</p>
             ) : distPagoInfo ? (
               <div>
-                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', marginBottom: '20px', fontSize: '13px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px', marginBottom: '20px', fontSize: '13px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <span style={{ color: '#64748b' }}>Importe del Pago:</span>
-                    <strong style={{ color: '#0f172a' }}>${distPagoInfo.monto.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong>
+                    <strong style={{ color: '#0f172a', fontSize: '15px' }}>${distPagoInfo.monto.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <span style={{ color: '#64748b' }}>Fecha de Pago:</span>
                     <strong style={{ color: '#0f172a' }}>{distPagoInfo.fecha ? new Date(distPagoInfo.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/D'}</strong>
                   </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#64748b' }}>Forma de Pago:</span>
+                    {(() => {
+                      const badge = obtenerBadgeFormaPago(distPagoInfo.forma_pago);
+                      return (
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '3px 10px',
+                          borderRadius: '6px',
+                          fontWeight: 'bold',
+                          fontSize: '12px',
+                          background: badge.bg,
+                          color: badge.color,
+                          border: `1px solid ${badge.border}`
+                        }}>
+                          <span>{badge.icono}</span>
+                          <span>{badge.texto}</span>
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  {distPagoInfo.observacion && !distPagoInfo.observacion.startsWith('Imputado a deuda ID:') && (
+                    <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1', fontSize: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>Observación / Detalle:</span>
+                      <span style={{ color: '#334155', fontWeight: '500', textAlign: 'right' }}>{distPagoInfo.observacion}</span>
+                    </div>
+                  )}
+                  {distPagoInfo.usuario && (
+                    <div style={{ marginTop: '6px', fontSize: '11px', color: '#94a3b8', textAlign: 'right' }}>
+                      Registrado por: <strong>{distPagoInfo.usuario}</strong>
+                    </div>
+                  )}
                 </div>
 
                 <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 'bold', color: '#334155' }}>Detalle de Liquidación por Profesional:</h4>
