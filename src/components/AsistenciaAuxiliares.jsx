@@ -23,6 +23,7 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
   // Historial Completo
   const [historialCompleto, setHistorialCompleto] = useState([]);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
+  const [mapaAsistenciasHistorial, setMapaAsistenciasHistorial] = useState({});
 
   // Estados para Modales/Formularios de Asistencia
   const [modalAsistenciaAbierto, setModalAsistenciaAbierto] = useState(false);
@@ -178,6 +179,10 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
       setAsistenciasPacientesFecha(prev => ({
         ...prev,
         [paciente.id_paciente]: 'Presente'
+      }));
+      setMapaAsistenciasHistorial(prev => ({
+        ...prev,
+        [`${fechaAUsar}_${paciente.id_paciente}`]: 'Presente'
       }));
 
       // 3. Tildar/seleccionar automáticamente al paciente para las sesiones del auxiliar
@@ -413,11 +418,108 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
 
       if (error) throw error;
       setHistorialCompleto(data || []);
+
+      // Cargar todas las asistencias de pacientes (paginación de 1000 para no perder registros)
+      let allAsistPac = [];
+      let page = 0;
+      const pageSize = 1000;
+      while (true) {
+        const from = page * pageSize;
+        const to = from + pageSize - 1;
+        const { data: batch, error: errBatch } = await supabase
+          .from('asistencia_pacientes_motor')
+          .select('fecha, id_paciente, estado')
+          .range(from, to);
+        if (errBatch) {
+          console.error("Error al cargar asistencias de pacientes en historial:", errBatch);
+          break;
+        }
+        if (!batch || batch.length === 0) break;
+        allAsistPac.push(...batch);
+        if (batch.length < pageSize) break;
+        page++;
+      }
+
+      const mapa = {};
+      allAsistPac.forEach(item => {
+        if (item.fecha && item.id_paciente) {
+          mapa[`${item.fecha}_${item.id_paciente}`] = item.estado;
+        }
+      });
+      setMapaAsistenciasHistorial(mapa);
     } catch (error) {
       console.error("Error al cargar historial:", error);
       mostrarAlerta("Error al cargar historial.", "error");
     } finally {
       setCargandoHistorial(false);
+    }
+  };
+
+  // Marcar paciente presente directamente desde la tabla de Historial General
+  const marcarPacientePresenteHistorial = async (idPaciente, fecha, e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+
+    const pac = mapaPacientes[idPaciente];
+    const nombrePac = pac?.nombre_apellido || `Paciente ID ${idPaciente}`;
+    const fechaFmt = new Date(fecha + 'T00:00:00').toLocaleDateString('es-AR');
+
+    const confirmar = window.confirm(
+      `¿Desea registrar como PRESENTE a "${nombrePac}" el día ${fechaFmt} en la planilla de asistencias?`
+    );
+    if (!confirmar) return;
+
+    try {
+      const { data: existente, error: errCheck } = await supabase
+        .from('asistencia_pacientes_motor')
+        .select('id_asistencia')
+        .eq('fecha', fecha)
+        .eq('id_paciente', idPaciente)
+        .maybeSingle();
+
+      if (errCheck) throw errCheck;
+
+      if (existente && existente.id_asistencia) {
+        const { error: errUpd } = await supabase
+          .from('asistencia_pacientes_motor')
+          .update({
+            estado: 'Presente',
+            fecha_registro: new Date().toISOString()
+          })
+          .eq('id_asistencia', existente.id_asistencia);
+        if (errUpd) throw errUpd;
+      } else {
+        const { error: errIns } = await supabase
+          .from('asistencia_pacientes_motor')
+          .insert([{
+            fecha: fecha,
+            id_paciente: idPaciente,
+            paciente_nombre: pac?.nombre_apellido || `Paciente ${idPaciente}`,
+            estado: 'Presente',
+            obs: 'Presente confirmado desde Historial de Auxiliares',
+            usuario: 'Coordinación',
+            fecha_registro: new Date().toISOString()
+          }]);
+        if (errIns) throw errIns;
+      }
+
+      // Actualizar estado en mapa de historial inmediatamente
+      setMapaAsistenciasHistorial(prev => ({
+        ...prev,
+        [`${fecha}_${idPaciente}`]: 'Presente'
+      }));
+
+      // Si la fecha coincide con la que está abierta en la vista diaria, sincronizarla también
+      if (fecha === fechaTrabajo) {
+        setAsistenciasPacientesFecha(prev => ({
+          ...prev,
+          [idPaciente]: 'Presente'
+        }));
+      }
+
+      mostrarAlerta(`✓ Asistencia de ${nombrePac} guardada como PRESENTE para el ${fechaFmt}.`, "exito");
+    } catch (err) {
+      console.error("Error al actualizar asistencia del paciente:", err);
+      alert("Error al actualizar asistencia del paciente: " + err.message);
     }
   };
 
@@ -835,15 +937,38 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
         )}
 
         {pestañaActiva === 'historial' && (
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>🔍 Filtrar por Auxiliar:</span>
-            <input
-              type="text"
-              placeholder="Escribe el nombre..."
-              value={filtroNombre}
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>🔍 Filtrar Auxiliar:</span>
+              <input
+                type="text"
+                placeholder="Escribe el nombre..."
+                value={filtroNombre}
+                onChange={(e) => setFiltroNombre(e.target.value)}
+                style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', width: '170px', background: '#fff', color: '#1e293b' }}
+              />
+            </div>
+            <select
+              value={auxiliares.some(a => a.nombre.toLowerCase() === filtroNombre.toLowerCase()) ? filtroNombre : ''}
               onChange={(e) => setFiltroNombre(e.target.value)}
-              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', width: '180px', background: '#fff', color: '#1e293b' }}
-            />
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#fff', color: '#1e293b', maxWidth: '230px' }}
+            >
+              <option value="">-- Seleccionar de la lista --</option>
+              {auxiliares.map(aux => (
+                <option key={aux.id_auxiliar} value={aux.nombre}>
+                  {aux.nombre} ({aux.tipo_liq})
+                </option>
+              ))}
+            </select>
+            {filtroNombre && (
+              <button
+                onClick={() => setFiltroNombre('')}
+                style={{ padding: '6px 12px', fontSize: '12px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', color: '#64748b', fontWeight: '600' }}
+                title="Limpiar filtro"
+              >
+                ✖ Limpiar
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -1151,28 +1276,72 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
                           {displayT && <div style={{ fontSize: '11px', color: '#6b21a8', fontWeight: 'bold', marginTop: '2px' }}>{displayT}</div>}
                         </td>
                         <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: '600' }}>
-                          {reg.tipo_liq === 'HORA' ? `${reg.horas_trabajadas || 0} hs` : `${reg.sesiones || 0} ses`}
+                          {reg.tipo_liq === 'HORA' ? (
+                            `${reg.horas_trabajadas || 0} hs`
+                          ) : (
+                            <div>
+                              <div style={{ fontSize: '13px', fontWeight: 'bold' }}>{reg.sesiones || 0} ses</div>
+                              {parsed.pacsIds && parsed.pacsIds.length > 0 && (() => {
+                                const presCount = parsed.pacsIds.filter(id => mapaAsistenciasHistorial[`${reg.fecha}_${id}`] === 'Presente').length;
+                                const ausCount = parsed.pacsIds.length - presCount;
+                                return (
+                                  <div style={{ fontSize: '10px', marginTop: '3px', fontWeight: 'bold', display: 'flex', justifyContent: 'center', gap: '6px' }}>
+                                    <span style={{ color: '#15803d', background: '#dcfce7', padding: '1px 6px', borderRadius: '4px', border: '1px solid #bbf7d0' }} title="Pacientes que asistieron (Presentes)">
+                                      🟢 {presCount}
+                                    </span>
+                                    {ausCount > 0 && (
+                                      <span style={{ color: '#b91c1c', background: '#fee2e2', padding: '1px 6px', borderRadius: '4px', border: '1px solid #fecaca' }} title="Pacientes no presentes o sin registro de asistencia">
+                                        🔴 {ausCount}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
                           {reg.tipo_liq === 'SESION' && parsed.pacsIds && parsed.pacsIds.length > 0 && (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', justifyContent: 'center', marginTop: '4px', maxWidth: '200px' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'center', marginTop: '6px', maxWidth: '230px' }}>
                               {parsed.pacsIds.map(id => {
                                 const pac = mapaPacientes[id];
+                                const claveAsist = `${reg.fecha}_${id}`;
+                                const estAsist = mapaAsistenciasHistorial[claveAsist];
+                                const esMatch = estAsist === 'Presente';
+                                const nombreCorto = pac?.nombre_apellido ? pac.nombre_apellido.split(' ')[0] : `ID ${id}`;
+                                const fechaFmt = new Date(reg.fecha + 'T00:00:00').toLocaleDateString('es-AR');
+                                const estadoTexto = estAsist ? estAsist : 'Sin registro de asistencia / No asistió';
+
                                 return (
                                   <span
                                     key={id}
-                                    title={pac ? `${pac.nombre_apellido} (ID ${id})` : `ID ${id}`}
+                                    onClick={(e) => {
+                                      if (!esMatch) {
+                                        marcarPacientePresenteHistorial(id, reg.fecha, e);
+                                      }
+                                    }}
+                                    title={
+                                      `${pac ? pac.nombre_apellido : `ID ${id}`} (DNI: ${pac?.dni || 'S/D'})\n` +
+                                      `📅 Fecha: ${fechaFmt}\n` +
+                                      `📋 Asistencia: ${estadoTexto}\n` +
+                                      (!esMatch ? '👉 Clic para marcar como PRESENTE en la planilla' : '✓ Asistencia confirmada')
+                                    }
                                     style={{
                                       fontSize: '10px',
-                                      padding: '1px 5px',
+                                      padding: '2px 6px',
                                       borderRadius: '4px',
-                                      background: '#f1f5f9',
-                                      color: '#334155',
-                                      border: '1px solid #cbd5e1',
+                                      fontWeight: 'bold',
+                                      background: esMatch ? '#dcfce7' : '#fee2e2',
+                                      color: esMatch ? '#166534' : '#991b1b',
+                                      border: `1px solid ${esMatch ? '#86efac' : '#fca5a5'}`,
                                       display: 'inline-flex',
                                       alignItems: 'center',
-                                      gap: '2px'
+                                      gap: '3px',
+                                      cursor: !esMatch ? 'pointer' : 'default',
+                                      boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                                      userSelect: 'none'
                                     }}
                                   >
-                                    👤 {pac?.nombre_apellido ? pac.nombre_apellido.split(' ')[0] : `ID ${id}`}
+                                    <span>{esMatch ? '🟢' : '🔴'}</span>
+                                    <span>{nombreCorto}</span>
                                   </span>
                                 );
                               })}
