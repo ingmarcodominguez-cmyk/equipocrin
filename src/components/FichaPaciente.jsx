@@ -840,7 +840,8 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
           const { data: movsDeuda, error: errDeuda } = await supabase
             .from('movimientoscuenta_motor')
             .select('id_movimiento, debe, haber, tipo_movimiento, id_pago')
-            .eq('id_deuda', mov.id_deuda);
+            .eq('id_deuda', mov.id_deuda)
+            .eq('id_acuerdo', acuerdo.id_acuerdo);
 
           if (errDeuda) throw errDeuda;
 

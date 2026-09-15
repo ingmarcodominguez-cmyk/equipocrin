@@ -326,7 +326,20 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
       }
     }
 
-    const montoCuotaFinal = esObraSocial ? '0' : String(form.monto_cuota_base || '0');
+    // Sanitizar el importe base ingresado para evitar centavos flotantes (.99) o formatos de miles
+    let montoLimpio = String(form.monto_cuota_base || '0').trim();
+    if (montoLimpio.includes(',') && montoLimpio.includes('.')) {
+      montoLimpio = montoLimpio.replace(/\./g, '').replace(',', '.');
+    } else if (montoLimpio.includes(',')) {
+      montoLimpio = montoLimpio.replace(',', '.');
+    } else if (montoLimpio.includes('.')) {
+      const partes = montoLimpio.split('.');
+      if (partes.length > 2 || (partes.length === 2 && partes[1].length === 3)) {
+        montoLimpio = montoLimpio.replace(/\./g, '');
+      }
+    }
+    const numParseado = parseFloat(montoLimpio) || 0;
+    const montoCuotaFinal = esObraSocial ? '0' : String(Math.round(numParseado));
 
     const osParaGuardar = obraSocialAcuerdo ? obraSocialAcuerdo.trim().toUpperCase() : '';
     let obsFinal = form.observaciones || '';
@@ -377,21 +390,26 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
       // Generación del renglón inicial en movimientoscuenta_motor para nuevos acuerdos
       // REGLA CLAVE OBRA SOCIAL: Si es prestación por Obra Social, NO se genera deuda a cargo del paciente!
       if (!idAcuerdoEditar && idAcuerdoRegistrado && (esMensual || esUnico) && !esObraSocial) {
-        const { data: ultMov } = await supabase
+        const { data: ultimosMovs } = await supabase
           .from('movimientoscuenta_motor')
-          .select('id_movimiento')
+          .select('id_movimiento, id_deuda')
           .order('id_movimiento', { ascending: false })
-          .limit(1)
+          .limit(100);
 
-        const siguienteIdMovimiento = (ultMov && ultMov.length > 0 && ultMov[0].id_movimiento) ? ultMov[0].id_movimiento + 1 : 1;
+        let maxIdMovimiento = 0;
+        let maxIdDeuda = 0;
 
-        const { data: ultDeuda } = await supabase
-          .from('movimientoscuenta_motor')
-          .select('id_deuda')
-          .order('id_deuda', { ascending: false })
-          .limit(1)
+        if (ultimosMovs && ultimosMovs.length > 0) {
+          for (const m of ultimosMovs) {
+            const mId = parseInt(m.id_movimiento, 10);
+            if (!isNaN(mId) && mId > maxIdMovimiento) maxIdMovimiento = mId;
+            const dId = parseInt(m.id_deuda, 10);
+            if (!isNaN(dId) && dId > maxIdDeuda) maxIdDeuda = dId;
+          }
+        }
 
-        const siguienteIdDeuda = (ultDeuda && ultDeuda.length > 0 && ultDeuda[0].id_deuda) ? ultDeuda[0].id_deuda + 1 : 1;
+        const siguienteIdMovimiento = maxIdMovimiento + 1;
+        const siguienteIdDeuda = (maxIdDeuda + 1).toString();
 
         // REGLA CLAVE: 
         // - Si es UNICO: fecha_vencimiento es null (sin fecha de vencimiento).
@@ -421,7 +439,7 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
           subtipo: subtipoMovimiento,
           id_origen: null,
           concepto: conceptoMovimiento,
-          debe: String(form.monto_cuota_base),
+          debe: montoCuotaFinal,
           haber: '0',
           saldo: '0',
           id_pago: null,
