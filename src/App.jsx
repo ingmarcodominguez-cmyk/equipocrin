@@ -2483,17 +2483,20 @@ function App() {
   )
 }
 
+  const esAdminOrDir = ['ADMINISTRACION', 'DIRECCION'].includes(normalizarRol(userData?.rol));
+
   return (
     <div style={{ width: '100vw', height: '100vh', margin: 0, padding: 0 }}>
-      <div style={{ position: 'fixed', top: '10px', right: '10px', zIndex: 9999, display: 'flex', gap: '8px', alignItems: 'center' }}>
-        <BotonPantallaCompleta style={{ padding: '5px 10px', fontSize: '12px' }} />
-        <button 
-          onClick={() => setModoSeleccionado(null)} 
-          style={{ background: '#222', color: '#aaa', border: '1px solid #444', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer', fontSize: '12px' }}
-        >
-          Cambiar Modo
-        </button>
-      </div>
+      {esAdminOrDir && (
+        <div style={{ position: 'fixed', top: '10px', right: '10px', zIndex: 9999, display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button 
+            onClick={() => setModoSeleccionado(null)} 
+            style={{ background: '#222', color: '#aaa', border: '1px solid #444', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer', fontSize: '12px' }}
+          >
+            Cambiar Modo
+          </button>
+        </div>
+      )}
       <Layout userData={userData} logout={logout} actualizarMoraYCuotas={actualizarMoraYCuotas} />
     </div>
   )
