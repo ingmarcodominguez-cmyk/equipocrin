@@ -353,54 +353,67 @@ function App() {
 
           let nuevoImporte = acuerdo.importeBase;
 
-          // El porcentaje de aumento se aplica al período final según los meses de vida del acuerdo
+          // Lógica de aumento trimestral individual con regla de corte al día 20
           if (periodo === periodoActualInt && porcentajeAumento > 0) {
-            let mesesVida = 3; // Por defecto si no tiene fecha, se asumen >= 3 meses cumplidos
+            let correspondeAumento = false;
             const rawFecha = acuerdo.fecha_acuerdo || acuerdo.fecha_registro;
-            if (rawFecha && typeof rawFecha === 'string') {
-              let anioAcuerdo = null;
-              let mesAcuerdo = null;
+            
+            let anioAcuerdo = null;
+            let mesAcuerdo = null;
+            let diaAcuerdo = 1;
 
+            if (rawFecha && typeof rawFecha === 'string') {
               if (rawFecha.includes('-')) {
                 const partes = rawFecha.split('T')[0].split('-');
                 if (partes.length >= 2) {
                   anioAcuerdo = parseInt(partes[0], 10);
                   mesAcuerdo = parseInt(partes[1], 10);
+                  diaAcuerdo = parseInt(partes[2], 10) || 1;
                 }
               } else if (rawFecha.includes('/')) {
                 const partes = rawFecha.split('/');
                 if (partes.length >= 3) {
-                  anioAcuerdo = parseInt(partes[2], 10);
+                  diaAcuerdo = parseInt(partes[0], 10) || 1;
                   mesAcuerdo = parseInt(partes[1], 10);
+                  anioAcuerdo = parseInt(partes[2], 10);
+                }
+              }
+            }
+
+            if (!anioAcuerdo || !mesAcuerdo) {
+              // Si no tiene fecha, se asume acuerdo histórico con línea de largada en Sep 2026
+              const diffDesdeSep = (anio - 2026) * 12 + (mes - 9);
+              correspondeAumento = diffDesdeSep > 0 && diffDesdeSep % 3 === 0;
+            } else {
+              // Regla del día 20: Si inicia después del día 20, su mes computable de inicio es el siguiente
+              let mesInicio = mesAcuerdo;
+              let anioInicio = anioAcuerdo;
+              if (diaAcuerdo > 20) {
+                mesInicio++;
+                if (mesInicio > 12) {
+                  mesInicio = 1;
+                  anioInicio++;
                 }
               }
 
-              if (anioAcuerdo && mesAcuerdo) {
-                // Se cuenta cada acuerdo como si fuera del día 1 del mes de origen
-                mesesVida = (anio - anioAcuerdo) * 12 + (mes - mesAcuerdo);
+              // Línea de corte general: Acuerdos con inicio computable <= Julio 2026 (Grupo Histórico)
+              const esHistorico = (anioInicio < 2026) || (anioInicio === 2026 && mesInicio <= 7);
+
+              if (esHistorico) {
+                // Tienen base consolidada en Septiembre 2026. Aumentan cada 3 meses contados desde Septiembre (Diciembre 2026, Marzo 2027, etc.)
+                const diffDesdeSep = (anio - 2026) * 12 + (mes - 9);
+                correspondeAumento = diffDesdeSep > 0 && diffDesdeSep % 3 === 0;
+              } else {
+                // Acuerdos de Agosto 2026 en adelante: Tienen 3 meses de cuota fija inicial y aumentan cada 3 meses desde su mes de inicio computable
+                const diffMeses = (anio - anioInicio) * 12 + (mes - mesInicio);
+                correspondeAumento = diffMeses > 0 && diffMeses % 3 === 0;
               }
             }
 
-            // Regla de Proporcionalidad:
-            // >= 3 meses cumplidos: 100% (factor 1.0)
-            // 2 meses cumplidos: 2/3 (aprox 66.67%)
-            // 1 mes cumplido: 1/3 (aprox 33.33%)
-            // <= 0 meses: 0% (sin aumento)
-            let factor = 1.0;
-            if (mesesVida >= 3) {
-              factor = 1.0;
-            } else if (mesesVida === 2) {
-              factor = 2 / 3;
-            } else if (mesesVida === 1) {
-              factor = 1 / 3;
-            } else {
-              factor = 0.0;
-            }
-
-            const pctAplicar = porcentajeAumento * factor;
-            if (pctAplicar > 0) {
-              nuevoImporte = nuevoImporte * (1 + pctAplicar / 100);
-              nuevoImporte = Math.round(nuevoImporte); // Siempre redondear a importe entero sin decimales
+            if (correspondeAumento) {
+              nuevoImporte = nuevoImporte * (1 + porcentajeAumento / 100);
+              nuevoImporte = Math.round(nuevoImporte); // Redondear a importe entero
+              acuerdo.haAumentado = true;
             }
             acuerdo.importeBase = nuevoImporte; // Actualizamos para que sirva de base si hubiera más meses
           }
@@ -435,15 +448,17 @@ function App() {
         }
       }
 
-      // Si hubo aumento, actualizamos el precio final de los acuerdos en la base de datos
+      // Si hubo aumento, actualizamos el precio final de los acuerdos en la base de datos solo para los que aumentaron
       if (porcentajeAumento > 0) {
         for (const acuerdo of listaAcuerdosEnMemoria) {
-          actualizacionesAcuerdos.push(
-            supabase
-              .from('acuerdos_motor')
-              .update({ importe_actual: acuerdo.importeBase.toString() })
-              .eq('id_acuerdo', acuerdo.id_acuerdo)
-          );
+          if (acuerdo.haAumentado) {
+            actualizacionesAcuerdos.push(
+              supabase
+                .from('acuerdos_motor')
+                .update({ importe_actual: acuerdo.importeBase.toString() })
+                .eq('id_acuerdo', acuerdo.id_acuerdo)
+            );
+          }
         }
       }
 
@@ -1354,7 +1369,7 @@ function App() {
                       <span style={{ fontSize: '20px', fontWeight: '800', color: '#0369a1' }}>%</span>
                     </div>
                     <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: '#64748b' }}>
-                      Este porcentaje aumentará las cuotas de {nuevoMesInfo.nombreMes} y actualizará el precio base de los acuerdos de aquí en adelante.
+                      Este porcentaje se aplicará individualmente a los pacientes que cumplan su ciclo trimestral en {nuevoMesInfo.nombreMes}. Los demás mantendrán su cuota fija.
                     </p>
                   </div>
                 )}
