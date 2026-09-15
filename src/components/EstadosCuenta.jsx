@@ -6,6 +6,7 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
   const [cargando, setCargando] = useState(false);
   const [filtroNombre, setFiltroNombre] = useState('');
   const [pacienteSeleccionado, setPacienteSeleccionado] = useState(null);
+  const [pacienteInfoModal, setPacienteInfoModal] = useState(null);
   const [detalleAcuerdos, setDetalleAcuerdos] = useState([]);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
 
@@ -35,10 +36,10 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
   async function fetchData() {
     setCargando(true);
     try {
-      // 1. Obtener todos los pacientes de pacientes_motor
+      // 1. Obtener todos los pacientes de pacientes_motor (incluyendo teléfonos)
       const { data: pacientes, error: errorPacientes } = await supabase
         .from('pacientes_motor')
-        .select('id_paciente, nombre_apellido')
+        .select('id_paciente, nombre_apellido, tel_padres, tel_alternativo, tel_docente_integrador, nombre_padre, nombre_madre, dni')
         .order('nombre_apellido', { ascending: true });
       
       if (errorPacientes) throw errorPacientes;
@@ -105,6 +106,12 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
         balancesPorPaciente[p.id_paciente] = {
           id_paciente: p.id_paciente,
           nombre_paciente: p.nombre_apellido,
+          tel_padres: p.tel_padres,
+          tel_alternativo: p.tel_alternativo,
+          tel_docente_integrador: p.tel_docente_integrador,
+          nombre_padre: p.nombre_padre,
+          nombre_madre: p.nombre_madre,
+          dni: p.dni,
           vencido: 0,
           prox_7: 0,
           prox_15: 0,
@@ -179,9 +186,10 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
     }
   }
 
-  const verDetalle = (idPaciente, nombrePaciente) => {
+  const verDetalle = (idPaciente, nombrePaciente, pacienteObj) => {
     setCargandoDetalle(true);
     setPacienteSeleccionado(nombrePaciente);
+    setPacienteInfoModal(pacienteObj || datos.find(p => p.id_paciente === idPaciente) || null);
     setDetalleAcuerdos([]);
 
     const movsPaciente = todosLosMovimientos.filter(m => m.id_paciente === idPaciente);
@@ -243,10 +251,14 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
     setCargandoDetalle(false);
   };
 
-  // Filtrado de pacientes
-  const datosFiltrados = datos.filter(p => 
-    (p.nombre_paciente || '').toLowerCase().includes(filtroNombre.toLowerCase())
-  );
+  // Filtrado de pacientes (por nombre o teléfono)
+  const datosFiltrados = datos.filter(p => {
+    const q = (filtroNombre || '').toLowerCase().trim();
+    if (!q) return true;
+    const matchNombre = (p.nombre_paciente || '').toLowerCase().includes(q);
+    const matchTel = (p.tel_padres || '').includes(q) || (p.tel_alternativo || '').includes(q);
+    return matchNombre || matchTel;
+  });
 
   // Totales generales para las tarjetas métricas (KPIs)
   const sumaVencido = datosFiltrados.reduce((acc, p) => acc + p.vencido, 0);
@@ -260,7 +272,7 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
     let csvContent = "\uFEFF"; // UTF-8 BOM
     csvContent += "sep=;\n";
     csvContent += "Reporte Gerencial - Estado Financiero de Pacientes\n\n";
-    csvContent += "Paciente;Vencido;Próx 7 Días;Próx 15 Días;Próx 30 Días;Total Deuda\n";
+    csvContent += "Paciente;Teléfono;Vencido;Próx 7 Días;Próx 15 Días;Próx 30 Días;Total Deuda\n";
 
     datosFiltrados.forEach(p => {
       const vencidoStr = p.vencido.toFixed(2).replace('.', ',');
@@ -268,8 +280,9 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
       const prox15Str = p.prox_15.toFixed(2).replace('.', ',');
       const prox30Str = p.prox_30.toFixed(2).replace('.', ',');
       const totalStr = p.total.toFixed(2).replace('.', ',');
+      const telStr = p.tel_padres ? (p.tel_alternativo && p.tel_alternativo !== p.tel_padres ? `${p.tel_padres} / ${p.tel_alternativo}` : p.tel_padres) : 'S/D';
       
-      csvContent += `${p.nombre_paciente};${vencidoStr};${prox7Str};${prox15Str};${prox30Str};${totalStr}\n`;
+      csvContent += `${p.nombre_paciente};${telStr};${vencidoStr};${prox7Str};${prox15Str};${prox30Str};${totalStr}\n`;
     });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -382,7 +395,7 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
         <div style={{ flex: 1, position: 'relative' }}>
           <input
             type="text"
-            placeholder="🔍 Buscar paciente por nombre..."
+            placeholder="🔍 Buscar paciente por nombre o teléfono..."
             value={filtroNombre}
             onChange={(e) => setFiltroNombre(e.target.value)}
             style={{ width: '100%', padding: '10px 15px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', boxSizing: 'border-box' }}
@@ -402,7 +415,7 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left', background: '#fff' }}>
             <thead>
               <tr style={{ background: '#f1f5f9', color: '#475569', borderBottom: '2px solid #cbd5e1' }}>
-                <th style={{ padding: '12px 10px' }}>Paciente</th>
+                <th style={{ padding: '12px 10px' }}>Paciente / Teléfono</th>
                 <th style={{ padding: '12px 10px', textAlign: 'right' }}>Vencido ($)</th>
                 <th style={{ padding: '12px 10px', textAlign: 'right' }}>Próx 7 Días ($)</th>
                 <th style={{ padding: '12px 10px', textAlign: 'right' }}>Próx 15 Días ($)</th>
@@ -411,33 +424,82 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
               </tr>
             </thead>
             <tbody>
-              {datosFiltrados.map((p) => (
-                <tr key={p.id_paciente} style={{ borderBottom: '1px solid #e2e8f0', background: p.total > 0.01 ? '#fff' : '#f8fafc' }}>
-                  <td style={{ padding: '12px 10px' }}>
-                    <button
-                      onClick={() => verDetalle(p.id_paciente, p.nombre_paciente)}
-                      style={{ background: 'none', border: 'none', padding: 0, color: '#2563eb', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left', textDecoration: 'underline', fontSize: '13px' }}
-                    >
-                      👤 {p.nombre_paciente}
-                    </button>
-                  </td>
-                  <td style={{ padding: '12px 10px', textAlign: 'right', color: p.vencido > 0 ? '#dc2626' : '#64748b', fontWeight: p.vencido > 0 ? '600' : 'normal' }}>
-                    ${p.vencido.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td style={{ padding: '12px 10px', textAlign: 'right', color: p.prox_7 > 0 ? '#d97706' : '#64748b', fontWeight: p.prox_7 > 0 ? '600' : 'normal' }}>
-                    ${p.prox_7.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td style={{ padding: '12px 10px', textAlign: 'right', color: p.prox_15 > 0 ? '#2563eb' : '#64748b' }}>
-                    ${p.prox_15.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td style={{ padding: '12px 10px', textAlign: 'right', color: p.prox_30 > 0 ? '#16a34a' : '#64748b' }}>
-                    ${p.prox_30.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 'bold', color: p.total > 0 ? '#0f172a' : '#94a3b8' }}>
-                    ${p.total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                  </td>
-                </tr>
-              ))}
+              {datosFiltrados.map((p) => {
+                const telClean = p.tel_padres ? String(p.tel_padres).replace(/\D/g, '') : '';
+                return (
+                  <tr key={p.id_paciente} style={{ borderBottom: '1px solid #e2e8f0', background: p.total > 0.01 ? '#fff' : '#f8fafc' }}>
+                    <td style={{ padding: '10px 10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <button
+                          onClick={() => verDetalle(p.id_paciente, p.nombre_paciente, p)}
+                          style={{ background: 'none', border: 'none', padding: 0, color: '#2563eb', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left', textDecoration: 'underline', fontSize: '13px' }}
+                          title="Hacer clic para ver detalle de deuda y contacto"
+                        >
+                          👤 {p.nombre_paciente}
+                        </button>
+                      </div>
+
+                      {/* Teléfono del paciente */}
+                      {p.tel_padres ? (
+                        <div style={{ fontSize: '12px', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <a
+                            href={`https://wa.me/549${telClean}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              color: '#16a34a',
+                              textDecoration: 'none',
+                              fontWeight: '600',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              background: '#f0fdf4',
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              border: '1px solid #bbf7d0',
+                              fontSize: '11px'
+                            }}
+                            title="Enviar WhatsApp al paciente/padres"
+                          >
+                            <span>💬</span> {p.tel_padres}
+                          </a>
+                          <a
+                            href={`tel:${p.tel_padres}`}
+                            style={{ color: '#0284c7', textDecoration: 'none', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '2px' }}
+                            title="Llamar"
+                          >
+                            📞
+                          </a>
+                          {p.tel_alternativo && p.tel_alternativo !== p.tel_padres && (
+                            <span style={{ color: '#64748b', fontSize: '11px' }}>
+                              (Alt: {p.tel_alternativo})
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic', marginTop: '2px' }}>
+                          Sin teléfono registrado
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: '12px 10px', textAlign: 'right', color: p.vencido > 0 ? '#dc2626' : '#64748b', fontWeight: p.vencido > 0 ? '600' : 'normal' }}>
+                      ${p.vencido.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ padding: '12px 10px', textAlign: 'right', color: p.prox_7 > 0 ? '#d97706' : '#64748b', fontWeight: p.prox_7 > 0 ? '600' : 'normal' }}>
+                      ${p.prox_7.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ padding: '12px 10px', textAlign: 'right', color: p.prox_15 > 0 ? '#2563eb' : '#64748b' }}>
+                      ${p.prox_15.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ padding: '12px 10px', textAlign: 'right', color: p.prox_30 > 0 ? '#16a34a' : '#64748b' }}>
+                      ${p.prox_30.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 'bold', color: p.total > 0 ? '#0f172a' : '#94a3b8' }}>
+                      ${p.total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -446,19 +508,98 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
       {/* Modal de Detalle */}
       {pacienteSeleccionado && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#fff', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '600px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)' }}>
+          <div style={{ background: '#fff', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '650px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)' }}>
             
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', color: '#0f172a', fontWeight: 'bold' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px' }}>
+              <h3 style={{ margin: 0, fontSize: '17px', color: '#0f172a', fontWeight: 'bold' }}>
                 📋 Composición de Deuda: {pacienteSeleccionado}
               </h3>
-              <button onClick={() => setPacienteSeleccionado(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8' }}>&times;</button>
+              <button onClick={() => { setPacienteSeleccionado(null); setPacienteInfoModal(null); }} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8' }}>&times;</button>
+            </div>
+
+            {/* Banner de Contacto / Teléfono */}
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '10px',
+              padding: '12px 16px',
+              marginBottom: '16px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '10px'
+            }}>
+              <div>
+                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                  📞 Teléfono de Contacto
+                </div>
+                <div style={{ fontSize: '15px', fontWeight: 'bold', color: pacienteInfoModal?.tel_padres ? '#0f172a' : '#94a3b8', marginTop: '2px' }}>
+                  {pacienteInfoModal?.tel_padres || 'Sin teléfono registrado'}
+                  {pacienteInfoModal?.tel_alternativo && pacienteInfoModal.tel_alternativo !== pacienteInfoModal.tel_padres && (
+                    <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '8px', fontWeight: 'normal' }}>
+                      (Alt: {pacienteInfoModal.tel_alternativo})
+                    </span>
+                  )}
+                </div>
+                {(pacienteInfoModal?.nombre_padre || pacienteInfoModal?.nombre_madre) && (
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                    Responsables: {[pacienteInfoModal.nombre_padre, pacienteInfoModal.nombre_madre].filter(Boolean).join(' / ')}
+                  </div>
+                )}
+              </div>
+
+              {pacienteInfoModal?.tel_padres && (() => {
+                const modalTelClean = String(pacienteInfoModal.tel_padres).replace(/\D/g, '');
+                return (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <a
+                      href={`https://wa.me/549${modalTelClean}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        background: '#16a34a',
+                        color: '#fff',
+                        padding: '7px 14px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px'
+                      }}
+                      title="Enviar mensaje por WhatsApp"
+                    >
+                      💬 WhatsApp
+                    </a>
+                    <a
+                      href={`tel:${pacienteInfoModal.tel_padres}`}
+                      style={{
+                        background: '#0284c7',
+                        color: '#fff',
+                        padding: '7px 14px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px'
+                      }}
+                      title="Llamar al teléfono"
+                    >
+                      📞 Llamar
+                    </a>
+                  </div>
+                );
+              })()}
             </div>
 
             {cargandoDetalle ? (
               <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '20px' }}>Cargando detalle...</p>
             ) : (
-              <div style={{ maxHeight: '350px', overflowY: 'auto', border: '1px solid #edf2f7', borderRadius: '8px' }}>
+              <div style={{ maxHeight: '320px', overflowY: 'auto', border: '1px solid #edf2f7', borderRadius: '8px' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
                   <thead>
                     <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
@@ -490,7 +631,7 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
               <button
-                onClick={() => setPacienteSeleccionado(null)}
+                onClick={() => { setPacienteSeleccionado(null); setPacienteInfoModal(null); }}
                 style={{ padding: '8px 20px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
               >
                 Cerrar Detalle
