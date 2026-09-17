@@ -1436,9 +1436,36 @@ function App() {
     }
 
     return (
-      <div style={{ backgroundColor: '#f0f4f8', minHeight: '100vh', color: '#333333', padding: '40px 20px', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <div style={{ backgroundColor: '#f0f4f8', minHeight: '100vh', color: '#333333', padding: '16px 20px', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center', boxSizing: 'border-box' }}>
+        <style>{`
+          .buscadores-grid-crin {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            width: 100%;
+          }
+          .menu-grid-crin {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            width: 100%;
+          }
+          @media (max-width: 960px) {
+            .buscadores-grid-crin {
+              grid-template-columns: 1fr;
+            }
+            .menu-grid-crin {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+          }
+          @media (max-width: 520px) {
+            .menu-grid-crin {
+              grid-template-columns: 1fr;
+            }
+          }
+        `}</style>
         
-        <div style={{ width: '100%', maxWidth: '700px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+        <div style={{ width: '100%', maxWidth: '1240px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <button 
               onClick={() => { 
@@ -1832,668 +1859,660 @@ function App() {
         {!crinAccion && (
           <div style={{ 
             width: '100%', 
-            maxWidth: '1100px', 
+            maxWidth: '1240px', 
             display: 'flex', 
             flexDirection: 'column', 
-            gap: '25px', 
-            padding: '20px',
+            gap: '12px', 
             boxSizing: 'border-box'
           }}>
-            {/* Buscador de Paciente por ID */}
-            <div style={{ 
-              alignSelf: 'center',
-              width: '100%', 
-              maxWidth: '650px', 
-              background: '#ffffff', 
-              padding: '20px', 
-              borderRadius: '20px', 
-              boxShadow: '0 8px 16px rgba(0,0,0,0.04)', 
-              border: '1px solid #e2e8f0',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '12px',
-              boxSizing: 'border-box'
-            }}>
-              <h3 style={{ margin: 0, fontSize: '15px', color: '#1e3a8a', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                🔍 Buscar Paciente por ID Paciente o ID Acuerdo
-              </h3>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <input 
-                  type="text" 
-                  placeholder="Ej: ID Paciente '225' o ID Acuerdo '610'..." 
-                  value={criterioBusquedaId}
-                  onChange={(e) => setCriterioBusquedaId(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleBuscarPacientePorId();
-                  }}
-                  style={{ 
-                    flex: 1, 
-                    padding: '12px 16px', 
-                    borderRadius: '12px', 
-                    border: '1px solid #cbd5e1', 
-                    fontSize: '14px', 
-                    outline: 'none',
-                    transition: 'border-color 0.2s'
-                  }}
-                />
-                <button 
-                  onClick={handleBuscarPacientePorId}
-                  disabled={buscandoId}
-                  style={{ 
-                    background: '#1e3a8a', 
-                    color: '#fff', 
-                    border: 'none', 
-                    padding: '0 24px', 
-                    borderRadius: '12px', 
-                    fontWeight: 'bold', 
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    transition: 'background 0.2s'
-                  }}
-                  onMouseOver={(e) => e.target.style.background = '#1e40af'}
-                  onMouseOut={(e) => e.target.style.background = '#1e3a8a'}
-                >
-                  {buscandoId ? 'Buscando...' : 'Buscar'}
-                </button>
+            {/* Buscadores Superiores: Uno a la par del otro */}
+            <div className="buscadores-grid-crin">
+              {/* Buscador de Paciente por ID */}
+              <div style={{ 
+                background: '#ffffff', 
+                padding: '12px 16px', 
+                borderRadius: '14px', 
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)', 
+                border: '1px solid #e2e8f0',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                boxSizing: 'border-box'
+              }}>
+                <h3 style={{ margin: 0, fontSize: '13px', color: '#1e3a8a', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  🔍 Buscar Paciente por ID Paciente o ID Acuerdo
+                </h3>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input 
+                    type="text" 
+                    placeholder="Ej: ID Paciente '225' o ID Acuerdo '610'..." 
+                    value={criterioBusquedaId}
+                    onChange={(e) => setCriterioBusquedaId(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleBuscarPacientePorId();
+                    }}
+                    style={{ 
+                      flex: 1, 
+                      padding: '8px 12px', 
+                      borderRadius: '8px', 
+                      border: '1px solid #cbd5e1', 
+                      fontSize: '13px', 
+                      outline: 'none',
+                      transition: 'border-color 0.2s'
+                    }}
+                  />
+                  <button 
+                    onClick={handleBuscarPacientePorId}
+                    disabled={buscandoId}
+                    style={{ 
+                      background: '#1e3a8a', 
+                      color: '#fff', 
+                      border: 'none', 
+                      padding: '0 16px', 
+                      borderRadius: '8px', 
+                      fontWeight: 'bold', 
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      transition: 'background 0.2s',
+                      whiteSpace: 'nowrap'
+                    }}
+                    onMouseOver={(e) => e.target.style.background = '#1e40af'}
+                    onMouseOut={(e) => e.target.style.background = '#1e3a8a'}
+                  >
+                    {buscandoId ? 'Buscando...' : 'Buscar'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Buscador de ID Deuda Histórico */}
+              <div style={{ 
+                background: '#ffffff', 
+                padding: '12px 16px', 
+                borderRadius: '14px', 
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)', 
+                border: '1px solid #e2e8f0',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                boxSizing: 'border-box'
+              }}>
+                <h3 style={{ margin: 0, fontSize: '13px', color: '#0f766e', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  🔍 Consultar Historial Completo de un ID Deuda
+                </h3>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input 
+                    type="text" 
+                    placeholder="Ingresá el ID de Deuda (ej: '33', '154', '1119')..." 
+                    value={criterioBusquedaDeudaId}
+                    onChange={(e) => setCriterioBusquedaDeudaId(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleBuscarDeudaPorId();
+                    }}
+                    style={{ 
+                      flex: 1, 
+                      padding: '8px 12px', 
+                      borderRadius: '8px', 
+                      border: '1px solid #cbd5e1', 
+                      fontSize: '13px', 
+                      outline: 'none'
+                    }}
+                  />
+                  <button 
+                    onClick={handleBuscarDeudaPorId}
+                    disabled={buscandoDeuda}
+                    style={{ 
+                      background: '#0f766e', 
+                      color: '#fff', 
+                      border: 'none', 
+                      padding: '0 16px', 
+                      borderRadius: '8px', 
+                      fontWeight: 'bold', 
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      transition: 'background 0.2s',
+                      whiteSpace: 'nowrap'
+                    }}
+                    onMouseOver={(e) => e.target.style.background = '#0d9488'}
+                    onMouseOut={(e) => e.target.style.background = '#0f766e'}
+                  >
+                    {buscandoDeuda ? 'Buscando...' : 'Consultar'}
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Buscador de ID Deuda Histórico */}
-            <div style={{ 
-              alignSelf: 'center',
-              width: '100%', 
-              maxWidth: '650px', 
-              background: '#ffffff', 
-              padding: '20px', 
-              borderRadius: '20px', 
-              boxShadow: '0 8px 16px rgba(0,0,0,0.04)', 
-              border: '1px solid #e2e8f0',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '12px',
-              boxSizing: 'border-box'
-            }}>
-              <h3 style={{ margin: 0, fontSize: '15px', color: '#0f766e', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                🔍 Consultar Historial Completo de un ID Deuda
-              </h3>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <input 
-                  type="text" 
-                  placeholder="Ingresá el ID de Deuda (ej: '33', '154', '1119')..." 
-                  value={criterioBusquedaDeudaId}
-                  onChange={(e) => setCriterioBusquedaDeudaId(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleBuscarDeudaPorId();
-                  }}
-                  style={{ 
-                    flex: 1, 
-                    padding: '12px 16px', 
-                    borderRadius: '12px', 
-                    border: '1px solid #cbd5e1', 
-                    fontSize: '14px', 
-                    outline: 'none'
-                  }}
-                />
-                <button 
-                  onClick={handleBuscarDeudaPorId}
-                  disabled={buscandoDeuda}
-                  style={{ 
-                    background: '#0f766e', 
-                    color: '#fff', 
-                    border: 'none', 
-                    padding: '0 24px', 
-                    borderRadius: '12px', 
-                    fontWeight: 'bold', 
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    transition: 'background 0.2s'
-                  }}
-                  onMouseOver={(e) => e.target.style.background = '#0d9488'}
-                  onMouseOut={(e) => e.target.style.background = '#0f766e'}
-                >
-                  {buscandoDeuda ? 'Buscando...' : 'Consultar'}
-                </button>
-              </div>
+            {/* Grid de Botones del Menú Optimizado para Notebook (4 columnas compactas) */}
+            <div className="menu-grid-crin">
+              {/* Button 1: NUEVO PACIENTE */}
+              <button 
+                onClick={() => handleAccionClick('NUEVO_PACIENTE')}
+                style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 8px', 
+                  background: 'linear-gradient(135deg, #ebf8ff 100%, #bee3f8 0%)', 
+                  color: '#2b6cb0', 
+                  border: '2px solid #90cdf4', 
+                  borderRadius: '12px', 
+                  cursor: 'pointer', 
+                  fontWeight: '800', 
+                  fontSize: '12.5px', 
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>➕👤</div>
+                NUEVO PACIENTE
+              </button>
+
+              {/* Button 2: EDITAR PACIENTE */}
+              <button 
+                onClick={() => handleAccionClick('EDITAR_PACIENTE')}
+                style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 8px', 
+                  background: 'linear-gradient(135deg, #e6fffa 100%, #b2f5ea 0%)', 
+                  color: '#234e52', 
+                  border: '2px solid #81e6d9', 
+                  borderRadius: '12px', 
+                  cursor: 'pointer', 
+                  fontWeight: '800', 
+                  fontSize: '12.5px', 
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>✏️👤</div>
+                EDITAR PACIENTE
+              </button>
+
+              {/* Button 3: FICHA PACIENTE */}
+              <button 
+                onClick={() => handleAccionClick('FICHA_PACIENTE')}
+                style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 8px', 
+                  background: 'linear-gradient(135deg, #fffaf0 100%, #feebc8 0%)', 
+                  color: '#744210', 
+                  border: '2px solid #fbd38d', 
+                  borderRadius: '12px', 
+                  cursor: 'pointer', 
+                  fontWeight: '800', 
+                  fontSize: '12.5px', 
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>📂📋</div>
+                FICHA PACIENTE
+              </button>
+
+              {/* Button 4: FICHA PRESTADORES */}
+              <button 
+                onClick={() => handleAccionClick('FICHA_PRESTADORES')}
+                style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 8px', 
+                  background: 'linear-gradient(135deg, #e0f2fe 100%, #bae6fd 0%)', 
+                  color: '#0369a1', 
+                  border: '2px solid #7dd3fc', 
+                  borderRadius: '12px', 
+                  cursor: 'pointer', 
+                  fontWeight: '800', 
+                  fontSize: '12.5px', 
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>🩺💼</div>
+                FICHA PRESTADORES
+              </button>
+
+              {/* Button 5: ASISTENCIA AUXILIARES */}
+              <button 
+                onClick={() => handleAccionClick('ASISTENCIA_AUXILIARES')}
+                style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 8px', 
+                  background: 'linear-gradient(135deg, #f0fdf4 100%, #dcfce7 0%)', 
+                  color: '#166534', 
+                  border: '2px solid #bbf7d0', 
+                  borderRadius: '12px', 
+                  cursor: 'pointer', 
+                  fontWeight: '800', 
+                  fontSize: '12.5px', 
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>📋🤝</div>
+                ASISTENCIA AUXILIARES
+              </button>
+
+              {/* Button 6: ASISTENCIA PACIENTES */}
+              <button 
+                onClick={() => handleAccionClick('ASISTENCIA_PACIENTES')}
+                style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 8px', 
+                  background: 'linear-gradient(135deg, #fef2f2 100%, #fee2e2 0%)', 
+                  color: '#991b1b', 
+                  border: '2px solid #fecaca', 
+                  borderRadius: '12px', 
+                  cursor: 'pointer', 
+                  fontWeight: '800', 
+                  fontSize: '12.5px', 
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>📋👥</div>
+                ASISTENCIA PACIENTES
+              </button>
+
+              {/* Button 7: LIQUIDACION AUXILIARES */}
+              <button 
+                onClick={() => handleAccionClick('LIQUIDACION_AUXILIARES')}
+                style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 8px', 
+                  background: 'linear-gradient(135deg, #fef3c7 100%, #fde68a 0%)', 
+                  color: '#b45309', 
+                  border: '2px solid #fde68a', 
+                  borderRadius: '12px', 
+                  cursor: 'pointer', 
+                  fontWeight: '800', 
+                  fontSize: '12.5px', 
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>💰📊</div>
+                LIQUIDACIÓN AUXILIARES
+              </button>
+
+              {/* Button 8: CAJA DIARIA */}
+              <button 
+                onClick={() => handleAccionClick('CAJA_DIARIA')}
+                style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 8px', 
+                  background: 'linear-gradient(135deg, #fff1f2 100%, #ffe4e6 0%)', 
+                  color: '#be123c', 
+                  border: '2px solid #fda4af', 
+                  borderRadius: '12px', 
+                  cursor: 'pointer', 
+                  fontWeight: '800', 
+                  fontSize: '12.5px', 
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>💵💰</div>
+                CAJA DIARIA (EFECTIVO)
+              </button>
+
+              {/* Button 9: TAREAS PENDIENTES */}
+              <button 
+                onClick={() => handleAccionClick('TAREAS_PENDIENTES')}
+                style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 8px', 
+                  background: 'linear-gradient(135deg, #f5f3ff 100%, #ddd6fe 0%)', 
+                  color: '#5b21b6', 
+                  border: '2px solid #c084fc', 
+                  borderRadius: '12px', 
+                  cursor: 'pointer', 
+                  fontWeight: '800', 
+                  fontSize: '12.5px', 
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>📋✔</div>
+                TAREAS PENDIENTES
+              </button>
+
+              {/* Button 10: ESTADO FINANCIERO */}
+              <button 
+                onClick={() => handleAccionClick('ESTADO_FINANCIERO')}
+                style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 8px', 
+                  background: 'linear-gradient(135deg, #f0f9ff 100%, #e0f2fe 0%)', 
+                  color: '#0369a1', 
+                  border: '2px solid #bae6fd', 
+                  borderRadius: '12px', 
+                  cursor: 'pointer', 
+                  fontWeight: '800', 
+                  fontSize: '12.5px', 
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>📊📈</div>
+                ESTADO FINANCIERO
+              </button>
+
+              {/* Button 11: ACUERDOS MENSUALES */}
+              <button 
+                onClick={() => handleAccionClick('ACUERDOS_MENSUALES')}
+                style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 8px', 
+                  background: 'linear-gradient(135deg, #ecfdf5 100%, #d1fae5 0%)', 
+                  color: '#047857', 
+                  border: '2px solid #a7f3d0', 
+                  borderRadius: '12px', 
+                  cursor: 'pointer', 
+                  fontWeight: '800', 
+                  fontSize: '12.5px', 
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>📅🤝</div>
+                ACUERDOS MENSUALES
+              </button>
+
+              {/* Button 12: AJUSTE MASIVO */}
+              <button 
+                onClick={() => handleAccionClick('AJUSTE_MASIVO')}
+                style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 8px', 
+                  background: 'linear-gradient(135deg, #fdf2f8 100%, #fbcfe8 0%)', 
+                  color: '#be185d', 
+                  border: '2px solid #f472b6', 
+                  borderRadius: '12px', 
+                  cursor: 'pointer', 
+                  fontWeight: '800', 
+                  fontSize: '12.5px', 
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>📝⚙️</div>
+                AJUSTE MASIVO
+              </button>
+
+              {/* Button 13: CUENTAS OBRAS SOCIALES */}
+              <button 
+                onClick={() => handleAccionClick('CUENTAS_OBRAS_SOCIALES')}
+                style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 8px', 
+                  background: 'linear-gradient(135deg, #eff6ff 100%, #dbeafe 0%)', 
+                  color: '#1d4ed8', 
+                  border: '2px solid #93c5fd', 
+                  borderRadius: '12px', 
+                  cursor: 'pointer', 
+                  fontWeight: '800', 
+                  fontSize: '12.5px', 
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>🏛️📋</div>
+                OBRAS SOCIALES
+              </button>
+
+              {/* Button 14: REPORTE COBRANZAS */}
+              <button 
+                onClick={() => handleAccionClick('REPORTE_COBRANZAS')}
+                style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 8px', 
+                  background: 'linear-gradient(135deg, #fffbeb 100%, #fef3c7 0%)', 
+                  color: '#d97706', 
+                  border: '2px solid #fde68a', 
+                  borderRadius: '12px', 
+                  cursor: 'pointer', 
+                  fontWeight: '800', 
+                  fontSize: '12.5px', 
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>💰🗓️</div>
+                REPORTE COBRANZAS
+              </button>
+
+              {/* Button 15: CREAR PRESUPUESTO */}
+              <button 
+                onClick={() => handleAccionClick('PRESUPUESTO')}
+                style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 8px', 
+                  background: 'linear-gradient(135deg, #f3e8ff 100%, #e9d5ff 0%)', 
+                  color: '#7c3aed', 
+                  border: '2px solid #d8b4fe', 
+                  borderRadius: '12px', 
+                  cursor: 'pointer', 
+                  fontWeight: '800', 
+                  fontSize: '12.5px', 
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>📄✍️</div>
+                CREAR PRESUPUESTO
+              </button>
+
+              {/* Button 16: PLANILLA EXPENSAS */}
+              <button 
+                onClick={() => handleAccionClick('PLANILLA_EXPENSAS')}
+                style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 8px', 
+                  background: 'linear-gradient(135deg, #f0fdfa 100%, #ccfbf1 0%)', 
+                  color: '#0f766e', 
+                  border: '2px solid #99f6e4', 
+                  borderRadius: '12px', 
+                  cursor: 'pointer', 
+                  fontWeight: '800', 
+                  fontSize: '12.5px', 
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>🏢💸</div>
+                PLANILLA EXPENSAS
+              </button>
             </div>
-
-            {/* Grid de Botones del Menú */}
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', 
-              gap: '20px',
-              width: '100%'
-            }}>
-            {/* Button 1: NUEVO PACIENTE */}
-            <button 
-              onClick={() => handleAccionClick('NUEVO_PACIENTE')}
-              style={{ 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '30px 15px', 
-                background: 'linear-gradient(135deg, #ebf8ff 100%, #bee3f8 0%)', 
-                color: '#2b6cb0', 
-                border: '2px solid #90cdf4', 
-                borderRadius: '16px', 
-                cursor: 'pointer', 
-                fontWeight: '800', 
-                fontSize: '15px', 
-                textAlign: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.03)';
-                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>➕👤</div>
-              NUEVO PACIENTE
-            </button>
-
-            {/* Button 2: EDITAR PACIENTE */}
-            <button 
-              onClick={() => handleAccionClick('EDITAR_PACIENTE')}
-              style={{ 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '30px 15px', 
-                background: 'linear-gradient(135deg, #e6fffa 100%, #b2f5ea 0%)', 
-                color: '#234e52', 
-                border: '2px solid #81e6d9', 
-                borderRadius: '16px', 
-                cursor: 'pointer', 
-                fontWeight: '800', 
-                fontSize: '15px', 
-                textAlign: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.03)';
-                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>✏️👤</div>
-              EDITAR PACIENTE
-            </button>
-
-
-            {/* Button 4: FICHA PACIENTE */}
-            <button 
-              onClick={() => handleAccionClick('FICHA_PACIENTE')}
-              style={{ 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '30px 15px', 
-                background: 'linear-gradient(135deg, #fffaf0 100%, #feebc8 0%)', 
-                color: '#744210', 
-                border: '2px solid #fbd38d', 
-                borderRadius: '16px', 
-                cursor: 'pointer', 
-                fontWeight: '800', 
-                fontSize: '15px', 
-                textAlign: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.03)';
-                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>📂📋</div>
-              FICHA PACIENTE
-            </button>
-
-            {/* Button 5: FICHA PRESTADORES */}
-            <button 
-              onClick={() => handleAccionClick('FICHA_PRESTADORES')}
-              style={{ 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '30px 15px', 
-                background: 'linear-gradient(135deg, #e0f2fe 100%, #bae6fd 0%)', 
-                color: '#0369a1', 
-                border: '2px solid #7dd3fc', 
-                borderRadius: '16px', 
-                cursor: 'pointer', 
-                fontWeight: '800', 
-                fontSize: '15px', 
-                textAlign: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.03)';
-                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>🩺💼</div>
-              FICHA PRESTADORES
-            </button>
-
-            {/* Button 6: ASISTENCIA AUXILIARES */}
-            <button 
-              onClick={() => handleAccionClick('ASISTENCIA_AUXILIARES')}
-              style={{ 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '30px 15px', 
-                background: 'linear-gradient(135deg, #f0fdf4 100%, #dcfce7 0%)', 
-                color: '#166534', 
-                border: '2px solid #bbf7d0', 
-                borderRadius: '16px', 
-                cursor: 'pointer', 
-                fontWeight: '800', 
-                fontSize: '15px', 
-                textAlign: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.03)';
-                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>📋🤝</div>
-              ASISTENCIA AUXILIARES
-            </button>
-
-            {/* Button 6.5: ASISTENCIA PACIENTES */}
-            <button 
-              onClick={() => handleAccionClick('ASISTENCIA_PACIENTES')}
-              style={{ 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '30px 15px', 
-                background: 'linear-gradient(135deg, #fef2f2 100%, #fee2e2 0%)', 
-                color: '#991b1b', 
-                border: '2px solid #fecaca', 
-                borderRadius: '16px', 
-                cursor: 'pointer', 
-                fontWeight: '800', 
-                fontSize: '15px', 
-                textAlign: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.03)';
-                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>📋👥</div>
-              ASISTENCIA PACIENTES
-            </button>
-
-            {/* Button 7: LIQUIDACION AUXILIARES */}
-            <button 
-              onClick={() => handleAccionClick('LIQUIDACION_AUXILIARES')}
-              style={{ 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '30px 15px', 
-                background: 'linear-gradient(135deg, #fef3c7 100%, #fde68a 0%)', 
-                color: '#b45309', 
-                border: '2px solid #fde68a', 
-                borderRadius: '16px', 
-                cursor: 'pointer', 
-                fontWeight: '800', 
-                fontSize: '15px', 
-                textAlign: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.03)';
-                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>💰📊</div>
-              LIQUIDACIÓN AUXILIARES
-            </button>
-
-            {/* Button 8: CAJA DIARIA */}
-            <button 
-              onClick={() => handleAccionClick('CAJA_DIARIA')}
-              style={{ 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '30px 15px', 
-                background: 'linear-gradient(135deg, #fff1f2 100%, #ffe4e6 0%)', 
-                color: '#be123c', 
-                border: '2px solid #fda4af', 
-                borderRadius: '16px', 
-                cursor: 'pointer', 
-                fontWeight: '800', 
-                fontSize: '15px', 
-                textAlign: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.03)';
-                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>💵💰</div>
-              CAJA DIARIA (EFECTIVO)
-            </button>
-
-            {/* Button 9: TAREAS PENDIENTES */}
-            <button 
-              onClick={() => handleAccionClick('TAREAS_PENDIENTES')}
-              style={{ 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '30px 15px', 
-                background: 'linear-gradient(135deg, #f5f3ff 100%, #ddd6fe 0%)', 
-                color: '#5b21b6', 
-                border: '2px solid #c084fc', 
-                borderRadius: '16px', 
-                cursor: 'pointer', 
-                fontWeight: '800', 
-                fontSize: '15px', 
-                textAlign: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.03)';
-                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>📋✔</div>
-              TAREAS PENDIENTES
-            </button>
-
-            {/* Button 10: ESTADO FINANCIERO */}
-            <button 
-              onClick={() => handleAccionClick('ESTADO_FINANCIERO')}
-              style={{ 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '30px 15px', 
-                background: 'linear-gradient(135deg, #f0f9ff 100%, #e0f2fe 0%)', 
-                color: '#0369a1', 
-                border: '2px solid #bae6fd', 
-                borderRadius: '16px', 
-                cursor: 'pointer', 
-                fontWeight: '800', 
-                fontSize: '15px', 
-                textAlign: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.03)';
-                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>📊📈</div>
-              ESTADO FINANCIERO
-            </button>
-
-            {/* Button 11: ACUERDOS MENSUALES */}
-            <button 
-              onClick={() => handleAccionClick('ACUERDOS_MENSUALES')}
-              style={{ 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '30px 15px', 
-                background: 'linear-gradient(135deg, #ecfdf5 100%, #d1fae5 0%)', 
-                color: '#047857', 
-                border: '2px solid #a7f3d0', 
-                borderRadius: '16px', 
-                cursor: 'pointer', 
-                fontWeight: '800', 
-                fontSize: '15px', 
-                textAlign: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.03)';
-                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>📅🤝</div>
-              ACUERDOS MENSUALES
-            </button>
-
-            {/* Button 12: AJUSTE MASIVO */}
-            <button 
-              onClick={() => handleAccionClick('AJUSTE_MASIVO')}
-              style={{ 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '30px 15px', 
-                background: 'linear-gradient(135deg, #fdf2f8 100%, #fbcfe8 0%)', 
-                color: '#be185d', 
-                border: '2px solid #f472b6', 
-                borderRadius: '16px', 
-                cursor: 'pointer', 
-                fontWeight: '800', 
-                fontSize: '15px', 
-                textAlign: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.03)';
-                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>📝⚙️</div>
-              AJUSTE MASIVO
-            </button>
-
-            {/* Button: CUENTAS OBRAS SOCIALES */}
-            <button 
-              onClick={() => handleAccionClick('CUENTAS_OBRAS_SOCIALES')}
-              style={{ 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '30px 15px', 
-                background: 'linear-gradient(135deg, #eff6ff 100%, #dbeafe 0%)', 
-                color: '#1d4ed8', 
-                border: '2px solid #93c5fd', 
-                borderRadius: '16px', 
-                cursor: 'pointer', 
-                fontWeight: '800', 
-                fontSize: '15px', 
-                textAlign: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.03)';
-                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>🏛️📋</div>
-              OBRAS SOCIALES
-            </button>
-
-            {/* Button 13: REPORTE COBRANZAS */}
-            <button 
-              onClick={() => handleAccionClick('REPORTE_COBRANZAS')}
-              style={{ 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '30px 15px', 
-                background: 'linear-gradient(135deg, #fffbeb 100%, #fef3c7 0%)', 
-                color: '#d97706', 
-                border: '2px solid #fde68a', 
-                borderRadius: '16px', 
-                cursor: 'pointer', 
-                fontWeight: '800', 
-                fontSize: '15px', 
-                textAlign: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.03)';
-                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>💰🗓️</div>
-              REPORTE COBRANZAS
-            </button>
-
-            {/* Button 14: CREAR PRESUPUESTO */}
-            <button 
-              onClick={() => handleAccionClick('PRESUPUESTO')}
-              style={{ 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '30px 15px', 
-                background: 'linear-gradient(135deg, #f3e8ff 100%, #e9d5ff 0%)', 
-                color: '#7c3aed', 
-                border: '2px solid #d8b4fe', 
-                borderRadius: '16px', 
-                cursor: 'pointer', 
-                fontWeight: '800', 
-                fontSize: '15px', 
-                textAlign: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.03)';
-                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>📄✍️</div>
-              CREAR PRESUPUESTO
-            </button>
-
-            {/* Button 15: PLANILLA EXPENSAS */}
-            <button 
-              onClick={() => handleAccionClick('PLANILLA_EXPENSAS')}
-              style={{ 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '30px 15px', 
-                background: 'linear-gradient(135deg, #f0fdfa 100%, #ccfbf1 0%)', 
-                color: '#0f766e', 
-                border: '2px solid #99f6e4', 
-                borderRadius: '16px', 
-                cursor: 'pointer', 
-                fontWeight: '800', 
-                fontSize: '15px', 
-                textAlign: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.03)';
-                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>🏢💸</div>
-              PLANILLA EXPENSAS
-            </button>
           </div>
-        </div>
-      )}
+        )}
     </div>
   )
 }
