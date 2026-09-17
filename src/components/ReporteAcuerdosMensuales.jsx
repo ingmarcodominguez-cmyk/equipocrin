@@ -449,10 +449,11 @@ export default function ReporteAcuerdosMensuales({ onVolver }) {
                     <td style={{ padding: '10px 8px', textAlign: 'center' }}>
                       {ac.documentos && ac.documentos.length > 0 ? (
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <a
-                            href={obtenerUrlDoc(ac.documentos[0].url_storage)}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <span
+                            onClick={() => {
+                              setPacienteDocsModal(ac);
+                              setVerGestorCompleto(false);
+                            }}
                             style={{
                               background: '#eff6ff',
                               color: '#1d4ed8',
@@ -461,16 +462,16 @@ export default function ReporteAcuerdosMensuales({ onVolver }) {
                               borderRadius: '6px',
                               fontSize: '11px',
                               fontWeight: '700',
-                              textDecoration: 'none',
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '3px',
-                              whiteSpace: 'nowrap'
+                              whiteSpace: 'nowrap',
+                              cursor: 'pointer'
                             }}
-                            title={`Abrir archivo: ${ac.documentos[0].nombre_archivo}`}
+                            title="Clic para ver y elegir documentos"
                           >
-                            📄 {ac.documentos.length === 1 ? 'Doc ↗' : `${ac.documentos.length} docs ↗`}
-                          </a>
+                            📄 {ac.documentos.length === 1 ? '1 doc' : `${ac.documentos.length} docs`}
+                          </span>
                           <button
                             onClick={() => {
                               setPacienteDocsModal(ac);
