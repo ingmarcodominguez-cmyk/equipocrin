@@ -1447,7 +1447,8 @@ function App() {
           .menu-grid-crin {
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 10px;
+            row-gap: 18px;
+            column-gap: 12px;
             width: 100%;
           }
           @media (max-width: 960px) {
@@ -1456,11 +1457,14 @@ function App() {
             }
             .menu-grid-crin {
               grid-template-columns: repeat(2, minmax(0, 1fr));
+              row-gap: 14px;
+              column-gap: 10px;
             }
           }
           @media (max-width: 520px) {
             .menu-grid-crin {
               grid-template-columns: 1fr;
+              row-gap: 12px;
             }
           }
         `}</style>
@@ -1862,7 +1866,7 @@ function App() {
             maxWidth: '1240px', 
             display: 'flex', 
             flexDirection: 'column', 
-            gap: '12px', 
+            gap: '18px', 
             boxSizing: 'border-box'
           }}>
             {/* Buscadores Superiores: Uno a la par del otro */}
