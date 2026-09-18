@@ -34,6 +34,8 @@ const formatearFechaDDMMAAAA = (fechaStr) => {
   return fechaStr;
 };
 
+const formatearFecha = formatearFechaDDMMAAAA;
+
 export default function FichaPaciente({ onVolver, usuario, pacientePreseleccionado }) {
   const [listaPacientes, setListaPacientes] = useState([]);
 
@@ -41,6 +43,8 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
   const [observaciones, setObservaciones] = useState([]);
   const [cargandoObservaciones, setCargandoObservaciones] = useState(false);
   const [modalObservacionAbierto, setModalObservacionAbierto] = useState(false);
+  const [modalTareasPopupAbierto, setModalTareasPopupAbierto] = useState(false);
+  const [tareasPendientesPopup, setTareasPendientesPopup] = useState([]);
   const [nuevaObservacionTarea, setNuevaObservacionTarea] = useState('');
   const [nuevaObservacionFecha, setNuevaObservacionFecha] = useState('');
   const [nuevaObservacionPendiente, setNuevaObservacionPendiente] = useState('SI');
@@ -165,7 +169,7 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
         const pId = pacientePreseleccionado.id_paciente;
         const encontrado = listaPacientes.find(p => String(p.id_paciente) === String(pId));
         if (encontrado) {
-          await seleccionarPacientePorId(pId);
+          await seleccionarPacientePorId(pId, true);
         }
       }
     }
@@ -249,7 +253,7 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
     }
   };
 
-  const cargarObservaciones = async (idPaciente) => {
+  const cargarObservaciones = async (idPaciente, esSeleccionNueva = false) => {
     setCargandoObservaciones(true);
     try {
       const { data, error } = await supabase
@@ -266,7 +270,17 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
           throw error;
         }
       } else {
-        setObservaciones(data || []);
+        const obsData = data || [];
+        setObservaciones(obsData);
+
+        // Si se acaba de seleccionar el paciente y tiene tareas pendientes, disparar el modal emergente
+        if (esSeleccionNueva) {
+          const pendientes = obsData.filter(o => o.pendiente === 'SI');
+          if (pendientes.length > 0) {
+            setTareasPendientesPopup(pendientes);
+            setModalTareasPopupAbierto(true);
+          }
+        }
       }
     } catch (error) {
       console.error("Error al cargar observaciones:", error);
@@ -434,6 +448,21 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
     }
   };
 
+  const completarTareaDesdePopup = async (obsId) => {
+    try {
+      await cambiarEstadoPendiente(obsId, 'NO');
+      setTareasPendientesPopup(prev => {
+        const updated = prev.filter(item => item.id !== obsId);
+        if (updated.length === 0) {
+          setModalTareasPopupAbierto(false);
+        }
+        return updated;
+      });
+    } catch (err) {
+      console.error("Error al completar tarea desde popup:", err);
+    }
+  };
+
   const guardarEdicionObs = async (id) => {
     if (!editandoObsTexto.trim()) {
       alert("La observación o tarea no puede estar vacía.");
@@ -503,7 +532,7 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
     document.body.removeChild(link);
   };
 
-  async function seleccionarPacientePorId(e) {
+  async function seleccionarPacientePorId(e, esSeleccionNueva = false) {
     const pacienteIdStr = e && e.target ? e.target.value : e;
     if (!pacienteIdStr) {
       setPacienteSeleccionado(null);
@@ -511,8 +540,12 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
       setDeudasAgrupadas([]);
       setMovimientosDetallados([]);
       setVistaActiva('menu');
+      setModalTareasPopupAbierto(false);
+      setTareasPendientesPopup([]);
       return;
     }
+
+    const esCambioDePaciente = esSeleccionNueva || !pacienteSeleccionado || String(pacienteSeleccionado.id_paciente) !== String(pacienteIdStr);
 
     const pacienteEncontrado = listaPacientes.find(p => String(p.id_paciente) === String(pacienteIdStr));
     setPacienteSeleccionado(pacienteEncontrado);
@@ -542,8 +575,8 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
         setPrestaciones(prestacionesData);
       }
 
-      // Cargar observaciones
-      await cargarObservaciones(pacienteEncontrado.id_paciente);
+      // Cargar observaciones indicando si es selección de paciente para disparar el popup de tareas pendientes
+      await cargarObservaciones(pacienteEncontrado.id_paciente, esCambioDePaciente);
       await cargarAgendaPaciente(pacienteEncontrado);
       await cargarDocumentos(pacienteEncontrado.id_paciente);
       await cargarLiquidacionesPrestadores(pacienteEncontrado.id_paciente, pacienteEncontrado.nombre_apellido);
@@ -1141,6 +1174,7 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
             const encontrarPrestadorIdLocal = (usuarioNombre, pList) => {
               if (!usuarioNombre) return null;
               const normalizedUser = usuarioNombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+              if (normalizedUser.includes('por sesion') || normalizedUser.includes('sesion')) return null;
               const userWords = normalizedUser.split(/\s+/).filter(w => w.length >= 2);
 
               for (const p of pList) {
@@ -1171,6 +1205,20 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
               }
 
               const normProfNombre = prof.nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+
+              // REGLA: Si es Auxiliar o trabaja en modalidad "POR SESION" (ej: MARINA OLIVERA (POR SESION)),
+              // la sesión SIEMPRE se atribuye a VIVIANA JIMENEZ (el centro).
+              // Al auxiliar se le liquida por aparte según la liquidación de auxiliares.
+              const esAuxiliarOPorSesion = (prof.rol || '').toUpperCase().includes('AUXILIAR') ||
+                                           normProfNombre.includes('por sesion') ||
+                                           normProfNombre.includes('(por sesion)') ||
+                                           normProfNombre.includes('sesion');
+
+              if (esAuxiliarOPorSesion) {
+                sesActual[idViviana] = (sesActual[idViviana] || 0) + 1;
+                return;
+              }
+
               const esExplicito = PRESTADORES_EXPLICITOS.some(n => {
                 const pWords = n.split(/\s+/);
                 const profWords = normProfNombre.split(/\s+/);
@@ -2567,7 +2615,7 @@ const confirmarRegistroPago = async () => {
             Seleccionar Paciente (`pacientes_motor`):
           </label>
           <select
-            onChange={seleccionarPacientePorId}
+            onChange={(e) => seleccionarPacientePorId(e, true)}
             value={pacienteSeleccionado ? pacienteSeleccionado.id_paciente : ''}
             disabled={cargandoPacientes}
             style={{ width: '100%', padding: '12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '15px', background: '#f8fafc', color: '#0f172a', fontWeight: '500' }}
@@ -2592,7 +2640,7 @@ const confirmarRegistroPago = async () => {
               </p>
             </div>
             <button
-              onClick={() => { setPacienteSeleccionado(null); setAcuerdos([]); setDeudasAgrupadas([]); setMovimientosDetallados([]); setVistaActiva('menu'); }}
+              onClick={() => { setPacienteSeleccionado(null); setAcuerdos([]); setDeudasAgrupadas([]); setMovimientosDetallados([]); setVistaActiva('menu'); setModalTareasPopupAbierto(false); setTareasPendientesPopup([]); }}
               style={{ background: 'transparent', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', color: '#475569', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
             >
               Cambiar Paciente
@@ -2636,10 +2684,35 @@ const confirmarRegistroPago = async () => {
 
               <div 
                 onClick={() => setVistaActiva('observaciones')}
-                style={{ border: '2px solid #cbd5e1', borderRadius: '10px', padding: '20px', textAlign: 'center', cursor: 'pointer', background: '#fff', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}
+                style={{ 
+                  border: observaciones.some(o => o.pendiente === 'SI') ? '2px solid #f59e0b' : '2px solid #cbd5e1', 
+                  borderRadius: '10px', 
+                  padding: '20px', 
+                  textAlign: 'center', 
+                  cursor: 'pointer', 
+                  background: observaciones.some(o => o.pendiente === 'SI') ? '#fffbeb' : '#fff', 
+                  transition: 'all 0.2s', 
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                  position: 'relative'
+                }}
                 onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
                 onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
               >
+                {observaciones.some(o => o.pendiente === 'SI') && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '8px',
+                    right: '8px',
+                    background: '#f59e0b',
+                    color: '#ffffff',
+                    fontSize: '11px',
+                    fontWeight: '800',
+                    padding: '2px 8px',
+                    borderRadius: '10px'
+                  }}>
+                    {observaciones.filter(o => o.pendiente === 'SI').length} Pendiente{observaciones.filter(o => o.pendiente === 'SI').length !== 1 ? 's' : ''}
+                  </span>
+                )}
                 <div style={{ fontSize: '24px', marginBottom: '8px' }}>📝</div>
                 <h4 style={{ margin: '0 0 6px 0', color: '#1e293b', fontSize: '15px' }}>Observaciones y Tareas</h4>
                 <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Seguimiento del tratamiento, observaciones y tareas pendientes.</p>
@@ -4419,6 +4492,258 @@ const confirmarRegistroPago = async () => {
                 }}
               >
                 {procesandoObservacion ? 'Guardando...' : 'Guardar Observación'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EMERGENTE DE OBSERVACIONES Y TAREAS PENDIENTES AL SELECCIONAR PACIENTE */}
+      {modalTareasPopupAbierto && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 999999,
+            padding: '20px'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setModalTareasPopupAbierto(false);
+            }
+          }}
+        >
+          <div 
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '16px',
+              width: '100%',
+              maxWidth: '650px',
+              maxHeight: '90vh',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+              border: '2px solid #f59e0b',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              fontFamily: 'Segoe UI, system-ui, sans-serif'
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
+              borderBottom: '1px solid #fde68a',
+              padding: '16px 20px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '28px' }}>⚠️</span>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#92400e' }}>
+                      Tareas Pendientes de Atención
+                    </h3>
+                    <span style={{
+                      background: '#f59e0b',
+                      color: '#ffffff',
+                      fontSize: '11px',
+                      fontWeight: '800',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      textTransform: 'uppercase'
+                    }}>
+                      {tareasPendientesPopup.length} {tareasPendientesPopup.length === 1 ? 'Pendiente' : 'Pendientes'}
+                    </span>
+                  </div>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '13px', color: '#78350f', fontWeight: '600' }}>
+                    👤 {pacienteSeleccionado?.nombre_apellido} {pacienteSeleccionado?.dni ? `(DNI: ${pacienteSeleccionado.dni})` : ''} • ID #{pacienteSeleccionado?.id_paciente}
+                  </p>
+                </div>
+              </div>
+
+              {/* Botón X destacado para cerrar */}
+              <button
+                type="button"
+                onClick={() => setModalTareasPopupAbierto(false)}
+                title="Cerrar ventana (X)"
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '50%',
+                  width: '36px',
+                  height: '36px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  fontSize: '18px',
+                  fontWeight: 'bold',
+                  color: '#475569',
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
+                  transition: 'all 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.background = '#fee2e2';
+                  e.currentTarget.style.color = '#b91c1c';
+                  e.currentTarget.style.borderColor = '#fca5a5';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = '#ffffff';
+                  e.currentTarget.style.color = '#475569';
+                  e.currentTarget.style.borderColor = '#cbd5e1';
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Cuerpo del Modal con el listado de tareas */}
+            <div style={{
+              padding: '20px',
+              overflowY: 'auto',
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px',
+              background: '#f8fafc'
+            }}>
+              <div style={{
+                background: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                fontSize: '13px',
+                color: '#1e40af',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <span>💡</span>
+                <span>
+                  Este paciente cuenta con observaciones registradas que requieren seguimiento antes de continuar.
+                </span>
+              </div>
+
+              {tareasPendientesPopup.map((t, idx) => (
+                <div 
+                  key={t.id || idx}
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #fed7aa',
+                    borderLeft: '5px solid #f97316',
+                    borderRadius: '10px',
+                    padding: '14px 16px',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{
+                        background: '#ffedd5',
+                        color: '#c2410c',
+                        fontSize: '11px',
+                        fontWeight: 'bold',
+                        padding: '2px 8px',
+                        borderRadius: '6px'
+                      }}>
+                        ⚠️ PENDIENTE
+                      </span>
+                      <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>
+                        📅 {formatearFecha(t.fecha)}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => completarTareaDesdePopup(t.id)}
+                      style={{
+                        background: '#10b981',
+                        color: '#ffffff',
+                        border: 'none',
+                        padding: '5px 12px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        boxShadow: '0 1px 3px rgba(16,185,129,0.2)'
+                      }}
+                      title="Marcar como tarea realizada / completada"
+                    >
+                      ✓ Completar
+                    </button>
+                  </div>
+
+                  <p style={{
+                    margin: 0,
+                    fontSize: '14px',
+                    lineHeight: '1.5',
+                    color: '#0f172a',
+                    fontWeight: '600',
+                    whiteSpace: 'pre-line'
+                  }}>
+                    {t.tarea}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {/* Footer con acciones */}
+            <div style={{
+              padding: '14px 20px',
+              background: '#ffffff',
+              borderTop: '1px solid #e2e8f0',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setModalTareasPopupAbierto(false);
+                  setVistaActiva('observaciones');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid #cbd5e1',
+                  color: '#475569',
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '600'
+                }}
+              >
+                📝 Ir a Observaciones y Tareas
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setModalTareasPopupAbierto(false)}
+                style={{
+                  background: '#0284c7',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '8px 22px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: 'bold',
+                  boxShadow: '0 2px 4px rgba(2,132,199,0.25)'
+                }}
+              >
+                Cerrar (X)
               </button>
             </div>
           </div>

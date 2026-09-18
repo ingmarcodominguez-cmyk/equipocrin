@@ -365,12 +365,14 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
             if (!prof) return true;
             if ((prof.rol || '').toUpperCase().includes('AUXILIAR')) return true;
             const normNombre = (prof.nombre || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            if (normNombre.includes('POR SESION') || normNombre.includes('SESION')) return true;
             return AUXILIARES_LIST.some(aux => normNombre.includes(aux));
           };
 
           const encontrarPrestadorId = (usuarioNombre) => {
             if (!usuarioNombre) return null;
             const normalizedUser = usuarioNombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+            if (normalizedUser.includes('por sesion') || normalizedUser.includes('sesion')) return null;
             const userWords = normalizedUser.split(/\s+/).filter(w => w.length >= 2);
 
             for (const p of lista) {

@@ -166,6 +166,15 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
       }
 
       const extension = (archivoAsubir.name.split('.').pop() || 'pdf').toLowerCase();
+      const mimeTypes = {
+        pdf: 'application/pdf',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        png: 'image/png',
+        webp: 'image/webp'
+      };
+      const contentTypeFinal = archivoAsubir.type || mimeTypes[extension] || 'application/octet-stream';
+
       const baseLimpia = tituloFinal
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
@@ -176,13 +185,32 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
 
       setProgresoSubida("1/2 Subiendo archivo a Supabase Storage...");
 
-      const { error: storageErr } = await supabase.storage
-        .from('documentos_pacientes')
-        .upload(storagePath, archivoAsubir, {
-          cacheControl: '3600',
-          upsert: false,
-          contentType: archivoAsubir.type || undefined
-        });
+      let storageErr = null;
+      let intentos = 0;
+      const maxIntentos = 3;
+
+      while (intentos < maxIntentos) {
+        intentos++;
+        try {
+          if (intentos > 1) {
+            setProgresoSubida(`Reintentando subida (intento ${intentos}/${maxIntentos})...`);
+            await new Promise(r => setTimeout(r, 1200));
+          }
+          const res = await supabase.storage
+            .from('documentos_pacientes')
+            .upload(storagePath, archivoAsubir, {
+              cacheControl: '3600',
+              upsert: true,
+              contentType: contentTypeFinal
+            });
+          storageErr = res.error;
+          if (!storageErr) break;
+        } catch (fetchErr) {
+          if (intentos >= maxIntentos) {
+            throw fetchErr;
+          }
+        }
+      }
 
       if (storageErr) {
         throw new Error(`Error en Storage: ${storageErr.message}`);
@@ -214,11 +242,18 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
     } catch (err) {
       console.error("Error al subir documento:", err);
       const esRls = (err.message || '').includes('row-level security');
+      const esFailedFetch = (err.message || '').toLowerCase().includes('failed to fetch');
+      
+      let mensajeFinal = `No se pudo completar la subida: ${err.message}`;
+      if (esRls) {
+        mensajeFinal = `Error de permisos en Storage (RLS). Por favor ejecute la política de acceso total en Supabase SQL Editor.`;
+      } else if (esFailedFetch) {
+        mensajeFinal = `Error de conexión en el teléfono (Failed to fetch). Esto suele pasar por micro-cortes de red móvil/Wi-Fi o si la pantalla del teléfono se bloqueó durante la subida. Por favor mantené la pantalla activa e intentá de nuevo.`;
+      }
+
       setMensajeEstado({
         tipo: 'error',
-        texto: esRls 
-          ? `Error de permisos en Storage (RLS). Por favor ejecute la política de acceso total en Supabase SQL Editor.` 
-          : `No se pudo completar la subida: ${err.message}`
+        texto: mensajeFinal
       });
     } finally {
       setSubiendo(false);
@@ -271,7 +306,7 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
       const urlOriginal = resolverUrlDocumento(docBase);
 
       // 1. Descargar bytes del PDF original
-      const resOriginal = await fetch(urlOriginal);
+      const resOriginal = await fetch(urlOriginal, { cache: 'no-store' });
       if (!resOriginal.ok) throw new Error("No se pudo descargar el archivo PDF original de Supabase.");
       const bytesOriginal = await resOriginal.arrayBuffer();
 
@@ -354,7 +389,8 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
           .from('documentos_pacientes')
           .upload(targetPath, pdfFinalBytes, {
             contentType: 'application/pdf',
-            upsert: true
+            upsert: true,
+            cacheControl: '0'
           });
         if (upErr) throw upErr;
 
@@ -369,20 +405,39 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
           }]);
         if (insErr) throw insErr;
       } else {
-        // Sobrescribir el archivo actual (Mantiene la historia clínica unificada)
+        // Sobrescribir el archivo actual generando un nuevo path con timestamp
+        // Esto elimina cualquier problema de caché del navegador o CDN al adosar hojas
+        const baseLimpia = (docBase.nombre_archivo || 'documento')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-zA-Z0-9_-]/g, '_')
+          .substring(0, 50);
+        const nuevoTargetPath = `${pId}/${baseLimpia}_${Date.now()}.pdf`;
+
+        // Subir nuevo archivo unificado
         const { error: upErr } = await supabase.storage
           .from('documentos_pacientes')
-          .upload(targetPath, pdfFinalBytes, {
+          .upload(nuevoTargetPath, pdfFinalBytes, {
             contentType: 'application/pdf',
-            upsert: true
+            upsert: true,
+            cacheControl: '0'
           });
         if (upErr) throw upErr;
 
-        // Actualizar fecha de subida en la base de datos
-        await supabase
+        // Actualizar fecha de subida y el nuevo path en la base de datos
+        const { error: dbUpdErr } = await supabase
           .from('documentos_pacientes')
-          .update({ fecha_subida: new Date().toISOString() })
+          .update({ 
+            url_storage: nuevoTargetPath,
+            fecha_subida: new Date().toISOString() 
+          })
           .eq('id', docBase.id);
+        if (dbUpdErr) throw dbUpdErr;
+
+        // Eliminar el archivo viejo de Storage si la ruta es distinta
+        if (docBase.url_storage && docBase.url_storage !== nuevoTargetPath) {
+          await supabase.storage.from('documentos_pacientes').remove([docBase.url_storage]);
+        }
       }
 
       setMensajeEstado({
@@ -454,7 +509,8 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
     if (doc.url_storage.startsWith('JSON:')) {
       return `${window.location.origin}/?presupuesto=${doc.id}`;
     }
-    return `https://gqhfrzvtccxrixdtazzs.supabase.co/storage/v1/object/public/documentos_pacientes/${doc.url_storage}`;
+    const t = doc.fecha_subida ? new Date(doc.fecha_subida).getTime() : Date.now();
+    return `https://gqhfrzvtccxrixdtazzs.supabase.co/storage/v1/object/public/documentos_pacientes/${doc.url_storage}?v=${t}`;
   };
 
   // Helper para obtener icono según tipo de archivo

@@ -73,7 +73,17 @@ function AgendaFija({ userData }) {
     return arr;
   };
 
-  const puedeEditar = (s) => esAdminOdireccion || String(s.profesional_id) === String(userData.id);
+  const puedeEditar = (s) => {
+    if (esAdminOdireccion) return true;
+    if (String(s.profesional_id) === String(userData?.id)) return true;
+    const normUser = (userData?.nombre || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (normUser.includes('MARINA') && normUser.includes('OLIVERA')) {
+      const prof = users.find(u => String(u.id) === String(s.profesional_id));
+      const normProf = (prof?.nombre || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      if (normProf.includes('MARINA') && normProf.includes('OLIVERA')) return true;
+    }
+    return false;
+  };
 
   async function guardarSesion() {
     const p = pacientes.find(p => String(p.id) === String(pacienteSeleccionado));

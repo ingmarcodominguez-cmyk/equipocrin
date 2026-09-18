@@ -194,63 +194,96 @@ const MovimientosPrestadores = ({ userData }) => {
     );
   }
 
+  const esViviana = (nombre) => {
+    const norm = (nombre || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return norm.includes('VIVIANA');
+  };
+
+  const totalAPagar = datos.reduce((acc, item) => {
+    if (esViviana(item.nombre_prestador)) return acc;
+    const saldoNum = parseFloat(item.saldo) || 0;
+    return saldoNum > 0 ? acc + saldoNum : acc;
+  }, 0);
+
+  const cantPrestadoresAPagar = datos.filter(item => {
+    if (esViviana(item.nombre_prestador)) return false;
+    return (parseFloat(item.saldo) || 0) > 0;
+  }).length;
+
   return (
     <div style={{ color: '#fff', padding: isMobile ? '10px' : '20px', fontFamily: 'sans-serif' }}>
       <h2 style={{ fontSize: isMobile ? '18px' : '22px', margin: '0 0 15px 0' }}>Saldo Final por Prestador</h2>
+      
+      {/* TARJETA RESUMEN: TOTAL A PAGAR */}
+      {!cargando && datos.length > 0 && (
+        <div style={{
+          background: 'linear-gradient(135deg, #064e3b 0%, #022c22 100%)',
+          border: '1px solid #10b981',
+          borderRadius: '12px',
+          padding: isMobile ? '14px' : '18px 24px',
+          marginBottom: '20px',
+          boxShadow: '0 4px 15px rgba(16, 185, 129, 0.15)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <span style={{ fontSize: '18px' }}>💵</span>
+            <span style={{ fontSize: isMobile ? '12px' : '13px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.8px', color: '#a7f3d0' }}>
+              Total a Pagar a Prestadores
+            </span>
+          </div>
+          <div style={{ fontSize: isMobile ? '24px' : '30px', fontWeight: 'bold', color: '#ffffff' }}>
+            $ {totalAPagar.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <div style={{ fontSize: '12px', color: '#6ee7b7', marginTop: '4px' }}>
+            ✓ Suma exclusiva de saldos positivos ({cantPrestadoresAPagar} profesionales a liquidar) • Descontada Viviana Jiménez
+          </div>
+        </div>
+      )}
+
       {cargando ? (
         <p style={{ fontSize: '14px', color: '#888' }}>Cargando datos...</p>
-      ) : isMobile ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px' }}>
-          {datos.map((item, index) => (
-            <div 
-              key={index} 
-              onClick={() => setPrestadorSeleccionado(item)}
-              style={{ 
-                background: '#1a1a1a', 
-                border: '1px solid #333', 
-                borderRadius: '8px', 
-                padding: '14px', 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center', 
-                cursor: 'pointer'
-              }}
-            >
-              <div>
-                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#00f2ff', display: 'block' }}>
-                  👤 {item.nombre_prestador}
-                </span>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <span style={{ fontSize: '10px', color: '#aaa', display: 'block', marginBottom: '2px' }}>Saldo Final</span>
-                <span style={{ fontSize: '13.5px', fontWeight: 'bold', color: '#fff' }}>
-                  $ {parseFloat(item.saldo).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px' }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid #444' }}>
-              <th style={{ textAlign: 'left', padding: '10px' }}>Nombre</th>
-              <th style={{ textAlign: 'right', padding: '10px' }}>Saldo Final</th>
-            </tr>
-          </thead>
-          <tbody>
-            {datos.map((item, index) => (
-              <tr 
-                key={index} 
-                style={{ borderBottom: '1px solid #222', cursor: 'pointer' }} 
-                onClick={() => setPrestadorSeleccionado(item)}
-              >
-                <td style={{ padding: '10px', color: '#00f2ff' }}>{item.nombre_prestador}</td>
-                <td style={{ textAlign: 'right', padding: '10px' }}>$ {parseFloat(item.saldo).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <div style={{ overflowX: 'auto', borderRadius: '8px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #444' }}>
+                <th style={{ textAlign: 'left', padding: isMobile ? '10px 8px' : '12px 10px', fontSize: isMobile ? '13px' : '14px' }}>Nombre</th>
+                <th style={{ textAlign: 'right', padding: isMobile ? '10px 8px' : '12px 10px', fontSize: isMobile ? '13px' : '14px' }}>Saldo Final</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {datos.map((item, index) => (
+                <tr 
+                  key={index} 
+                  style={{ borderBottom: '1px solid #222', cursor: 'pointer' }} 
+                  onClick={() => setPrestadorSeleccionado(item)}
+                >
+                  <td style={{ padding: isMobile ? '11px 8px' : '10px', color: '#00f2ff', fontSize: isMobile ? '13px' : '14px' }}>
+                    {item.nombre_prestador}
+                  </td>
+                  <td style={{ 
+                    textAlign: 'right', 
+                    padding: isMobile ? '11px 8px' : '10px',
+                    color: parseFloat(item.saldo) < 0 ? '#f87171' : '#fff',
+                    fontSize: isMobile ? '13px' : '14px',
+                    fontWeight: '500'
+                  }}>
+                    $ {parseFloat(item.saldo).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr style={{ borderTop: '2px solid #10b981', background: '#064e3b', fontWeight: 'bold' }}>
+                <td style={{ padding: isMobile ? '12px 8px' : '14px 10px', color: '#a7f3d0', fontSize: isMobile ? '12.5px' : '14px' }}>
+                  TOTAL A PAGAR <span style={{ fontSize: isMobile ? '10px' : '12px', fontWeight: 'normal', color: '#6ee7b7', display: isMobile ? 'block' : 'inline' }}>(Saldos positivos sin Viviana Jiménez)</span>
+                </td>
+                <td style={{ textAlign: 'right', padding: isMobile ? '12px 8px' : '14px 10px', color: '#ffffff', fontSize: isMobile ? '15px' : '17px' }}>
+                  $ {totalAPagar.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       )}
     </div>
   );
