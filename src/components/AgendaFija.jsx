@@ -30,7 +30,35 @@ function AgendaFija({ userData }) {
   const rol = userData?.rol?.toUpperCase();
   const esAdminOdireccion = rol === 'ADMINISTRACION' || rol === 'DIRECCION';
 
-  useEffect(() => { cargarDatos() }, []);
+  const esMarinaOlivera = (id, nombre) => {
+    const idStr = String(id || '').trim();
+    if (idStr === '692dc3c6-7a77-4862-bee3-28e700aac08b' || idStr === 'e12e12e1-1212-1212-1212-121212121212') return true;
+    const n = (nombre || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return n.includes('MARINA') && n.includes('OLIVERA');
+  };
+
+  const getMarinaIds = () => {
+    const ids = ['692dc3c6-7a77-4862-bee3-28e700aac08b', 'e12e12e1-1212-1212-1212-121212121212'];
+    (users || []).forEach(u => {
+      if (esMarinaOlivera(u.id, u.nombre) && !ids.includes(String(u.id))) {
+        ids.push(String(u.id));
+      }
+    });
+    return ids;
+  };
+
+  useEffect(() => { 
+    cargarDatos();
+  }, []);
+
+  useEffect(() => {
+    if (!esAdminOdireccion && userData?.id) {
+      setProfesionalFiltroId(String(userData.id));
+      if (!prestadorSeleccionado) {
+        setPrestadorSeleccionado(String(userData.id));
+      }
+    }
+  }, [userData?.id, esAdminOdireccion]);
 
   const idToUuid = (id) => '00000000-0000-0000-0000-' + String(id).padStart(12, '0');
 
@@ -75,12 +103,11 @@ function AgendaFija({ userData }) {
 
   const puedeEditar = (s) => {
     if (esAdminOdireccion) return true;
-    if (String(s.profesional_id) === String(userData?.id)) return true;
-    const normUser = (userData?.nombre || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    if (normUser.includes('MARINA') && normUser.includes('OLIVERA')) {
-      const prof = users.find(u => String(u.id) === String(s.profesional_id));
-      const normProf = (prof?.nombre || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      if (normProf.includes('MARINA') && normProf.includes('OLIVERA')) return true;
+    const sProfId = String(s.profesional_id || '').trim();
+    if (sProfId === String(userData?.id || '').trim()) return true;
+    if (esMarinaOlivera(userData?.id, userData?.nombre)) {
+      const marinaIds = getMarinaIds();
+      if (marinaIds.includes(sProfId)) return true;
     }
     return false;
   };
@@ -126,10 +153,32 @@ function AgendaFija({ userData }) {
     setPacienteSeleccionado(String(s.paciente_id)); setPrestadorSeleccionado(String(s.profesional_id));
   }
 
+  const marinaIds = getMarinaIds();
+  const usuarioEsMarina = esMarinaOlivera(userData?.id, userData?.nombre);
+  const filtroEsMarina = marinaIds.includes(String(profesionalFiltroId || '').trim());
+
   // Lógica de filtrado avanzada para Agenda
   const sesionesVisibles = sesiones.filter(s => {
-    const coincideProfesional = profesionalFiltroId === '' || String(s.profesional_id) === String(profesionalFiltroId);
-    const coincidePaciente = filtroPacienteAgenda === '' || s.paciente_nombre.toLowerCase().includes(filtroPacienteAgenda.toLowerCase());
+    const sProfId = String(s.profesional_id || '').trim();
+
+    let coincideProfesional = true;
+    if (usuarioEsMarina) {
+      // Si Marina está logueada: si no tiene filtro manual o si seleccionó Marina (directa o por sesión), ve ambas cuentas
+      if (!profesionalFiltroId || filtroEsMarina) {
+        coincideProfesional = marinaIds.includes(sProfId);
+      } else {
+        coincideProfesional = sProfId === String(profesionalFiltroId).trim();
+      }
+    } else if (filtroEsMarina) {
+      // Si un administrador u otro usuario selecciona Marina (o Marina Por Sesión), ve ambas cuentas juntas
+      coincideProfesional = marinaIds.includes(sProfId);
+    } else if (profesionalFiltroId !== '') {
+      coincideProfesional = sProfId === String(profesionalFiltroId).trim();
+    } else if (!esAdminOdireccion && userData?.id) {
+      coincideProfesional = sProfId === String(userData.id).trim();
+    }
+
+    const coincidePaciente = filtroPacienteAgenda === '' || (s.paciente_nombre || '').toLowerCase().includes(filtroPacienteAgenda.toLowerCase());
     return coincideProfesional && coincidePaciente && s.dia_semana === diaConsulta;
   }).sort((a,b) => a.hora.localeCompare(b.hora));
 
@@ -157,8 +206,12 @@ function AgendaFija({ userData }) {
           
           <div style={{ marginTop: '20px' }}>
              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-               <select style={inputStyle} onChange={(e) => setProfesionalFiltroId(e.target.value)}>
-                  <option value="">Todos los prof.</option>
+               <select 
+                 style={inputStyle} 
+                 value={profesionalFiltroId} 
+                 onChange={(e) => setProfesionalFiltroId(e.target.value)}
+               >
+                  <option value="">{esAdminOdireccion ? "Todos los prof." : (usuarioEsMarina ? "Ver mi agenda completa (Directa + Por Sesión)" : "Ver mi agenda")}</option>
                   {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                </select>
                <input style={inputStyle} placeholder="Filtrar por paciente..." onChange={(e) => setFiltroPacienteAgenda(e.target.value)} />

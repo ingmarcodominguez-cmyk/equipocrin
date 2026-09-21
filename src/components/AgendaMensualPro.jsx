@@ -22,6 +22,30 @@ function AgendaMensualPro({ userData }) {
   const rol = userData?.rol?.toUpperCase() || "";
   const esAdmin = ['ADMINISTRACION', 'DIRECCION', 'PROFESIONAL_PLUS'].includes(rol);
 
+  const esMarinaOlivera = (id, nombre) => {
+    const idStr = String(id || '').trim();
+    if (idStr === '692dc3c6-7a77-4862-bee3-28e700aac08b' || idStr === 'e12e12e1-1212-1212-1212-121212121212') return true;
+    const n = (nombre || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return n.includes('MARINA') && n.includes('OLIVERA');
+  };
+
+  const getMarinaIds = () => {
+    const ids = ['692dc3c6-7a77-4862-bee3-28e700aac08b', 'e12e12e1-1212-1212-1212-121212121212'];
+    (users || []).forEach(u => {
+      if (esMarinaOlivera(u.id, u.nombre) && !ids.includes(String(u.id))) {
+        ids.push(String(u.id));
+      }
+    });
+    return ids;
+  };
+
+  useEffect(() => {
+    if (!esAdmin && userData?.id) {
+      setFiltroProfesional(String(userData.id));
+      setForm(prev => ({ ...prev, profesional_id: String(userData.id) }));
+    }
+  }, [userData?.id, esAdmin]);
+
   const generarHorarios = () => {
     const arr = [];
     let horaMa = 9, minMa = 0;
@@ -64,12 +88,17 @@ function AgendaMensualPro({ userData }) {
     const horaSeleccionada = form.horario_especial || form.hora;
     const fechaSeleccionada = `${mesActual.getFullYear()}-${String(mesActual.getMonth() + 1).padStart(2, '0')}-${String(diaSeleccionado).padStart(2, '0')}`;
     
+    const marinaIds = getMarinaIds();
     const existeConflicto = turnos.some(t => {
       const esElMismoTurno = turnoEditando ? String(t.id) === String(turnoEditando.id) : false;
       if (esElMismoTurno) return false;
       const tFecha = new Date(t.fecha_inicio).toISOString().split('T')[0];
       const tHora = t.observaciones?.split(']')[0]?.replace('[', '');
-      return String(t.profesional_id) === String(form.profesional_id) && 
+      const tProfId = String(t.profesional_id || '').trim();
+      const formProfId = String(form.profesional_id || '').trim();
+      const mismoProf = tProfId === formProfId || 
+        (marinaIds.includes(tProfId) && marinaIds.includes(formProfId));
+      return mismoProf && 
              tFecha === fechaSeleccionada && 
              tHora === horaSeleccionada;
     });
@@ -124,8 +153,27 @@ function AgendaMensualPro({ userData }) {
     setFiltroFechaInput('');
   };
 
-  let turnosVisibles = esAdmin ? turnos : turnos.filter(t => String(t.profesional_id || '').trim() === String(userData?.id || '').trim());
-  if (filtroProfesional) turnosVisibles = turnosVisibles.filter(t => String(t.profesional_id) === String(filtroProfesional));
+  const marinaIds = getMarinaIds();
+  const usuarioEsMarina = esMarinaOlivera(userData?.id, userData?.nombre);
+  const filtroEsMarina = marinaIds.includes(String(filtroProfesional || '').trim());
+
+  let turnosVisibles = esAdmin 
+    ? turnos 
+    : turnos.filter(t => {
+        const tProfId = String(t.profesional_id || '').trim();
+        if (usuarioEsMarina) {
+          return marinaIds.includes(tProfId);
+        }
+        return tProfId === String(userData?.id || '').trim();
+      });
+
+  if (filtroProfesional) {
+    if (filtroEsMarina) {
+      turnosVisibles = turnosVisibles.filter(t => marinaIds.includes(String(t.profesional_id || '').trim()));
+    } else {
+      turnosVisibles = turnosVisibles.filter(t => String(t.profesional_id) === String(filtroProfesional));
+    }
+  }
   if (filtroEstado) turnosVisibles = turnosVisibles.filter(t => t.estado === filtroEstado);
   if (filtroPaciente) {
     turnosVisibles = turnosVisibles.filter(t => 
