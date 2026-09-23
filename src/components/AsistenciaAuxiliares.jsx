@@ -340,13 +340,31 @@ export default function AsistenciaAuxiliares({ onVolver, usuario }) {
     cargarPacientesMaestro();
   }, []);
 
-  // Carga inicial y cada vez que cambia la fecha de trabajo
+  // Carga inicial y cada vez que cambia la fecha de trabajo (con suscripción Realtime en vivo)
   useEffect(() => {
     if (fechaTrabajo) {
       cargarAuxiliares();
       cargarAsistenciasDia();
       cargarAsistenciasPacientesFecha(fechaTrabajo);
     }
+
+    const channel = supabase
+      .channel('asistencia_auxiliares_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'asistencia_auxiliares_motor' }, () => {
+        if (fechaTrabajo) {
+          cargarAsistenciasDia();
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'asistencia_pacientes_motor' }, () => {
+        if (fechaTrabajo) {
+          cargarAsistenciasPacientesFecha(fechaTrabajo);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [fechaTrabajo]);
 
   useEffect(() => {

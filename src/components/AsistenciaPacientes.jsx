@@ -14,8 +14,9 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
   // Listados de mapeo para usuarios (prestadores)
   const [mapaPrestadores, setMapaPrestadores] = useState({});
 
-  // --- NUEVO ESTADO DE TABS Y REPORTES ---
+  // --- NUEVO ESTADO DE TABS, REPORTES Y FILTROS ---
   const [activeTab, setActiveTab] = useState('diaria'); // 'diaria' o 'reporte'
+  const [filtroHorario, setFiltroHorario] = useState('TODOS'); // 'TODOS', 'MANANA', 'TARDE', o 'HH:MM'
   const [pacientesMap, setPacientesMap] = useState([]); // Array de objetos { id_uuid, id_paciente, nombre_apellido, dni }
   const [pacientesMotor, setPacientesMotor] = useState([]); // Listado de pacientes_motor para el dropdown
   
@@ -48,9 +49,20 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
 
   const diaSemanaNombre = getDiaSemana(fechaTrabajo);
 
-  // Carga inicial
+  // Carga inicial y suscripción en tiempo real (Realtime)
   useEffect(() => {
     cargarDatos();
+
+    const channel = supabase
+      .channel('asistencia_pacientes_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'asistencia_pacientes_motor' }, () => {
+        cargarDatos();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [fechaTrabajo]);
 
   const cargarDatos = async () => {
@@ -66,7 +78,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
       setMapaPrestadores(lookupPrestadores);
 
       // 2. Cargar listas de pacientes directamente de pacientes_motor
-      const { data: pmList, error: errPM } = await supabase.from('pacientes_motor').select('id_paciente, nombre_apellido, dni, domicilio, tel_padres, tel_alternativo');
+      const { data: pmList, error: errPM } = await supabase.from('pacientes_motor').select('id_paciente, nombre_apellido, dni, domicilio, tel_padres, tel_alternativo, estado');
 
       if (errPM) throw errPM;
 
@@ -89,7 +101,8 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
           dni: pm.dni,
           domicilio: pm.domicilio,
           tel_padres: pm.tel_padres,
-          tel_alternativo: pm.tel_alternativo
+          tel_alternativo: pm.tel_alternativo,
+          estado: pm.estado || 'ACTIVO'
         };
         patientLookup[id_uuid] = pObj;
         listadoMapeado.push(pObj);
@@ -181,9 +194,23 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
     );
   };
 
+  // Horarios de atención únicos del día
+  const horariosDisponibles = Array.from(
+    new Set(pacientesCargados.flatMap(p => p.sesiones.map(s => s.hora)))
+  ).sort((a, b) => a.localeCompare(b));
+
+  // Filtrar pacientes según el selector de horario
+  const pacientesFiltrados = pacientesCargados.filter(p => {
+    if (filtroHorario === 'TODOS') return true;
+    if (filtroHorario === 'MANANA') return getTurno(p.sesiones) === 'Mañana';
+    if (filtroHorario === 'TARDE') return getTurno(p.sesiones) === 'Tarde';
+    return p.sesiones.some(s => s.hora === filtroHorario);
+  });
+
   const marcarTodosPresentes = () => {
+    const idsSet = new Set(pacientesFiltrados.map(p => p.id_paciente));
     setPacientesCargados(prev =>
-      prev.map(p => ({ ...p, estado: 'Presente' }))
+      prev.map(p => idsSet.has(p.id_paciente) ? { ...p, estado: 'Presente' } : p)
     );
   };
 
@@ -275,6 +302,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
         throw new Error("No se pudo asociar la ficha del paciente para buscar su agenda.");
       }
 
+      // 1. Intentar cargar sesiones fijas activas
       const { data: sesionesPac, error: errS } = await supabase
         .from('sesiones_fijas')
         .select('*')
@@ -283,7 +311,52 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
 
       if (errS) throw errS;
 
-      if (!sesionesPac || sesionesPac.length === 0) {
+      const primerDia = `${reporteMes}-01`;
+      const ultimoDia = getUltimoDiaMes(reporteMes);
+
+      // 2. Cargar asistencias grabadas en el mes
+      const { data: asistencias, error: errA } = await supabase
+        .from('asistencia_pacientes_motor')
+        .select('*')
+        .eq('id_paciente', Number(reportePacienteId))
+        .gte('fecha', primerDia)
+        .lte('fecha', ultimoDia);
+
+      if (errA) throw errA;
+
+      const mapaAsistencias = {};
+      (asistencias || []).forEach(a => {
+        mapaAsistencias[a.fecha] = a;
+      });
+
+      // Obtener hoy en formato YYYY-MM-DD
+      const dHoy = new Date();
+      const anioLocal = dHoy.getFullYear();
+      const mesLocal = String(dHoy.getMonth() + 1).padStart(2, '0');
+      const diaLocal = String(dHoy.getDate()).padStart(2, '0');
+      const hoyStr = `${anioLocal}-${mesLocal}-${diaLocal}`;
+
+      let fechasEsperadas = [];
+      const sesionesPorDiaSemana = {};
+
+      if (sesionesPac && sesionesPac.length > 0) {
+        const diasSemanaPac = [...new Set(sesionesPac.map(s => s.dia_semana))];
+        sesionesPac.forEach(s => {
+          if (!sesionesPorDiaSemana[s.dia_semana]) {
+            sesionesPorDiaSemana[s.dia_semana] = [];
+          }
+          sesionesPorDiaSemana[s.dia_semana].push({
+            hora: s.hora,
+            profesional: mapaPrestadores[s.profesional_id] || 'Sin prof.'
+          });
+        });
+        fechasEsperadas = getFechasSemanaEnMes(reporteMes, diasSemanaPac);
+      } else {
+        // Paciente inactivo o sin sesiones fijas activas: usar las fechas registradas en el historial de asistencia del mes
+        fechasEsperadas = Object.keys(mapaAsistencias).sort();
+      }
+
+      if (fechasEsperadas.length === 0) {
         setDatosReporte([]);
         setKpiReporte({
           totalEsperados: 0,
@@ -299,54 +372,16 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
         return;
       }
 
-      const diasSemanaPac = [...new Set(sesionesPac.map(s => s.dia_semana))];
-      const sesionesPorDiaSemana = {};
-      sesionesPac.forEach(s => {
-        if (!sesionesPorDiaSemana[s.dia_semana]) {
-          sesionesPorDiaSemana[s.dia_semana] = [];
-        }
-        sesionesPorDiaSemana[s.dia_semana].push({
-          hora: s.hora,
-          profesional: mapaPrestadores[s.profesional_id] || 'Sin prof.'
-        });
-      });
-
-      const fechasEsperadas = getFechasSemanaEnMes(reporteMes, diasSemanaPac);
-
-      const primerDia = `${reporteMes}-01`;
-      const ultimoDia = getUltimoDiaMes(reporteMes);
-      
-      const { data: asistencias, error: errA } = await supabase
-        .from('asistencia_pacientes_motor')
-        .select('*')
-        .eq('id_paciente', Number(reportePacienteId))
-        .gte('fecha', primerDia)
-        .lte('fecha', ultimoDia);
-
-      if (errA) throw errA;
-
-      const mapaAsistencias = {};
-      (asistencias || []).forEach(a => {
-        mapaAsistencias[a.fecha] = a;
-      });
-
-      // Obtener hoy en formato YYYY-MM-DD (hora local)
-      const dHoy = new Date();
-      const anioLocal = dHoy.getFullYear();
-      const mesLocal = String(dHoy.getMonth() + 1).padStart(2, '0');
-      const diaLocal = String(dHoy.getDate()).padStart(2, '0');
-      const hoyStr = `${anioLocal}-${mesLocal}-${diaLocal}`;
-
       let countPresente = 0;
       let countConAviso = 0;
       let countSinAviso = 0;
-      let countPendiente = 0; // Transcurridos y pendientes de registrar (cuentan como inasistencia)
+      let countPendiente = 0;
       let totalEsperadosTranscurridos = 0;
       let countFuturos = 0;
 
       const listadoFechas = fechasEsperadas.map(f => {
         const diaSem = getDiaSemana(f);
-        const ses = sesionesPorDiaSemana[diaSem] || [];
+        const ses = [...(sesionesPorDiaSemana[diaSem] || [])];
         const registroAsist = mapaAsistencias[f];
 
         let est = 'Pendiente';
@@ -354,6 +389,9 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
         if (registroAsist) {
           est = registroAsist.estado;
           obs = registroAsist.obs || '';
+          if (ses.length === 0 && registroAsist.usuario) {
+            ses.push({ hora: '-', profesional: `Reg: ${registroAsist.usuario}` });
+          }
         }
 
         const esFuturo = f > hoyStr;
@@ -385,7 +423,6 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
 
       listadoFechas.sort((a, b) => a.fecha.localeCompare(b.fecha));
 
-      // El porcentaje se calcula como: Presentes / Total Esperados Transcurridos
       const porcentaje = totalEsperadosTranscurridos > 0 
         ? (countPresente / totalEsperadosTranscurridos) * 100 
         : 0;
@@ -675,7 +712,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
 
       {activeTab === 'diaria' && (
         <>
-          {/* Filtros / Selector de fecha */}
+          {/* Filtros / Selector de fecha y horario */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center', marginBottom: '25px', background: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Fecha de Trabajo</label>
@@ -694,6 +731,42 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
               </span>
             </div>
 
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '210px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Filtro por Horario</label>
+              <select
+                value={filtroHorario}
+                onChange={(e) => setFiltroHorario(e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  background: '#fff',
+                  fontWeight: '600',
+                  color: '#0f172a',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="TODOS">⏰ Todos los Horarios ({pacientesCargados.length})</option>
+                <optgroup label="Turnos Generales">
+                  <option value="MANANA">☀️ Turno Mañana</option>
+                  <option value="TARDE">⛅ Turno Tarde</option>
+                </optgroup>
+                {horariosDisponibles.length > 0 && (
+                  <optgroup label="Horarios Específicos del Día">
+                    {horariosDisponibles.map(h => {
+                      const cant = pacientesCargados.filter(p => p.sesiones.some(s => s.hora === h)).length;
+                      return (
+                        <option key={h} value={h}>
+                          🕒 {h} hs ({cant} paciente{cant !== 1 ? 's' : ''})
+                        </option>
+                      );
+                    })}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+
             {pacientesCargados.length > 0 && (
               <button
                 onClick={marcarTodosPresentes}
@@ -701,7 +774,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
                 onMouseOver={(e) => e.currentTarget.style.background = '#059669'}
                 onMouseOut={(e) => e.currentTarget.style.background = '#10b981'}
               >
-                ✅ Marcar todos como Presentes
+                ✅ Marcar todos filtrados como Presentes
               </button>
             )}
           </div>
@@ -724,6 +797,16 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
                     Seleccioná otra fecha o agregá sesiones fijas a los pacientes en este día.
                   </p>
                 </div>
+              ) : pacientesFiltrados.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', border: '2px dashed #cbd5e1', borderRadius: '12px', background: '#f8fafc' }}>
+                  <span style={{ fontSize: '32px', display: 'block', marginBottom: '10px' }}>🔍</span>
+                  <h4 style={{ margin: 0, color: '#475569', fontSize: '15px', fontWeight: 'bold' }}>
+                    No hay pacientes con sesiones fijas en el horario seleccionado ({filtroHorario === 'MANANA' ? 'Turno Mañana' : filtroHorario === 'TARDE' ? 'Turno Tarde' : `${filtroHorario} hs`}).
+                  </h4>
+                  <p style={{ margin: '5px 0 0 0', color: '#94a3b8', fontSize: '12px' }}>
+                    Probá cambiando el filtro de horario a "Todos los Horarios".
+                  </p>
+                </div>
               ) : (
                 <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px', marginBottom: '25px' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', textAlign: 'left' }}>
@@ -736,7 +819,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {pacientesCargados.map((p, idx) => (
+                      {pacientesFiltrados.map((p, idx) => (
                         <tr key={p.id_paciente} style={{ borderBottom: '1px solid #edf2f7', background: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
                           <td style={{ padding: '14px 20px', fontWeight: 'bold', color: '#0f172a' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -757,11 +840,29 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
                           </td>
                           <td style={{ padding: '14px 20px' }}>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                              {p.sesiones.map((s, sIdx) => (
-                                <span key={sIdx} style={{ fontSize: '11px', background: '#eff6ff', color: '#1e40af', border: '1px solid #bfdbfe', padding: '3px 8px', borderRadius: '20px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                  🕒 <strong>{s.hora}</strong> - {s.profesional_nombre}
-                                </span>
-                              ))}
+                              {p.sesiones.map((s, sIdx) => {
+                                const esCoincidencia = s.hora === filtroHorario;
+                                return (
+                                  <span 
+                                    key={sIdx} 
+                                    style={{ 
+                                      fontSize: '11px', 
+                                      background: esCoincidencia ? '#2563eb' : '#eff6ff', 
+                                      color: esCoincidencia ? '#ffffff' : '#1e40af', 
+                                      border: esCoincidencia ? '1px solid #1d4ed8' : '1px solid #bfdbfe', 
+                                      padding: '3px 8px', 
+                                      borderRadius: '20px', 
+                                      display: 'inline-flex', 
+                                      alignItems: 'center', 
+                                      gap: '4px',
+                                      fontWeight: esCoincidencia ? 'bold' : 'normal',
+                                      boxShadow: esCoincidencia ? '0 2px 4px rgba(37, 99, 235, 0.3)' : 'none'
+                                    }}
+                                  >
+                                    🕒 <strong>{s.hora}</strong> - {s.profesional_nombre}
+                                  </span>
+                                );
+                              })}
                             </div>
                           </td>
                           <td style={{ padding: '14px 20px', textAlign: 'center' }}>
@@ -864,7 +965,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
                 <option value="">-- Seleccionar Paciente --</option>
                 {pacientesMotor.map(p => (
                   <option key={p.id_paciente} value={p.id_paciente}>
-                    {p.nombre_apellido} {p.dni ? `(DNI: ${p.dni})` : ''}
+                    {p.nombre_apellido} {p.estado === 'INACTIVO' ? '⛔ (INACTIVO / DE BAJA)' : ''} {p.dni ? `(DNI: ${p.dni})` : ''}
                   </option>
                 ))}
               </select>
@@ -911,7 +1012,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
                 <div style={{ padding: '40px', textAlign: 'center', border: '2px dashed #cbd5e1', borderRadius: '12px', background: '#f8fafc' }}>
                   <span style={{ fontSize: '32px', display: 'block', marginBottom: '10px' }}>🏖️</span>
                   <h4 style={{ margin: 0, color: '#475569', fontSize: '15px', fontWeight: 'bold' }}>
-                    Este paciente no tiene sesiones programadas en su Agenda Fija para los días de este mes.
+                    Este paciente no posee asistencias registradas ni sesiones programadas en el mes seleccionado.
                   </h4>
                 </div>
               ) : (
