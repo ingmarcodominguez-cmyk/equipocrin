@@ -199,6 +199,14 @@ function AgendaMensualPro({ userData }) {
       }).sort((a, b) => new Date(a.fecha_inicio) - new Date(b.fecha_inicio))
     : [];
 
+  const pacientesUnicos = Array.from(
+    new Set((turnos || []).map(t => (t.paciente_nombre || '').trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
+
+  const sugerenciasPacientes = filtroPaciente.trim()
+    ? pacientesUnicos.filter(n => n.toLowerCase().includes(filtroPaciente.toLowerCase().trim()))
+    : [];
+
   return (
     <div style={{ padding: '0', backgroundColor: '#ffffff', color: '#000000', fontSize: '14px', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', margin: '20px auto', width: '95%', maxWidth: '900px', flexWrap: 'wrap' }}>
@@ -228,14 +236,80 @@ function AgendaMensualPro({ userData }) {
             {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
           </select>
           
-          <input 
-            type="text" 
-            placeholder="Filtrar por paciente..." 
-            value={filtroPaciente} 
-            onChange={e => setFiltroPaciente(e.target.value)} 
-            style={{ padding: '10px', fontSize: '16px', borderRadius: '4px', border: '1px solid #ccc' }}
-          />
-          
+          <div style={{ position: 'relative', width: '100%' }}>
+            <input 
+              type="text" 
+              list="lista-pacientes-sugerencias"
+              placeholder="Filtrar por paciente..." 
+              value={filtroPaciente} 
+              onChange={e => setFiltroPaciente(e.target.value)} 
+              style={{ padding: '10px 35px 10px 10px', fontSize: '16px', borderRadius: '4px', border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }}
+            />
+            <datalist id="lista-pacientes-sugerencias">
+              {pacientesUnicos.map((nombre, i) => (
+                <option key={i} value={nombre} />
+              ))}
+            </datalist>
+
+            {filtroPaciente && (
+              <button
+                onClick={() => setFiltroPaciente('')}
+                title="Borrar búsqueda de paciente"
+                style={{
+                  position: 'absolute',
+                  right: '8px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: '#64748b',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  padding: '2px 6px'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.color = '#ef4444'}
+                onMouseOut={(e) => e.currentTarget.style.color = '#64748b'}
+              >
+                ✖
+              </button>
+            )}
+          </div>
+
+          {/* Selector interactivo de pacientes coincidentes */}
+          {filtroPaciente.trim() && sugerenciasPacientes.length > 0 && (
+            <div style={{ background: '#f8fafc', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#1e40af' }}>
+                💡 {sugerenciasPacientes.length === 1 ? 'Paciente coincidente:' : `Seleccionar paciente (${sugerenciasPacientes.length}):`}
+              </span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxHeight: '110px', overflowY: 'auto' }}>
+                {sugerenciasPacientes.map((nombre, i) => {
+                  const esSeleccionado = filtroPaciente.trim().toLowerCase() === nombre.toLowerCase();
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => setFiltroPaciente(nombre)}
+                      style={{
+                        background: esSeleccionado ? '#2563eb' : '#ffffff',
+                        color: esSeleccionado ? '#ffffff' : '#1e40af',
+                        border: esSeleccionado ? '1px solid #1d4ed8' : '1px solid #93c5fd',
+                        borderRadius: '4px',
+                        padding: '4px 8px',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      👤 {nombre} {esSeleccionado ? '✓' : ''}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <label style={{ fontSize: '10px', color: '#666', fontWeight: 'bold', textAlign: 'center' }}>FECHA</label>
             <input 
@@ -259,7 +333,7 @@ function AgendaMensualPro({ userData }) {
 
       {/* Resumen Completo de Turnos del Paciente cuando hay búsqueda por nombre */}
       {filtroPaciente.trim() !== '' && (
-        <div style={{ width: '95%', maxWidth: '900px', margin: '0 auto 20px auto', background: '#f8fafc', border: '2px solid #3b82f6', borderRadius: '12px', padding: '16px', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.15)' }}>
+        <div style={{ width: '95%', maxWidth: '900px', margin: '0 auto 20px auto', background: '#f8fafc', border: '2px solid #3b82f6', borderRadius: '12px', padding: '16px', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.15)', position: 'relative' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginBottom: '12px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '20px' }}>🔍</span>
@@ -271,7 +345,7 @@ function AgendaMensualPro({ userData }) {
               </span>
             </div>
 
-            <div style={{ display: 'flex', gap: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <button
                 onClick={() => setVerSoloFuturos(true)}
                 style={{
@@ -285,7 +359,7 @@ function AgendaMensualPro({ userData }) {
                   color: verSoloFuturos ? '#fff' : '#475569'
                 }}
               >
-                📅 Solo Futuros (Desde hoy)
+                📅 Solo Futuros
               </button>
               <button
                 onClick={() => setVerSoloFuturos(false)}
@@ -300,7 +374,29 @@ function AgendaMensualPro({ userData }) {
                   color: !verSoloFuturos ? '#fff' : '#475569'
                 }}
               >
-                📜 Histórico Completo
+                📜 Histórico
+              </button>
+              <button
+                onClick={() => setFiltroPaciente('')}
+                title="Cerrar ventana y borrar búsqueda de paciente"
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  background: '#ef4444',
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  marginLeft: '4px'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.background = '#dc2626'}
+                onMouseOut={(e) => e.currentTarget.style.background = '#ef4444'}
+              >
+                ✖ Cerrar
               </button>
             </div>
           </div>
