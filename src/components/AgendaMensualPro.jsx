@@ -13,6 +13,7 @@ function AgendaMensualPro({ userData }) {
   const [filtroProfesional, setFiltroProfesional] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
   const [filtroPaciente, setFiltroPaciente] = useState('')
+  const [verSoloFuturos, setVerSoloFuturos] = useState(true)
   
   const [form, setForm] = useState({ 
     paciente_nombre: '', profesional_id: '', prestacion: 'Turno primera vez', 
@@ -185,6 +186,19 @@ function AgendaMensualPro({ userData }) {
   const diasEnMes = new Date(mesActual.getFullYear(), mesActual.getMonth() + 1, 0).getDate();
   const offset = (new Date(mesActual.getFullYear(), mesActual.getMonth(), 1).getDay() + 6) % 7;
 
+  // Calculo de turnos completos del paciente buscado (independientemente del mes en pantalla)
+  const hoyInicioDia = new Date();
+  hoyInicioDia.setHours(0, 0, 0, 0);
+
+  const turnosPacienteFiltrado = filtroPaciente.trim() 
+    ? turnosVisibles.filter(t => {
+        if (verSoloFuturos) {
+          return new Date(t.fecha_inicio) >= hoyInicioDia;
+        }
+        return true;
+      }).sort((a, b) => new Date(a.fecha_inicio) - new Date(b.fecha_inicio))
+    : [];
+
   return (
     <div style={{ padding: '0', backgroundColor: '#ffffff', color: '#000000', fontSize: '14px', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', margin: '20px auto', width: '95%', maxWidth: '900px', flexWrap: 'wrap' }}>
@@ -242,6 +256,156 @@ function AgendaMensualPro({ userData }) {
           </div>
         </div>
       </div>
+
+      {/* Resumen Completo de Turnos del Paciente cuando hay búsqueda por nombre */}
+      {filtroPaciente.trim() !== '' && (
+        <div style={{ width: '95%', maxWidth: '900px', margin: '0 auto 20px auto', background: '#f8fafc', border: '2px solid #3b82f6', borderRadius: '12px', padding: '16px', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.15)' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginBottom: '12px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '20px' }}>🔍</span>
+              <h3 style={{ margin: 0, fontSize: '16px', color: '#1e3a8a', fontWeight: 'bold' }}>
+                Todos los turnos de "{filtroPaciente.trim()}"
+              </h3>
+              <span style={{ background: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}>
+                {turnosPacienteFiltrado.length} {verSoloFuturos ? 'futuros' : 'registrados'}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button
+                onClick={() => setVerSoloFuturos(true)}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  background: verSoloFuturos ? '#3b82f6' : '#e2e8f0',
+                  color: verSoloFuturos ? '#fff' : '#475569'
+                }}
+              >
+                📅 Solo Futuros (Desde hoy)
+              </button>
+              <button
+                onClick={() => setVerSoloFuturos(false)}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  background: !verSoloFuturos ? '#3b82f6' : '#e2e8f0',
+                  color: !verSoloFuturos ? '#fff' : '#475569'
+                }}
+              >
+                📜 Histórico Completo
+              </button>
+            </div>
+          </div>
+
+          {turnosPacienteFiltrado.length === 0 ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '14px', background: '#fff', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+              ℹ️ No se encontraron turnos {verSoloFuturos ? 'futuros (a partir de hoy)' : ''} programados para "<strong>{filtroPaciente.trim()}</strong>".
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto', paddingRight: '4px' }}>
+              {turnosPacienteFiltrado.map(t => {
+                const fObj = new Date(t.fecha_inicio);
+                const diaNombre = fObj.toLocaleDateString('es-AR', { weekday: 'short', timeZone: 'UTC' }).toUpperCase();
+                const fechaStr = `${String(fObj.getUTCDate()).padStart(2, '0')}/${String(fObj.getUTCMonth() + 1).padStart(2, '0')}/${fObj.getUTCFullYear()}`;
+                
+                const parts = (t.observaciones || '').split(']') || [];
+                const hora = parts[0]?.replace('[', '').trim() || '--:--';
+                const prest = parts[1]?.replace('[', '').trim() || '';
+                const prof = parts[2]?.replace('[', '').trim() || 'N/A';
+                const est = (t.estado || 'pendiente').trim().toLowerCase();
+
+                let bgItem = '#ffffff';
+                let borderItem = '#cbd5e1';
+                let tagEstado = { bg: '#f1f5f9', color: '#475569', label: '⏳ Pendiente' };
+
+                if (est === 'cancelado' || est === 'ausente') {
+                  bgItem = '#fef2f2';
+                  borderItem = '#fecaca';
+                  tagEstado = { bg: '#fee2e2', color: '#991b1b', label: '❌ Cancelado' };
+                } else if (est === 'realizado' || est === 'presente') {
+                  bgItem = '#f0fdf4';
+                  borderItem = '#bbf7d0';
+                  tagEstado = { bg: '#dcfce7', color: '#166534', label: '✅ Realizado' };
+                } else if (prest === 'Tratamiento') {
+                  bgItem = '#fefce8';
+                  borderItem = '#fef08a';
+                  tagEstado = { bg: '#fef08a', color: '#856404', label: '⏳ Pendiente' };
+                }
+
+                return (
+                  <div
+                    key={t.id}
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      justify: 'space-between',
+                      padding: '8px 12px',
+                      background: bgItem,
+                      border: `1px solid ${borderItem}`,
+                      borderRadius: '8px',
+                      gap: '8px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ background: '#3b82f6', color: '#fff', padding: '3px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' }}>
+                        📅 {diaNombre} {fechaStr}
+                      </span>
+                      <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#0f172a' }}>
+                        🕒 {hora} hs
+                      </span>
+                      <span style={{ fontSize: '12px', color: '#475569', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                        {prest}
+                      </span>
+                      <span style={{ fontSize: '12px', fontWeight: '600', color: '#1e40af' }}>
+                        👤 {prof}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 'bold', padding: '3px 8px', borderRadius: '4px', background: tagEstado.bg, color: tagEstado.color }}>
+                        {tagEstado.label}
+                      </span>
+                      <button
+                        onClick={() => {
+                          const f = new Date(t.fecha_inicio);
+                          setMesActual(new Date(f.getUTCFullYear(), f.getUTCMonth(), 1));
+                          setDiaSeleccionado(f.getUTCDate());
+                          setTurnoEditando(t);
+                          setForm({ ...t, hora, prestacion: prest });
+                        }}
+                        style={{
+                          background: '#0284c7',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          fontWeight: 'bold',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        🔍 Ver / Editar en Calendario
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', backgroundColor: '#ffffff', borderTop: '1px solid #ddd', flex: 1, width: '100%' }}>
         {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => (
