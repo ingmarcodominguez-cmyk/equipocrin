@@ -35,6 +35,43 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
 
   const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
+  const empaquetarObsConSesiones = (sesiones, obsLibre) => {
+    const notasLibres = (obsLibre || '').replace(/\[SES_SNAPSHOT:[^\]]*\]/gi, '').trim();
+    if (!sesiones || sesiones.length === 0) return notasLibres;
+    const sesSimple = sesiones.map(s => ({
+      hora: s.hora || '',
+      profesional_nombre: s.profesional_nombre || s.profesional || 'Sin prof.'
+    }));
+    const tag = '[SES_SNAPSHOT:' + encodeURIComponent(JSON.stringify(sesSimple)) + ']';
+    return notasLibres ? `${tag} ${notasLibres}` : tag;
+  };
+
+  const desempaquetarObsYSesiones = (obsRaw, sesionesFallback = []) => {
+    if (!obsRaw || !obsRaw.includes('[SES_SNAPSHOT:')) {
+      return { sesiones: sesionesFallback, obs: obsRaw || '' };
+    }
+    const match = obsRaw.match(/\[SES_SNAPSHOT:([^\]]+)\]/);
+    if (!match) return { sesiones: sesionesFallback, obs: obsRaw || '' };
+    let sesionesExtract = sesionesFallback;
+    try {
+      const parsed = JSON.parse(decodeURIComponent(match[1]));
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        sesionesExtract = parsed.map(s => {
+          const profName = s.profesional_nombre || s.profesional || 'Sin prof.';
+          return {
+            hora: s.hora || '',
+            profesional_nombre: profName,
+            profesional: profName
+          };
+        });
+      }
+    } catch (e) {
+      console.error("Error al desempaquetar sesiones snapshot:", e);
+    }
+    const obsLimpia = obsRaw.replace(/\[SES_SNAPSHOT:[^\]]*\]/g, '').trim();
+    return { sesiones: sesionesExtract, obs: obsLimpia };
+  };
+
   const getDiaSemana = (fechaStr) => {
     if (!fechaStr) return '';
     const d = new Date(fechaStr + 'T00:00:00');
@@ -149,11 +186,16 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
 
       if (errA) throw errA;
 
-      // Sobrescribir estado y observaciones si ya fueron grabados
+      // Sobrescribir estado, observaciones y sesiones si ya fueron grabados
       (asistenciasData || []).forEach(a => {
         if (mapaPacientesAgrupados[a.id_paciente]) {
           mapaPacientesAgrupados[a.id_paciente].estado = a.estado;
-          mapaPacientesAgrupados[a.id_paciente].obs = a.obs || '';
+          const { sesiones: sesSnapshot, obs: obsLimpia } = desempaquetarObsYSesiones(
+            a.obs,
+            mapaPacientesAgrupados[a.id_paciente].sesiones
+          );
+          mapaPacientesAgrupados[a.id_paciente].sesiones = sesSnapshot;
+          mapaPacientesAgrupados[a.id_paciente].obs = obsLimpia;
         }
       });
 
@@ -223,7 +265,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
         id_paciente: p.id_paciente,
         paciente_nombre: p.paciente_nombre,
         estado: p.estado,
-        obs: p.obs,
+        obs: empaquetarObsConSesiones(p.sesiones, p.obs),
         usuario: usuario || 'Usuario'
       }));
 
@@ -381,14 +423,22 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
 
       const listadoFechas = fechasEsperadas.map(f => {
         const diaSem = getDiaSemana(f);
-        const ses = [...(sesionesPorDiaSemana[diaSem] || [])];
+        const sesFallback = [...(sesionesPorDiaSemana[diaSem] || [])];
         const registroAsist = mapaAsistencias[f];
 
         let est = 'Pendiente';
         let obs = '';
+        let ses = sesFallback;
+
         if (registroAsist) {
           est = registroAsist.estado;
-          obs = registroAsist.obs || '';
+          const { sesiones: sesSnapshot, obs: obsLimpia } = desempaquetarObsYSesiones(
+            registroAsist.obs,
+            sesFallback
+          );
+          ses = sesSnapshot;
+          obs = obsLimpia;
+
           if (ses.length === 0 && registroAsist.usuario) {
             ses.push({ hora: '-', profesional: `Reg: ${registroAsist.usuario}` });
           }
