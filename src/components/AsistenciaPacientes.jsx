@@ -13,6 +13,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
   
   // Listados de mapeo para usuarios (prestadores)
   const [mapaPrestadores, setMapaPrestadores] = useState({});
+  const [pacientesGuardadosIds, setPacientesGuardadosIds] = useState(new Set());
 
   // --- NUEVO ESTADO DE TABS, REPORTES Y FILTROS ---
   const [activeTab, setActiveTab] = useState('diaria'); // 'diaria' o 'reporte'
@@ -186,6 +187,9 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
 
       if (errA) throw errA;
 
+      const idsGuardadosBD = new Set((asistenciasData || []).map(a => a.id_paciente));
+      setPacientesGuardadosIds(idsGuardadosBD);
+
       // Sobrescribir estado, observaciones y sesiones si ya fueron grabados
       (asistenciasData || []).forEach(a => {
         if (mapaPacientesAgrupados[a.id_paciente]) {
@@ -260,7 +264,20 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
     setGuardando(true);
     setMensaje({ texto: '', tipo: '' });
     try {
-      const recordsToUpsert = pacientesCargados.map(p => ({
+      const pacientesAEnviar = pacientesCargados.filter(p => {
+        const estadoCambiado = p.estado !== 'Pendiente';
+        const tieneObs = Boolean(p.obs && p.obs.trim());
+        const yaExisteEnBD = pacientesGuardadosIds.has(p.id_paciente);
+        return estadoCambiado || tieneObs || yaExisteEnBD;
+      });
+
+      if (pacientesAEnviar.length === 0) {
+        setMensaje({ texto: "No hay asistencias marcadas para guardar.", tipo: "exito" });
+        setGuardando(false);
+        return;
+      }
+
+      const recordsToUpsert = pacientesAEnviar.map(p => ({
         fecha: fechaTrabajo,
         id_paciente: p.id_paciente,
         paciente_nombre: p.paciente_nombre,
