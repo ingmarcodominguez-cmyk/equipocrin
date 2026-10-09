@@ -334,14 +334,30 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
   const cargarMovimientos = async (idPrestador) => {
     setCargandoMovimientos(true);
     try {
-      const { data, error } = await supabase
-        .from('movprestadores_motor')
-        .select('*')
-        .eq('id_prestador', idPrestador)
-        .order('fecha', { ascending: true })
-        .order('id_mov', { ascending: true });
+      let data = [];
+      let from = 0;
+      let to = 999;
+      let keepFetching = true;
 
-      if (error) throw error;
+      while (keepFetching) {
+        const { data: chunk, error } = await supabase
+          .from('movprestadores_motor')
+          .select('*')
+          .eq('id_prestador', idPrestador)
+          .order('fecha', { ascending: true })
+          .order('id_mov', { ascending: true })
+          .range(from, to);
+
+        if (error) throw error;
+        data = data.concat(chunk || []);
+
+        if (!chunk || chunk.length < 1000) {
+          keepFetching = false;
+        } else {
+          from += 1000;
+          to += 1000;
+        }
+      }
 
       const revertedPagoIds = new Set();
       (data || []).forEach(m => {
