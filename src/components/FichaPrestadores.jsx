@@ -59,34 +59,76 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
   const [globalSearchTerm, setGlobalSearchTerm] = useState('');
   const [globalResults, setGlobalResults] = useState([]);
   const [cargandoGlobal, setCargandoGlobal] = useState(false);
+  const [busquedaRealizada, setBusquedaRealizada] = useState(false);
 
   const ejecutarBusquedaGlobal = async () => {
-    if (!globalSearchTerm.trim()) {
-      alert("Por favor ingrese un concepto o referencia para buscar.");
+    const rawSearch = globalSearchTerm.trim();
+    if (!rawSearch) {
+      alert("Por favor ingrese un concepto, paciente o referencia para buscar.");
       return;
     }
     setCargandoGlobal(true);
     try {
-      const term = `%${globalSearchTerm.trim()}%`;
-      const { data, error } = await supabase
-        .from('movprestadores_motor')
-        .select('*')
-        .or(`concepto.ilike.${term},acuerdo.ilike.${term}`)
-        .order('fecha', { ascending: false })
-        .order('id_mov', { ascending: false });
+      // 1. Buscar si el término coincide con pacientes registrados para obtener sus IDs
+      let pacienteIds = [];
+      try {
+        const { data: matchedPacientes } = await supabase
+          .from('pacientes_motor')
+          .select('id_paciente')
+          .ilike('nombre_apellido', `%${rawSearch}%`);
+        if (matchedPacientes && matchedPacientes.length > 0) {
+          pacienteIds = matchedPacientes.map(p => p.id_paciente);
+        }
+      } catch (errP) {
+        console.warn("No se pudo consultar pacientes_motor para búsqueda:", errP);
+      }
 
-      if (error) throw error;
+      // 2. Construir filtro OR para PostgREST
+      const term = `%${rawSearch}%`;
+      let orFilters = [`concepto.ilike.${term}`, `acuerdo.ilike.${term}`];
+      if (pacienteIds.length > 0) {
+        orFilters.push(`id_paciente.in.(${pacienteIds.join(',')})`);
+      }
+      const orClause = orFilters.join(',');
 
+      // 3. Consultar todos los movimientos paginando (superando el límite de 1000 de Supabase)
+      let allData = [];
+      let from = 0;
+      let to = 999;
+      let keepFetching = true;
+
+      while (keepFetching) {
+        const { data: chunk, error } = await supabase
+          .from('movprestadores_motor')
+          .select('*')
+          .or(orClause)
+          .order('fecha', { ascending: false })
+          .order('id_mov', { ascending: false })
+          .range(from, to);
+
+        if (error) throw error;
+        allData = allData.concat(chunk || []);
+
+        if (!chunk || chunk.length < 1000) {
+          keepFetching = false;
+        } else {
+          from += 1000;
+          to += 1000;
+        }
+      }
+
+      // 4. Filtrar movimientos revertidos
       const revertedPagoIds = new Set();
-      (data || []).forEach(m => {
+      allData.forEach(m => {
         const concepto = (m.concepto || '').toUpperCase();
         if (concepto.startsWith('REVERSO') && m.id_pago) {
           revertedPagoIds.add(m.id_pago);
         }
       });
-      const filtered = (data || []).filter(m => !m.id_pago || !revertedPagoIds.has(m.id_pago));
+      const filtered = allData.filter(m => !m.id_pago || !revertedPagoIds.has(m.id_pago));
 
       setGlobalResults(filtered);
+      setBusquedaRealizada(true);
     } catch (err) {
       console.error("Error en búsqueda global:", err);
       alert("Error al buscar: " + err.message);
@@ -663,11 +705,12 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
               onChange={(e) => {
                 const val = e.target.value;
                 setGlobalSearchTerm(val);
+                setBusquedaRealizada(false);
                 if (!val.trim()) {
                   setGlobalResults([]);
                 }
               }}
-              placeholder="Ej: Subsidio de Salud Julio 2026, Deuda #953, Acuerdo #784..."
+              placeholder="Ej: Subsidio de Salud, Bastian, Deuda #953, Acuerdo #784..."
               style={{ flex: 1, padding: '10px 14px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff' }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') ejecutarBusquedaGlobal();
@@ -678,6 +721,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                 onClick={() => {
                   setGlobalSearchTerm('');
                   setGlobalResults([]);
+                  setBusquedaRealizada(false);
                 }}
                 style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
               >
@@ -807,9 +851,9 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
               </div>
             </div>
           )}
-          {globalResults.length === 0 && globalSearchTerm && !cargandoGlobal && (
+          {globalResults.length === 0 && busquedaRealizada && !cargandoGlobal && (
             <p style={{ margin: '15px 0 0 0', color: '#64748b', fontStyle: 'italic', textAlign: 'center' }}>
-              No se encontraron liquidaciones con ese concepto o referencia en ningún profesional.
+              No se encontraron liquidaciones con ese concepto, paciente o referencia en ningún profesional.
             </p>
           )}
         </div>
