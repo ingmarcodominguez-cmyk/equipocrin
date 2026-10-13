@@ -68,19 +68,35 @@ export default function CajaDiaria({ onVolver, usuario }) {
   const cargarCaja = async () => {
     setCargando(true);
     try {
-      // Obtener todos los movimientos de caja en efectivo
-      const { data, error } = await supabase
-        .from('caja_motor')
-        .select('*')
-        .eq('medio_pago', 'EFECTIVO')
-        .order('fecha', { ascending: true })
-        .order('id_mov', { ascending: true });
+      // Obtener todos los movimientos de caja en efectivo con paginación
+      let allData = [];
+      let from = 0;
+      let to = 999;
+      let keepFetching = true;
 
-      if (error) throw error;
+      while (keepFetching) {
+        const { data: chunk, error } = await supabase
+          .from('caja_motor')
+          .select('*')
+          .eq('medio_pago', 'EFECTIVO')
+          .order('fecha', { ascending: true })
+          .order('id_mov', { ascending: true })
+          .range(from, to);
+
+        if (error) throw error;
+        allData = allData.concat(chunk || []);
+
+        if (!chunk || chunk.length < 1000) {
+          keepFetching = false;
+        } else {
+          from += 1000;
+          to += 1000;
+        }
+      }
 
       // Calcular saldo acumulado secuencialmente
       let saldoAcumulado = 0;
-      const movsConSaldo = (data || []).map(m => {
+      const movsConSaldo = allData.map(m => {
         const imp = parseFloat(m.importe) || 0;
         if (m.tipo === 'INGRESO' || m.tipo === 'APERTURA') {
           saldoAcumulado += imp;
