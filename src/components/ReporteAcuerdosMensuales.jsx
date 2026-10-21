@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase.js';
 import Documentos from './Documentos.jsx';
 
@@ -215,57 +216,46 @@ export default function ReporteAcuerdosMensuales({ onVolver }) {
   const facturacionTotal = acuerdosFiltrados.reduce((sum, ac) => sum + parsearMoneda(ac.importe_actual), 0);
   const valorPromedio = cantidadAcuerdos > 0 ? facturacionTotal / cantidadAcuerdos : 0;
 
-  // Exportar a Excel (CSV con formato adecuado)
+  // Exportar a Excel (.xlsx ordenado como tabla)
   const exportarExcel = () => {
-    const encabezados = [
-      'Paciente',
-      'Documentos',
-      'Tipo Acuerdo',
-      'Obra Social',
-      'Prestación',
-      'Importe Base',
-      'Importe Actual',
-      'Día Vto',
-      'Admite Recargo',
-      'Fecha Acuerdo',
-      'Observaciones'
-    ];
-
-    const filas = acuerdosFiltrados.map(ac => {
+    const data = acuerdosFiltrados.map(ac => {
       const baseVal = parsearMoneda(ac.monto_cuota_base) > 0 ? parsearMoneda(ac.monto_cuota_base) : parsearMoneda(ac.importe_actual);
-      const docsResumen = ac.documentos && ac.documentos.length > 0
-        ? `${ac.documentos.length} doc(s): ${ac.documentos.map(d => d.nombre_archivo).join(' | ')}`
-        : 'Sin documentos';
-
-      return [
-        ac.nombre_paciente,
-        docsResumen,
-        ac.tipo_origen === 'OBRA_SOCIAL' ? 'OBRA SOCIAL' : 'MENSUAL',
-        ac.obra_social,
-        ac.nombre_prestacion,
-        baseVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        parsearMoneda(ac.importe_actual).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        ac.dia_vencimiento || '-',
-        ac.admite_recargo || 'NO',
-        ac.fecha_acuerdo || 'S/D',
-        ac.observaciones || ''
-      ];
+      return {
+        'Paciente': ac.nombre_paciente || '',
+        'Prestación': ac.nombre_prestacion || '',
+        'Imp. Base': baseVal,
+        'Imp. Actual': parsearMoneda(ac.importe_actual)
+      };
     });
 
-    const csvContent = [
-      encabezados.join(';'),
-      ...filas.map(fila => fila.map(campo => `"${String(campo).replace(/"/g, '""')}"`).join(';'))
-    ].join('\r\n');
+    const worksheet = XLSX.utils.json_to_sheet(data);
 
-    const BOM = '\uFEFF';
-    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `acuerdos_activos_mensuales_y_os_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Ajustar anchos de columnas para que se lea perfectamente
+    worksheet['!cols'] = [
+      { wch: 35 }, // Paciente
+      { wch: 30 }, // Prestación
+      { wch: 16 }, // Imp. Base
+      { wch: 16 }  // Imp. Actual
+    ];
+
+    // Aplicar formato de moneda a las columnas numéricas
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1:D1');
+    for (let R = 1; R <= range.e.r; ++R) {
+      const cellBase = worksheet[XLSX.utils.encode_cell({ r: R, c: 2 })];
+      if (cellBase && typeof cellBase.v === 'number') {
+        cellBase.z = '$#,##0.00';
+      }
+      const cellActual = worksheet[XLSX.utils.encode_cell({ r: R, c: 3 })];
+      if (cellActual && typeof cellActual.v === 'number') {
+        cellActual.z = '$#,##0.00';
+      }
+    }
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Acuerdos Activos');
+
+    const fechaHoy = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(workbook, `acuerdos_activos_${fechaHoy}.xlsx`);
   };
 
   return (
