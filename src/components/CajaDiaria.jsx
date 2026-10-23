@@ -28,6 +28,19 @@ export default function CajaDiaria({ onVolver, usuario }) {
   const [filtroFechaDesde, setFiltroFechaDesde] = useState(getLocalDateString());
   const [filtroFechaHasta, setFiltroFechaHasta] = useState(getLocalDateString());
   
+  // Detección responsive para celulares
+  const [esCelular, setEsCelular] = useState(
+    typeof window !== 'undefined' ? window.innerWidth <= 768 : false
+  );
+
+  useEffect(() => {
+    const handleResize = () => {
+      setEsCelular(window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  
   const setHoy = () => {
     const hoy = getLocalDateString();
     setFiltroFechaDesde(hoy);
@@ -519,177 +532,250 @@ export default function CajaDiaria({ onVolver, usuario }) {
   const saldoRestanteEnCaja = Math.max(0, (parseFloat(saldoRealCierre) || 0) - (parseFloat(montoRendidoCierre) || 0));
 
   return (
-    <div style={{ background: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b' }}>
+    <div style={{ 
+      background: '#ffffff', 
+      padding: esCelular ? '14px 10px' : '30px', 
+      borderRadius: esCelular ? '10px' : '16px', 
+      boxShadow: '0 10px 30px rgba(0,0,0,0.05)', 
+      fontFamily: 'Segoe UI, system-ui, sans-serif', 
+      color: '#1e293b',
+      boxSizing: 'border-box',
+      width: '100%',
+      maxWidth: '100%',
+      overflowX: 'hidden'
+    }}>
       
       {/* Cabecera */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '18px', marginBottom: '25px' }}>
+      <div style={{ 
+        display: 'flex', 
+        flexDirection: esCelular ? 'column' : 'row',
+        justifyContent: 'space-between', 
+        alignItems: esCelular ? 'flex-start' : 'center', 
+        gap: esCelular ? '12px' : '0',
+        borderBottom: '1px solid #e2e8f0', 
+        paddingBottom: esCelular ? '12px' : '18px', 
+        marginBottom: esCelular ? '16px' : '25px' 
+      }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h2 style={{ margin: 0, fontSize: esCelular ? '18px' : '22px', fontWeight: 'bold', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
             💵 Caja Diaria en Efectivo
           </h2>
-          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
-            Visualización, control, egresos y cierres de la caja diaria ({movimientos.length} movimientos registrados).
+          <p style={{ margin: '4px 0 0 0', fontSize: esCelular ? '11.5px' : '13px', color: '#64748b' }}>
+            Visualización, control, egresos y cierres ({movimientos.length} movimientos).
           </p>
         </div>
         <button 
           onClick={onVolver}
-          style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '13px', transition: 'all 0.2s' }}
+          style={{ 
+            width: esCelular ? '100%' : 'auto',
+            textAlign: 'center',
+            background: '#f1f5f9', 
+            color: '#475569', 
+            border: '1px solid #cbd5e1', 
+            padding: '8px 16px', 
+            borderRadius: '8px', 
+            cursor: 'pointer', 
+            fontWeight: '600', 
+            fontSize: '13px', 
+            transition: 'all 0.2s' 
+          }}
         >
           ← Volver al Menú
         </button>
       </div>
 
       {/* Tarjetas de Información Financiera */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '25px' }}>
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: esCelular ? '1fr' : '1fr 1fr 1fr', 
+        gap: esCelular ? '10px' : '20px', 
+        marginBottom: esCelular ? '16px' : '25px' 
+      }}>
         
         {/* Saldo de Caja Total */}
-        <div style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', padding: '20px', borderRadius: '12px', border: '1px solid #bfdbfe' }}>
+        <div style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', padding: esCelular ? '14px 16px' : '20px', borderRadius: '12px', border: '1px solid #bfdbfe' }}>
           <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Saldo Físico en Caja
           </span>
-          <h3 style={{ margin: '8px 0 2px 0', fontSize: '26px', fontWeight: '800', color: '#1e3a8a' }}>
+          <h3 style={{ margin: '6px 0 2px 0', fontSize: esCelular ? '22px' : '26px', fontWeight: '800', color: '#1e3a8a' }}>
             ${saldoCajaTotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
           </h3>
           <span style={{ fontSize: '11px', color: '#3b82f6' }}>Saldo total acumulado actual</span>
         </div>
 
-        {/* Ingresos de la Fecha */}
-        <div style={{ background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)', padding: '20px', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
-          <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#166534', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Ingresos {textoPeriodo}
-          </span>
-          <h3 style={{ margin: '8px 0 2px 0', fontSize: '26px', fontWeight: '800', color: '#14532d' }}>
-            +${ingresosDelDia.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-          </h3>
-          <span style={{ fontSize: '11px', color: '#22c55e' }}>{textoPeriodoSub}</span>
-        </div>
+        {/* Ingresos y Egresos (En celular se muestran lado a lado en 2 columnas compactas) */}
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: '1fr 1fr', 
+          gap: esCelular ? '8px' : '20px',
+          gridColumn: esCelular ? 'span 1' : 'span 2'
+        }}>
+          {/* Ingresos de la Fecha */}
+          <div style={{ background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)', padding: esCelular ? '12px' : '20px', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
+            <span style={{ fontSize: esCelular ? '10px' : '11px', fontWeight: 'bold', color: '#166534', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Ingresos {textoPeriodo}
+            </span>
+            <h3 style={{ margin: '6px 0 2px 0', fontSize: esCelular ? '18px' : '26px', fontWeight: '800', color: '#14532d' }}>
+              +${ingresosDelDia.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+            </h3>
+            <span style={{ fontSize: '10px', color: '#22c55e' }}>{textoPeriodoSub}</span>
+          </div>
 
-        {/* Egresos de la Fecha */}
-        <div style={{ background: 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)', padding: '20px', borderRadius: '12px', border: '1px solid #fecaca' }}>
-          <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#991b1b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Egresos {textoPeriodo}
-          </span>
-          <h3 style={{ margin: '8px 0 2px 0', fontSize: '26px', fontWeight: '800', color: '#7f1d1d' }}>
-            -${egresosDelDia.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-          </h3>
-          <span style={{ fontSize: '11px', color: '#ef4444' }}>{textoPeriodoSubEg}</span>
+          {/* Egresos de la Fecha */}
+          <div style={{ background: 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)', padding: esCelular ? '12px' : '20px', borderRadius: '12px', border: '1px solid #fecaca' }}>
+            <span style={{ fontSize: esCelular ? '10px' : '11px', fontWeight: 'bold', color: '#991b1b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Egresos {textoPeriodo}
+            </span>
+            <h3 style={{ margin: '6px 0 2px 0', fontSize: esCelular ? '18px' : '26px', fontWeight: '800', color: '#7f1d1d' }}>
+              -${egresosDelDia.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+            </h3>
+            <span style={{ fontSize: '10px', color: '#ef4444' }}>{textoPeriodoSubEg}</span>
+          </div>
         </div>
 
       </div>
 
       {/* Panel de Filtros y Acciones */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '15px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '25px' }}>
+      <div style={{ 
+        display: 'flex', 
+        flexDirection: esCelular ? 'column' : 'row',
+        justifyContent: 'space-between', 
+        alignItems: esCelular ? 'stretch' : 'center', 
+        gap: esCelular ? '12px' : '15px',
+        background: '#f8fafc', 
+        padding: esCelular ? '12px' : '15px 20px', 
+        borderRadius: '12px', 
+        border: '1px solid #e2e8f0', 
+        marginBottom: esCelular ? '16px' : '25px' 
+      }}>
         
         {/* Selector de Rango de Fechas */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569' }}>Desde:</label>
-            <input 
-              type="date"
-              value={filtroFechaDesde}
-              onChange={(e) => setFiltroFechaDesde(e.target.value)}
-              style={{ padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '13px', outline: 'none', background: '#ffffff', color: '#0f172a' }}
-            />
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: esCelular ? 'column' : 'row',
+          alignItems: esCelular ? 'stretch' : 'center', 
+          gap: '8px',
+          width: esCelular ? '100%' : 'auto'
+        }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', width: esCelular ? '100%' : 'auto' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569' }}>Desde:</label>
+              <input 
+                type="date"
+                value={filtroFechaDesde}
+                onChange={(e) => setFiltroFechaDesde(e.target.value)}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '12.5px', outline: 'none', background: '#ffffff', color: '#0f172a' }}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569' }}>Hasta:</label>
+              <input 
+                type="date"
+                value={filtroFechaHasta}
+                onChange={(e) => setFiltroFechaHasta(e.target.value)}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '12.5px', outline: 'none', background: '#ffffff', color: '#0f172a' }}
+              />
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569' }}>Hasta:</label>
-            <input 
-              type="date"
-              value={filtroFechaHasta}
-              onChange={(e) => setFiltroFechaHasta(e.target.value)}
-              style={{ padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '13px', outline: 'none', background: '#ffffff', color: '#0f172a' }}
-            />
+          <div style={{ display: 'flex', gap: '8px', width: esCelular ? '100%' : 'auto' }}>
+            <button 
+              onClick={setHoy}
+              style={{ flex: esCelular ? 1 : 'none', background: '#3b82f6', color: '#ffffff', border: 'none', padding: '7px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', transition: 'background 0.2s', textAlign: 'center' }}
+              onMouseOver={(e) => e.currentTarget.style.background = '#2563eb'}
+              onMouseOut={(e) => e.currentTarget.style.background = '#3b82f6'}
+            >
+              📅 Hoy
+            </button>
+            <button 
+              onClick={cargarCaja}
+              disabled={cargando}
+              style={{ flex: esCelular ? 1 : 'none', background: '#ffffff', color: '#475569', border: '1px solid #cbd5e1', padding: '7px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', transition: 'all 0.2s' }}
+              title="Refrescar movimientos desde la base de datos"
+            >
+              🔄 {cargando ? '...' : 'Actualizar'}
+            </button>
           </div>
-          <button 
-            onClick={setHoy}
-            style={{ background: '#3b82f6', color: '#ffffff', border: 'none', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', transition: 'background 0.2s', boxShadow: '0 2px 4px rgba(59, 130, 246, 0.1)' }}
-            onMouseOver={(e) => e.currentTarget.style.background = '#2563eb'}
-            onMouseOut={(e) => e.currentTarget.style.background = '#3b82f6'}
-          >
-            📅 Hoy
-          </button>
-          <button 
-            onClick={cargarCaja}
-            disabled={cargando}
-            style={{ background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', transition: 'all 0.2s' }}
-            title="Refrescar movimientos desde la base de datos"
-          >
-            🔄 {cargando ? 'Cargando...' : 'Actualizar'}
-          </button>
         </div>
 
-        {/* Botones de Operación */}
-        <div style={{ display: 'flex', gap: '12px' }}>
+        {/* Botones de Operación (En celular: cuadrícula 2x2 que cabe 100% en la pantalla) */}
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: esCelular ? '1fr 1fr' : 'repeat(auto-fit, minmax(130px, auto))',
+          gap: '8px',
+          width: esCelular ? '100%' : 'auto'
+        }}>
           <button
             onClick={() => abrirModal('ingreso')}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#10b981', color: '#ffffff', border: 'none', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(16, 185, 129, 0.1)' }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', background: '#10b981', color: '#ffffff', border: 'none', padding: esCelular ? '9px 4px' : '10px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: esCelular ? '11.5px' : '13px', fontWeight: '700', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(16, 185, 129, 0.1)', textAlign: 'center' }}
           >
             ➕ Ingreso Manual
           </button>
           <button
             onClick={() => abrirModal('egreso')}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#ef4444', color: '#ffffff', border: 'none', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(239, 68, 68, 0.1)' }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', background: '#ef4444', color: '#ffffff', border: 'none', padding: esCelular ? '9px 4px' : '10px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: esCelular ? '11.5px' : '13px', fontWeight: '700', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(239, 68, 68, 0.1)', textAlign: 'center' }}
           >
             ➖ Registrar Gasto
           </button>
           <button
             onClick={() => abrirModal('ajuste')}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f59e0b', color: '#ffffff', border: 'none', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(245, 158, 11, 0.1)' }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', background: '#f59e0b', color: '#ffffff', border: 'none', padding: esCelular ? '9px 4px' : '10px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: esCelular ? '11.5px' : '13px', fontWeight: '700', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(245, 158, 11, 0.1)', textAlign: 'center' }}
           >
-            ⚙️ Ajuste de Caja
+            ⚙️ Ajuste Caja
           </button>
           <button
             onClick={() => abrirModal('cierre')}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(79, 70, 229, 0.1)' }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', background: '#4f46e5', color: '#ffffff', border: 'none', padding: esCelular ? '9px 4px' : '10px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: esCelular ? '11.5px' : '13px', fontWeight: '700', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(79, 70, 229, 0.1)', textAlign: 'center' }}
           >
-            🔒 Cerrar Caja / Rendir
+            🔒 Cerrar / Rendir
           </button>
-          <button
-            onClick={() => {
-              const cierreRow = movimientosFiltrados.find(m => m.tipo === 'CIERRE');
-              const saldoInicialVal = movimientosFiltrados
-                .filter(m => m.tipo === 'APERTURA')
-                .reduce((sum, m) => sum + (parseFloat(m.importe) || 0), 0);
-              const totalIngresosVal = movimientosFiltrados
-                .filter(m => m.tipo === 'INGRESO')
-                .reduce((sum, m) => sum + (parseFloat(m.importe) || 0), 0);
-              const totalEgresosVal = movimientosFiltrados
-                .filter(m => m.tipo === 'EGRESO')
-                .reduce((sum, m) => sum + (parseFloat(m.importe) || 0), 0);
+          {!esCelular && (
+            <button
+              onClick={() => {
+                const cierreRow = movimientosFiltrados.find(m => m.tipo === 'CIERRE');
+                const saldoInicialVal = movimientosFiltrados
+                  .filter(m => m.tipo === 'APERTURA')
+                  .reduce((sum, m) => sum + (parseFloat(m.importe) || 0), 0);
+                const totalIngresosVal = movimientosFiltrados
+                  .filter(m => m.tipo === 'INGRESO')
+                  .reduce((sum, m) => sum + (parseFloat(m.importe) || 0), 0);
+                const totalEgresosVal = movimientosFiltrados
+                  .filter(m => m.tipo === 'EGRESO')
+                  .reduce((sum, m) => sum + (parseFloat(m.importe) || 0), 0);
 
-              const saldoContadoVal = cierreRow ? (parseFloat(cierreRow.saldo_turno) || 0) : (saldoInicialVal + totalIngresosVal - totalEgresosVal);
-              const montoRendidoVal = cierreRow ? (parseFloat(cierreRow.importe) || 0) : 0;
-              const entregadoVal = cierreRow ? (cierreRow.entregado_por || usuario || 'Sistema') : (usuario || 'Sistema');
-              const recibidoVal = cierreRow ? (cierreRow.recibido_por || 'DIRECCIÓN') : 'DIRECCIÓN';
-              const diferenciaVal = 0;
-              const motivoDifVal = '';
-              const saldoRestanteVal = saldoContadoVal - montoRendidoVal;
+                const saldoContadoVal = cierreRow ? (parseFloat(cierreRow.saldo_turno) || 0) : (saldoInicialVal + totalIngresosVal - totalEgresosVal);
+                const montoRendidoVal = cierreRow ? (parseFloat(cierreRow.importe) || 0) : 0;
+                const entregadoVal = cierreRow ? (cierreRow.entregado_por || usuario || 'Sistema') : (usuario || 'Sistema');
+                const recibidoVal = cierreRow ? (cierreRow.recibido_por || 'DIRECCIÓN') : 'DIRECCIÓN';
+                const diferenciaVal = 0;
+                const motivoDifVal = '';
+                const saldoRestanteVal = saldoContadoVal - montoRendidoVal;
 
-              imprimirResumenCaja(
-                filtroFechaDesde === filtroFechaHasta ? filtroFechaDesde : `${filtroFechaDesde} al ${filtroFechaHasta}`,
-                cierreRow ? (cierreRow.turno || 'COMPLETO') : 'ACTUAL',
-                movimientosFiltrados,
-                saldoContadoVal,
-                montoRendidoVal,
-                entregadoVal,
-                recibidoVal,
-                diferenciaVal,
-                motivoDifVal,
-                saldoRestanteVal
-              );
-            }}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#06b6d4', color: '#ffffff', border: 'none', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(6, 182, 212, 0.1)' }}
-          >
-            🖨️ Imprimir Caja
-          </button>
+                imprimirResumenCaja(
+                  filtroFechaDesde === filtroFechaHasta ? filtroFechaDesde : `${filtroFechaDesde} al ${filtroFechaHasta}`,
+                  cierreRow ? (cierreRow.turno || 'COMPLETO') : 'ACTUAL',
+                  movimientosFiltrados,
+                  saldoContadoVal,
+                  montoRendidoVal,
+                  entregadoVal,
+                  recibidoVal,
+                  diferenciaVal,
+                  motivoDifVal,
+                  saldoRestanteVal
+                );
+              }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: '#06b6d4', color: '#ffffff', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(6, 182, 212, 0.1)' }}
+            >
+              🖨️ Imprimir Caja
+            </button>
+          )}
         </div>
 
       </div>
 
       {/* Modal de Transacción (Ingreso/Egreso/Ajuste) */}
       {modalAbierto && modalAbierto !== 'cierre' && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#ffffff', padding: '25px', borderRadius: '16px', width: '100%', maxWidth: '450px', border: '1px solid #e2e8f0', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: esCelular ? '12px' : '20px', boxSizing: 'border-box' }}>
+          <div style={{ background: '#ffffff', padding: esCelular ? '16px' : '25px', borderRadius: '16px', width: '100%', maxWidth: '450px', maxHeight: '92vh', overflowY: 'auto', border: '1px solid #e2e8f0', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', boxSizing: 'border-box' }}>
             <h3 style={{ margin: '0 0 15px 0', fontSize: '18px', fontWeight: 'bold', color: '#0f172a' }}>
               {modalAbierto === 'egreso' ? '➖ Registrar Gasto (Egreso)' : modalAbierto === 'ajuste' ? '⚙️ Ajuste de Caja' : '➕ Registrar Ingreso Manual'}
             </h3>
@@ -789,8 +875,8 @@ export default function CajaDiaria({ onVolver, usuario }) {
 
       {/* Modal de Cierre de Caja / Rendición */}
       {modalAbierto === 'cierre' && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#ffffff', padding: '25px', borderRadius: '16px', width: '100%', maxWidth: '500px', border: '1px solid #e2e8f0', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: esCelular ? '12px' : '20px', boxSizing: 'border-box' }}>
+          <div style={{ background: '#ffffff', padding: esCelular ? '16px' : '25px', borderRadius: '16px', width: '100%', maxWidth: '500px', maxHeight: '92vh', overflowY: 'auto', border: '1px solid #e2e8f0', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', boxSizing: 'border-box' }}>
             <h3 style={{ margin: '0 0 15px 0', fontSize: '18px', fontWeight: 'bold', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '8px' }}>
               🔒 Cierre y Rendición de Caja
             </h3>
@@ -824,7 +910,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: esCelular ? '1fr' : '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>Saldo Real Físico (Contado) *</label>
                 <input 
@@ -835,7 +921,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
                     setMontoRendidoCierre(e.target.value); // Por defecto autocompletar que rinde todo
                   }}
                   placeholder="Ej: 87200"
-                  style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
                 />
               </div>
               <div>
@@ -846,19 +932,19 @@ export default function CajaDiaria({ onVolver, usuario }) {
                   onChange={(e) => setMontoRendidoCierre(e.target.value)}
                   placeholder="Ej: 80000"
                   max={parseFloat(saldoRealCierre) || 0}
-                  style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
                 />
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: esCelular ? '1fr' : '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>Entregado Por *</label>
                 <input 
                   type="text"
                   value={entregadoPorCierre}
                   onChange={(e) => setEntregadoPorCierre(e.target.value)}
-                  style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
                 />
               </div>
               <div>
@@ -874,7 +960,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
                       setFechaSiguienteApertura(getTomorrowDate());
                     }
                   }}
-                  style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', background: '#fff' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', background: '#fff' }}
                 >
                   <option value="TARDE">TARDE</option>
                   <option value="MAÑANA">MAÑANA</option>
@@ -883,14 +969,14 @@ export default function CajaDiaria({ onVolver, usuario }) {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: esCelular ? '1fr' : '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>Recibido Por (Rendición) *</label>
                 <input 
                   type="text"
                   value={recibidoPorCierre}
                   onChange={(e) => setRecibidoPorCierre(e.target.value)}
-                  style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
                 />
               </div>
               <div>
@@ -899,7 +985,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
                   type="date"
                   value={fechaSiguienteApertura}
                   onChange={(e) => setFechaSiguienteApertura(e.target.value)}
-                  style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
                 />
               </div>
             </div>
@@ -953,8 +1039,8 @@ export default function CajaDiaria({ onVolver, usuario }) {
             No se registran movimientos de caja en esta fecha.
           </p>
         ) : (
-          <div style={{ overflowX: 'auto', border: '1px solid #cbd5e1', borderRadius: '12px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left', background: '#fff' }}>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', border: '1px solid #cbd5e1', borderRadius: '12px' }}>
+            <table style={{ width: '100%', minWidth: esCelular ? '620px' : '100%', borderCollapse: 'collapse', fontSize: esCelular ? '12px' : '13px', textAlign: 'left', background: '#fff' }}>
               <thead>
                 <tr style={{ background: '#f1f5f9', color: '#475569', borderBottom: '2px solid #cbd5e1' }}>
                   <th style={{ padding: '12px 10px' }}>ID</th>
