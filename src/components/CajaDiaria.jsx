@@ -63,6 +63,13 @@ export default function CajaDiaria({ onVolver, usuario }) {
 
   useEffect(() => {
     cargarCaja();
+    const channel = supabase
+      .channel('caja_motor_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'caja_motor' }, () => {
+        cargarCaja();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const cargarCaja = async () => {
@@ -521,7 +528,7 @@ export default function CajaDiaria({ onVolver, usuario }) {
             💵 Caja Diaria en Efectivo
           </h2>
           <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
-            Visualización, control, egresos y cierres de la caja diaria.
+            Visualización, control, egresos y cierres de la caja diaria ({movimientos.length} movimientos registrados).
           </p>
         </div>
         <button 
@@ -600,6 +607,14 @@ export default function CajaDiaria({ onVolver, usuario }) {
             onMouseOut={(e) => e.currentTarget.style.background = '#3b82f6'}
           >
             📅 Hoy
+          </button>
+          <button 
+            onClick={cargarCaja}
+            disabled={cargando}
+            style={{ background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', transition: 'all 0.2s' }}
+            title="Refrescar movimientos desde la base de datos"
+          >
+            🔄 {cargando ? 'Cargando...' : 'Actualizar'}
           </button>
         </div>
 
