@@ -49,6 +49,13 @@ const formatearMesLabel = (periodoYYYYMM) => {
 };
 
 export default function LiquidacionAuxiliares({ onVolver, usuario }) {
+  const [esCelular, setEsCelular] = useState(() => typeof window !== 'undefined' ? window.innerWidth <= 768 : false);
+
+  useEffect(() => {
+    const handleResize = () => setEsCelular(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   // Pestañas principales
   const [subVista, setSubVista] = useState('cierre_mensual'); // 'cierre_mensual', 'cuenta_corriente', 'descuentos'
 
@@ -1060,10 +1067,10 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
   const saldoFinal = totalDebe - totalHaber;
 
   return (
-    <div style={{ background: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b' }}>
+    <div style={{ background: '#ffffff', padding: esCelular ? '14px 10px' : '30px', borderRadius: esCelular ? '12px' : '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b', boxSizing: 'border-box', overflowX: 'hidden', width: '100%', maxWidth: '100%' }}>
       
       {/* Cabecera Principal */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '18px', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', flexDirection: esCelular ? 'column' : 'row', justifyContent: 'space-between', alignItems: esCelular ? 'stretch' : 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '18px', marginBottom: '20px', gap: esCelular ? '12px' : '0' }}>
         <div>
           <h2 style={{ color: '#0f172a', margin: 0, fontSize: '22px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '10px' }}>
             💰 Planilla de Liquidación de Auxiliares
@@ -1083,7 +1090,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
       </div>
 
       {/* Selector de Pestañas de Navegación */}
-      <div style={{ display: 'flex', gap: '10px', borderBottom: '2px solid #e2e8f0', marginBottom: '25px' }}>
+      <div style={{ display: 'flex', gap: '8px', borderBottom: '2px solid #e2e8f0', marginBottom: '25px', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: '4px' }}>
         <button
           onClick={() => setSubVista('cierre_mensual')}
           style={{
@@ -1170,29 +1177,31 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
       {subVista === 'cierre_mensual' && (
         <div>
           {/* Barra superior de selección de mes y acciones masivas */}
-          <div style={{ background: '#f8fafc', padding: '18px 22px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ background: '#f8fafc', padding: esCelular ? '14px 12px' : '18px 22px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '25px', display: 'flex', flexDirection: esCelular ? 'column' : 'row', justifyContent: 'space-between', alignItems: esCelular ? 'stretch' : 'center', flexWrap: 'wrap', gap: '15px' }}>
+            <div style={{ display: 'flex', flexDirection: esCelular ? 'column' : 'row', alignItems: esCelular ? 'stretch' : 'center', gap: '10px', width: esCelular ? '100%' : 'auto' }}>
               <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#334155' }}>Seleccionar Período:</span>
-              <select
-                value={mesSeleccionado}
-                onChange={(e) => setMesSeleccionado(e.target.value)}
-                style={{ padding: '8px 16px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', background: '#fff', color: '#0f172a', cursor: 'pointer' }}
-              >
-                {periodosDisponibles.map(p => (
-                  <option key={p} value={p}>{formatearMesLabel(p)} ({p})</option>
-                ))}
-              </select>
-              <button
-                onClick={() => cargarCierreMensual(mesSeleccionado)}
-                disabled={cargandoMes}
-                title="Actualizar datos del mes"
-                style={{ padding: '8px 14px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
-              >
-                {cargandoMes ? 'Cargando...' : '🔄 Actualizar'}
-              </button>
+              <div style={{ display: 'flex', gap: '8px', width: esCelular ? '100%' : 'auto' }}>
+                <select
+                  value={mesSeleccionado}
+                  onChange={(e) => setMesSeleccionado(e.target.value)}
+                  style={{ flex: 1, padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', background: '#fff', color: '#0f172a', cursor: 'pointer', minWidth: '0' }}
+                >
+                  {periodosDisponibles.map(p => (
+                    <option key={p} value={p}>{formatearMesLabel(p)} ({p})</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => cargarCierreMensual(mesSeleccionado)}
+                  disabled={cargandoMes}
+                  title="Actualizar datos del mes"
+                  style={{ padding: '8px 14px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', whiteSpace: 'nowrap', flexShrink: 0 }}
+                >
+                  {cargandoMes ? '...' : '🔄 Actualizar'}
+                </button>
+              </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', width: esCelular ? '100%' : 'auto', flexDirection: esCelular ? 'column' : 'row' }}>
               <button
                 onClick={abrirModalMontoFijo}
                 style={{
@@ -1254,7 +1263,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
           </div>
 
           {/* Tarjetas de Métricas del Mes */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', marginBottom: '25px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: esCelular ? '1fr' : 'repeat(4, 1fr)', gap: esCelular ? '10px' : '15px', marginBottom: '25px' }}>
             <div style={{ background: '#eff6ff', padding: '16px 20px', borderRadius: '12px', border: '1px solid #bfdbfe' }}>
               <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e40af', textTransform: 'uppercase' }}>
                 Total Devengado del Mes
@@ -1462,7 +1471,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
           {auxiliarSeleccionado && (
             <div>
               {/* Tarjetas de Saldo Individual */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '25px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: esCelular ? '1fr' : 'repeat(3, 1fr)', gap: esCelular ? '12px' : '20px', marginBottom: '25px' }}>
                 <div style={{ padding: '20px', borderRadius: '12px', background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '1px solid #bfdbfe' }}>
                   <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e40af', textTransform: 'uppercase' }}>
                     Saldo Pendiente a Pagar
@@ -1501,7 +1510,7 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
               </div>
 
               {/* Botones de Transacción */}
-              <div style={{ display: 'flex', gap: '15px', marginBottom: '25px' }}>
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', flexDirection: esCelular ? 'column' : 'row' }}>
                 <button
                   onClick={abrirFormularioPago}
                   style={{

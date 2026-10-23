@@ -297,17 +297,17 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
   };
 
   return (
-    <div style={{ background: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b' }}>
+    <div style={{ background: '#ffffff', padding: esCelular ? '14px 10px' : '30px', borderRadius: esCelular ? '12px' : '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b', boxSizing: 'border-box', overflowX: 'hidden', width: '100%', maxWidth: '100%' }}>
       
       {/* Cabecera */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '18px', marginBottom: '25px' }}>
+      <div style={{ display: 'flex', flexDirection: esCelular ? 'column' : 'row', justifyContent: 'space-between', alignItems: esCelular ? 'stretch' : 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '18px', marginBottom: '25px', gap: esCelular ? '12px' : '10px' }}>
         <div>
           <h2 style={{ color: '#0f172a', margin: 0, fontSize: '22px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
             📊 Estado Financiero de Pacientes
           </h2>
           <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>Análisis gerencial y consolidado de saldos deudores agrupados por vencimiento.</p>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', flexDirection: esCelular ? 'column' : 'row', width: esCelular ? '100%' : 'auto' }}>
           {esAdminOrDir && (
             <button
               onClick={async () => {
@@ -357,7 +357,7 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
       )}
 
       {/* Tarjetas de Balance Global (KPIs) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '15px', marginBottom: '25px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: esCelular ? '1fr 1fr' : 'repeat(5, 1fr)', gap: esCelular ? '10px' : '15px', marginBottom: '25px' }}>
         <div style={{ padding: '15px', borderRadius: '12px', background: 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)', border: '1px solid #fca5a5' }}>
           <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#b91c1c', textTransform: 'uppercase' }}>Vencido</span>
           <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#991b1b', margin: '4px 0 0 0' }}>
@@ -382,7 +382,7 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
             ${sumaProx30.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
           </h3>
         </div>
-        <div style={{ padding: '15px', borderRadius: '12px', background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)', border: '1px solid #d8b4fe' }}>
+        <div style={{ padding: '15px', borderRadius: '12px', background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)', border: '1px solid #d8b4fe', gridColumn: esCelular ? '1 / -1' : 'auto' }}>
           <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#7c3aed', textTransform: 'uppercase' }}>Total Cartera</span>
           <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#6d28d9', margin: '4px 0 0 0' }}>
             ${sumaTotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}

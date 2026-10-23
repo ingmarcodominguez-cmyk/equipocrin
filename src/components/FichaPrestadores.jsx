@@ -60,6 +60,13 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
   const [globalResults, setGlobalResults] = useState([]);
   const [cargandoGlobal, setCargandoGlobal] = useState(false);
   const [busquedaRealizada, setBusquedaRealizada] = useState(false);
+  const [esCelular, setEsCelular] = useState(() => typeof window !== 'undefined' ? window.innerWidth <= 768 : false);
+
+  useEffect(() => {
+    const handleResize = () => setEsCelular(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const ejecutarBusquedaGlobal = async () => {
     const rawSearch = globalSearchTerm.trim();
@@ -615,16 +622,16 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
   const globalBalance = globalTotalHaber - globalTotalDebe;
 
   return (
-    <div style={{ background: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b' }}>
+    <div style={{ background: '#ffffff', padding: esCelular ? '14px 10px' : '30px', borderRadius: esCelular ? '12px' : '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b', boxSizing: 'border-box', overflowX: 'hidden', width: '100%', maxWidth: '100%' }}>
       
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '18px', marginBottom: '25px' }}>
+      <div style={{ display: 'flex', flexDirection: esCelular ? 'column' : 'row', justifyContent: 'space-between', alignItems: esCelular ? 'stretch' : 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '18px', marginBottom: '25px', gap: esCelular ? '12px' : '10px' }}>
         <div>
           <h2 style={{ color: '#0f172a', margin: 0, fontSize: '22px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
             🩺💼 Ficha Integral de Prestadores
           </h2>
           <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>Gestioná honorarios, pagos, gastos y saldos corrientes de los profesionales.</p>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexDirection: esCelular ? 'column' : 'row' }}>
           {tieneAccesoReporte && (
             <button
               onClick={() => {
@@ -740,7 +747,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
           {globalResults.length > 0 && (
             <div>
               {/* Tarjetas de Resumen Global */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px', marginBottom: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: esCelular ? '1fr' : '1fr 1fr 1fr', gap: '15px', marginBottom: '20px' }}>
                 <div style={{ background: '#fff', padding: '15px', borderRadius: '10px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
                   <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Total Debe (Global)</span>
                   <h4 style={{ margin: '4px 0 0 0', fontSize: '18px', color: '#b91c1c', fontWeight: 'bold' }}>
@@ -862,7 +869,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
 
       {prestadorSeleccionado && (
         <div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '25px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: esCelular ? '1fr' : '1fr 1fr 1fr', gap: esCelular ? '12px' : '20px', marginBottom: '25px' }}>
             
             <div style={{ padding: '20px', borderRadius: '12px', background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '1px solid #bfdbfe', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -901,7 +908,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '15px', marginBottom: '30px', background: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '30px', background: '#f8fafc', padding: esCelular ? '12px' : '15px', borderRadius: '12px', border: '1px solid #e2e8f0', flexDirection: esCelular ? 'column' : 'row', flexWrap: 'wrap' }}>
             <button
               onClick={() => abrirFormulario('pago')}
               style={{ flex: 1, minWidth: '170px', padding: '12px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'background 0.2s' }}
@@ -941,7 +948,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                 <button onClick={() => setModalAbierto(null)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#94a3b8' }}>&times;</button>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: esCelular ? '1fr' : '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>Monto ($) *</label>
                   <input
@@ -1064,7 +1071,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                 )}
               </div>
               {filtroConcepto && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px', marginTop: '5px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: esCelular ? '1fr' : '1fr 1fr 1fr', gap: '10px', marginTop: '5px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
                   <div style={{ background: '#fff', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
                     <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Total Debe (Filtro)</span>
                     <h4 style={{ margin: '4px 0 0 0', fontSize: '15px', color: '#b91c1c', fontWeight: 'bold' }}>

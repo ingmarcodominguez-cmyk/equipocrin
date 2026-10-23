@@ -2,6 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
 export default function TareasPendientes({ onVolver }) {
+  const [esCelular, setEsCelular] = useState(() => typeof window !== 'undefined' ? window.innerWidth <= 768 : false);
+
+  useEffect(() => {
+    const handleResize = () => setEsCelular(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const [tareas, setTareas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
@@ -88,8 +95,8 @@ export default function TareasPendientes({ onVolver }) {
   });
 
   return (
-    <div style={{ background: '#ffffff', padding: '30px', borderRadius: '20px', border: '1px solid #e2e8f0', boxShadow: '0 10px 25px rgba(0,0,0,0.08)', color: '#1e293b', fontFamily: 'Segoe UI, system-ui, sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #e2e8f0', paddingBottom: '12px' }}>
+    <div style={{ background: '#ffffff', padding: esCelular ? '14px 10px' : '30px', borderRadius: esCelular ? '12px' : '20px', border: '1px solid #e2e8f0', boxShadow: '0 10px 25px rgba(0,0,0,0.08)', color: '#1e293b', fontFamily: 'Segoe UI, system-ui, sans-serif', boxSizing: 'border-box', overflowX: 'hidden', width: '100%', maxWidth: '100%' }}>
+      <div style={{ display: 'flex', flexDirection: esCelular ? 'column' : 'row', justifyContent: 'space-between', alignItems: esCelular ? 'stretch' : 'center', marginBottom: '20px', borderBottom: '2px solid #e2e8f0', paddingBottom: '12px', gap: esCelular ? '10px' : '0' }}>
         <h3 style={{ margin: 0, color: '#5b21b6', fontSize: '20px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
           📋 Tareas Pendientes del Tratamiento
         </h3>
@@ -101,13 +108,13 @@ export default function TareasPendientes({ onVolver }) {
         </button>
       </div>
 
-      <div style={{ marginBottom: '20px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+      <div style={{ marginBottom: '20px', display: 'flex', flexDirection: esCelular ? 'column' : 'row', gap: '10px', alignItems: esCelular ? 'stretch' : 'center' }}>
         <input 
           type="text" 
           placeholder="Buscar por paciente o tarea..." 
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          style={{ flex: 1, padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '15px', outline: 'none' }}
+          style={{ flex: 1, padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '15px', outline: 'none', boxSizing: 'border-box', width: '100%' }}
         />
         <button
           onClick={() => setAgruparPorPaciente(!agruparPorPaciente)}
@@ -121,7 +128,9 @@ export default function TareasPendientes({ onVolver }) {
             fontSize: '14px', 
             fontWeight: 'bold', 
             transition: 'all 0.2s',
-            whiteSpace: 'nowrap'
+            whiteSpace: 'nowrap',
+            width: esCelular ? '100%' : 'auto',
+            textAlign: 'center'
           }}
         >
           👤 {agruparPorPaciente ? 'Desagrupar' : 'Agrupar por Paciente'}
@@ -216,13 +225,13 @@ export default function TareasPendientes({ onVolver }) {
                           </div>
                           <p style={{ margin: 0, fontSize: '14px', color: '#475569', whiteSpace: 'pre-line' }}>{t.tarea}</p>
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0, width: esCelular ? '100%' : 'auto', justifyContent: esCelular ? 'stretch' : 'flex-start' }}>
                           <button
                             onClick={() => {
                               setEditandoId(t.id);
                               setEditandoTexto(t.tarea);
                             }}
-                            style={{ background: 'transparent', border: '1px solid #cbd5e1', color: '#475569', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', transition: 'background 0.2s' }}
+                            style={{ flex: esCelular ? 1 : 'none', textAlign: 'center', background: 'transparent', border: '1px solid #cbd5e1', color: '#475569', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', transition: 'background 0.2s' }}
                             onMouseOver={(e) => e.target.style.background = '#f1f5f9'}
                             onMouseOut={(e) => e.target.style.background = 'transparent'}
                           >
@@ -230,7 +239,7 @@ export default function TareasPendientes({ onVolver }) {
                           </button>
                           <button
                             onClick={() => marcarRealizada(t.id)}
-                            style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', transition: 'background 0.2s' }}
+                            style={{ flex: esCelular ? 1 : 'none', textAlign: 'center', background: '#10b981', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', transition: 'background 0.2s' }}
                             onMouseOver={(e) => e.target.style.background = '#059669'}
                             onMouseOut={(e) => e.target.style.background = '#10b981'}
                           >
@@ -249,7 +258,7 @@ export default function TareasPendientes({ onVolver }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '550px', overflowY: 'auto' }}>
           {filtradas.map(t => (
-            <div key={t.id} style={{ background: '#fcfdfd', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.01)', transition: 'border-color 0.2s' }}>
+            <div key={t.id} style={{ background: '#fcfdfd', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: esCelular ? 'column' : 'row', justifyContent: 'space-between', alignItems: esCelular ? 'stretch' : 'center', gap: esCelular ? '10px' : '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.01)', transition: 'border-color 0.2s' }}>
               {editandoId === t.id ? (
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
@@ -291,13 +300,13 @@ export default function TareasPendientes({ onVolver }) {
                     </div>
                     <p style={{ margin: 0, fontSize: '14px', color: '#475569', whiteSpace: 'pre-line' }}>{t.tarea}</p>
                   </div>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0, width: esCelular ? '100%' : 'auto', justifyContent: esCelular ? 'stretch' : 'flex-start' }}>
                     <button
                       onClick={() => {
                         setEditandoId(t.id);
                         setEditandoTexto(t.tarea);
                       }}
-                      style={{ background: 'transparent', border: '1px solid #cbd5e1', color: '#475569', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', transition: 'background 0.2s' }}
+                      style={{ flex: esCelular ? 1 : 'none', textAlign: 'center', background: 'transparent', border: '1px solid #cbd5e1', color: '#475569', padding: '8px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', transition: 'background 0.2s' }}
                       onMouseOver={(e) => e.target.style.background = '#f1f5f9'}
                       onMouseOut={(e) => e.target.style.background = 'transparent'}
                     >
@@ -305,7 +314,7 @@ export default function TareasPendientes({ onVolver }) {
                     </button>
                     <button
                       onClick={() => marcarRealizada(t.id)}
-                      style={{ background: '#10b981', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', transition: 'background 0.2s' }}
+                      style={{ flex: esCelular ? 1 : 'none', textAlign: 'center', background: '#10b981', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', transition: 'background 0.2s' }}
                       onMouseOver={(e) => e.target.style.background = '#059669'}
                       onMouseOut={(e) => e.target.style.background = '#10b981'}
                     >
