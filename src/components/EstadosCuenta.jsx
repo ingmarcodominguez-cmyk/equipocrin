@@ -2,8 +2,17 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdminOrDir }) {
+  const [esCelular, setEsCelular] = useState(() => typeof window !== 'undefined' ? window.innerWidth <= 768 : false);
+
+  useEffect(() => {
+    const handleResize = () => setEsCelular(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const [datos, setDatos] = useState([]);
   const [cargando, setCargando] = useState(false);
+  const [errorCarga, setErrorCarga] = useState(null);
   const [filtroNombre, setFiltroNombre] = useState('');
   const [pacienteSeleccionado, setPacienteSeleccionado] = useState(null);
   const [pacienteInfoModal, setPacienteInfoModal] = useState(null);
@@ -35,6 +44,7 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
 
   async function fetchData() {
     setCargando(true);
+    setErrorCarga(null);
     try {
       // 1. Obtener todos los pacientes de pacientes_motor (incluyendo teléfonos)
       const { data: pacientes, error: errorPacientes } = await supabase
@@ -181,6 +191,7 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
 
     } catch (err) {
       console.error("Error al inicializar EstadosCuenta:", err);
+      setErrorCarga(err?.message || "Ocurrió un error al cargar la información financiera.");
     } finally {
       setCargando(false);
     }
@@ -406,6 +417,16 @@ export default function EstadosCuenta({ onVolver, actualizarMoraYCuotas, esAdmin
       {/* Listado y Tabla */}
       {cargando ? (
         <p style={{ color: '#64748b', fontSize: '14px', textAlign: 'center', padding: '40px' }}>Cargando información consolidada...</p>
+      ) : errorCarga ? (
+        <div style={{ textAlign: 'center', padding: '30px', background: '#fee2e2', borderRadius: '12px', border: '1px solid #fca5a5', color: '#b91c1c', margin: '20px 0' }}>
+          <p style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 'bold' }}>⚠️ {errorCarga}</p>
+          <button
+            onClick={fetchData}
+            style={{ padding: '8px 18px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
+          >
+            🔄 Reintentar Carga
+          </button>
+        </div>
       ) : datosFiltrados.length === 0 ? (
         <p style={{ color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '30px', borderRadius: '12px', textAlign: 'center' }}>
           No se encontraron registros de deuda para los filtros seleccionados.
