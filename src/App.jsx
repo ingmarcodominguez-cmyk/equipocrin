@@ -60,8 +60,10 @@ function App() {
   // Estados para Modal de Detección de Nuevo Mes y Aumento
   const [modalNuevoMesAbierto, setModalNuevoMesAbierto] = useState(false);
   const [nuevoMesInfo, setNuevoMesInfo] = useState({ periodoInt: 0, nombreMes: '', anio: 0 });
-  const [aumentoNuevoMes, setAumentoNuevoMes] = useState('');
+  const [aumentoNuevoMes, setAumentoNuevoMes] = useState('10');
   const [tieneAumentoNuevoMes, setTieneAumentoNuevoMes] = useState(null);
+  const [acuerdosCandidatosModal, setAcuerdosCandidatosModal] = useState([]);
+  const [totalAcuerdosMensualesModal, setTotalAcuerdosMensualesModal] = useState(0);
 
   // Estados para buscador por ID
   const [criterioBusquedaId, setCriterioBusquedaId] = useState('')
@@ -201,8 +203,86 @@ function App() {
     return (nuevoAnio * 100) + nuevoMes;
   }
 
-  // ⚙️ MOTOR DE GENERACIÓN DE CUOTAS (CON VIGÍA A PRUEBA DE BRECHAS)
-  async function generarCuotasMensualesDB(forzarPrueba = false, aumentoExplicit = null) {
+  function parsearImporteAcuerdo(val) {
+    const importeStr = String(val || '0').trim();
+    if (importeStr.includes(',')) {
+      return parseFloat(importeStr.replace(/\./g, '').replace(',', '.')) || 0;
+    } else if (importeStr.includes('.')) {
+      const partes = importeStr.split('.');
+      if (partes.length > 2 || partes[1].length === 3) {
+        return parseFloat(importeStr.replace(/\./g, '')) || 0;
+      }
+      return parseFloat(importeStr) || 0;
+    }
+    return parseFloat(importeStr) || 0;
+  }
+
+  // Evalúa si un acuerdo mensual activo cumple su ciclo de 3 meses de validez en el período (anio, mes)
+  function evaluarCumpleTrimestreAcuerdo(acuerdo, anio, mes) {
+    const nombresMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+    const rawFecha = acuerdo.fecha_acuerdo || acuerdo.fecha_registro;
+
+    let anioAcuerdo = null;
+    let mesAcuerdo = null;
+    let diaAcuerdo = 1;
+
+    if (rawFecha && typeof rawFecha === 'string') {
+      if (rawFecha.includes('-')) {
+        const partes = rawFecha.split('T')[0].split('-');
+        if (partes.length >= 2) {
+          anioAcuerdo = parseInt(partes[0], 10);
+          mesAcuerdo = parseInt(partes[1], 10);
+          diaAcuerdo = parseInt(partes[2], 10) || 1;
+        }
+      } else if (rawFecha.includes('/')) {
+        const partes = rawFecha.split('/');
+        if (partes.length >= 3) {
+          diaAcuerdo = parseInt(partes[0], 10) || 1;
+          mesAcuerdo = parseInt(partes[1], 10);
+          anioAcuerdo = parseInt(partes[2], 10);
+        }
+      }
+    }
+
+    if (!anioAcuerdo || !mesAcuerdo) {
+      const diffDesdeSep = (anio - 2026) * 12 + (mes - 9);
+      return {
+        correspondeAumento: diffDesdeSep > 0 && diffDesdeSep % 3 === 0,
+        mesInicioLabel: 'Histórico (Base Sep 2026)'
+      };
+    }
+
+    // Regla del día 20: Si inicia después del día 20, su mes computable de inicio es el siguiente
+    let mesInicio = mesAcuerdo;
+    let anioInicio = anioAcuerdo;
+    if (diaAcuerdo > 20) {
+      mesInicio++;
+      if (mesInicio > 12) {
+        mesInicio = 1;
+        anioInicio++;
+      }
+    }
+
+    // Línea de corte general: Acuerdos con inicio computable <= Julio 2026 (Grupo Histórico)
+    const esHistorico = (anioInicio < 2026) || (anioInicio === 2026 && mesInicio <= 7);
+
+    if (esHistorico) {
+      const diffDesdeSep = (anio - 2026) * 12 + (mes - 9);
+      return {
+        correspondeAumento: diffDesdeSep > 0 && diffDesdeSep % 3 === 0,
+        mesInicioLabel: 'Histórico (Base Sep 2026)'
+      };
+    } else {
+      const diffMeses = (anio - anioInicio) * 12 + (mes - mesInicio);
+      return {
+        correspondeAumento: diffMeses > 0 && diffMeses % 3 === 0,
+        mesInicioLabel: `${nombresMeses[mesInicio - 1]} ${anioInicio}`
+      };
+    }
+  }
+
+  // ⚙️ MOTOR DE GENERACIÓN DE CUOTAS (CON VIGÍA A PRUEBA DE BRECHAS Y CONTROL INDIVIDUAL DE AUMENTOS)
+  async function generarCuotasMensualesDB(forzarPrueba = false, aumentosParam = null) {
     if (cuotasMensualesLock) {
       console.log("[Motor de Cuotas] Ya hay una ejecución del motor de cuotas en curso. Omitiendo.");
       return;
@@ -216,8 +296,10 @@ function App() {
 
       const nombresMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
-      const porcentajeAumento = aumentoExplicit !== null 
-        ? (parseFloat(aumentoExplicit) || 0)
+      // aumentosParam puede ser un objeto { [id_acuerdo]: porcentaje } desde el modal interactivo, o un número desde el simulador
+      const esMapaIndividual = aumentosParam !== null && typeof aumentosParam === 'object';
+      const porcentajeGeneralFallback = (!esMapaIndividual && aumentosParam !== null)
+        ? (parseFloat(aumentosParam) || 0)
         : (parseFloat(porcentajeAumentoInput) || 0);
 
       // 1. Consultar al VIGÍA (tabla control_periodos_motor)
@@ -292,10 +374,10 @@ function App() {
         }
       }
 
-      // 3b. Obtener cuotas ya generadas para evitar duplicaciones
+      // 3b. Obtener cuotas ya generadas para evitar duplicaciones (y permitir actualizar su importe si se re-lanza el período)
       const { data: cuotasExistentes, error: errorCuotas } = await supabase
         .from('movimientoscuenta_motor')
-        .select('id_acuerdo, ciclo_mora')
+        .select('id_movimiento, id_acuerdo, ciclo_mora, debe')
         .eq('tipo_movimiento', 'cuota')
         .in('ciclo_mora', periodosAProcesar);
 
@@ -303,36 +385,21 @@ function App() {
         throw new Error("Error al consultar cuotas existentes: " + errorCuotas.message);
       }
 
-      const setCuotasExistentes = new Set(
-        (cuotasExistentes || []).map(c => `${c.id_acuerdo}_${c.ciclo_mora}`)
-      );
+      const mapaCuotasExistentes = {};
+      (cuotasExistentes || []).forEach(c => {
+        mapaCuotasExistentes[`${c.id_acuerdo}_${c.ciclo_mora}`] = c;
+      });
 
       const nuevosMovimientosBulk = [];
+      const actualizacionesMovimientosExistentes = [];
       const actualizacionesAcuerdos = [];
       const controlPeriodosBulk = [];
 
       // Mapeamos los acuerdos filtrados a memoria para llevar registro de sus importes
-      const listaAcuerdosEnMemoria = acuerdosFiltrados.map(a => {
-        const importeStr = String(a.importe_actual || a.monto_cuota_base || '0').trim();
-        let importeBase = 0;
-        if (importeStr.includes(',')) {
-          importeBase = parseFloat(importeStr.replace(/\./g, '').replace(',', '.')) || 0;
-        } else if (importeStr.includes('.')) {
-          const partes = importeStr.split('.');
-          if (partes.length > 2 || partes[1].length === 3) {
-            importeBase = parseFloat(importeStr.replace(/\./g, '')) || 0;
-          } else {
-            importeBase = parseFloat(importeStr) || 0;
-          }
-        } else {
-          importeBase = parseFloat(importeStr) || 0;
-        }
-        
-        return {
-          ...a,
-          importeBase
-        };
-      });
+      const listaAcuerdosEnMemoria = acuerdosFiltrados.map(a => ({
+        ...a,
+        importeBase: parsearImporteAcuerdo(a.importe_actual || a.monto_cuota_base)
+      }));
 
       // Procesamos cada período faltante cronológicamente
       for (const periodo of periodosAProcesar) {
@@ -347,75 +414,43 @@ function App() {
 
         for (const acuerdo of listaAcuerdosEnMemoria) {
           const keyCuota = `${acuerdo.id_acuerdo}_${periodo}`;
-          if (setCuotasExistentes.has(keyCuota)) {
-            continue; // Evitar duplicados
-          }
+          const cuotaExistente = mapaCuotasExistentes[keyCuota];
 
           let nuevoImporte = acuerdo.importeBase;
 
-          // Lógica de aumento trimestral individual con regla de corte al día 20
-          if (periodo === periodoActualInt && porcentajeAumento > 0) {
-            let correspondeAumento = false;
-            const rawFecha = acuerdo.fecha_acuerdo || acuerdo.fecha_registro;
-            
-            let anioAcuerdo = null;
-            let mesAcuerdo = null;
-            let diaAcuerdo = 1;
+          // Determinamos si a este acuerdo se le aplica aumento en este período
+          if (periodo === periodoActualInt) {
+            let pctAplicar = 0;
 
-            if (rawFecha && typeof rawFecha === 'string') {
-              if (rawFecha.includes('-')) {
-                const partes = rawFecha.split('T')[0].split('-');
-                if (partes.length >= 2) {
-                  anioAcuerdo = parseInt(partes[0], 10);
-                  mesAcuerdo = parseInt(partes[1], 10);
-                  diaAcuerdo = parseInt(partes[2], 10) || 1;
-                }
-              } else if (rawFecha.includes('/')) {
-                const partes = rawFecha.split('/');
-                if (partes.length >= 3) {
-                  diaAcuerdo = parseInt(partes[0], 10) || 1;
-                  mesAcuerdo = parseInt(partes[1], 10);
-                  anioAcuerdo = parseInt(partes[2], 10);
-                }
+            if (esMapaIndividual) {
+              if (Object.prototype.hasOwnProperty.call(aumentosParam, acuerdo.id_acuerdo)) {
+                pctAplicar = parseFloat(aumentosParam[acuerdo.id_acuerdo]) || 0;
+              }
+            } else if (porcentajeGeneralFallback > 0) {
+              const evalTrim = evaluarCumpleTrimestreAcuerdo(acuerdo, anio, mes);
+              if (evalTrim.correspondeAumento) {
+                pctAplicar = porcentajeGeneralFallback;
               }
             }
 
-            if (!anioAcuerdo || !mesAcuerdo) {
-              // Si no tiene fecha, se asume acuerdo histórico con línea de largada en Sep 2026
-              const diffDesdeSep = (anio - 2026) * 12 + (mes - 9);
-              correspondeAumento = diffDesdeSep > 0 && diffDesdeSep % 3 === 0;
-            } else {
-              // Regla del día 20: Si inicia después del día 20, su mes computable de inicio es el siguiente
-              let mesInicio = mesAcuerdo;
-              let anioInicio = anioAcuerdo;
-              if (diaAcuerdo > 20) {
-                mesInicio++;
-                if (mesInicio > 12) {
-                  mesInicio = 1;
-                  anioInicio++;
-                }
-              }
-
-              // Línea de corte general: Acuerdos con inicio computable <= Julio 2026 (Grupo Histórico)
-              const esHistorico = (anioInicio < 2026) || (anioInicio === 2026 && mesInicio <= 7);
-
-              if (esHistorico) {
-                // Tienen base consolidada en Septiembre 2026. Aumentan cada 3 meses contados desde Septiembre (Diciembre 2026, Marzo 2027, etc.)
-                const diffDesdeSep = (anio - 2026) * 12 + (mes - 9);
-                correspondeAumento = diffDesdeSep > 0 && diffDesdeSep % 3 === 0;
-              } else {
-                // Acuerdos de Agosto 2026 en adelante: Tienen 3 meses de cuota fija inicial y aumentan cada 3 meses desde su mes de inicio computable
-                const diffMeses = (anio - anioInicio) * 12 + (mes - mesInicio);
-                correspondeAumento = diffMeses > 0 && diffMeses % 3 === 0;
-              }
-            }
-
-            if (correspondeAumento) {
-              nuevoImporte = nuevoImporte * (1 + porcentajeAumento / 100);
-              nuevoImporte = Math.round(nuevoImporte); // Redondear a importe entero
+            if (pctAplicar > 0) {
+              nuevoImporte = Math.round(nuevoImporte * (1 + pctAplicar / 100));
               acuerdo.haAumentado = true;
             }
-            acuerdo.importeBase = nuevoImporte; // Actualizamos para que sirva de base si hubiera más meses
+            acuerdo.importeBase = nuevoImporte;
+          }
+
+          if (cuotaExistente) {
+            // Si la cuota ya existía en este período y el acuerdo recibió aumento, actualizamos el debe de esa cuota sin tocar su id_deuda
+            if (acuerdo.haAumentado && String(cuotaExistente.debe) !== nuevoImporte.toString()) {
+              actualizacionesMovimientosExistentes.push(
+                supabase
+                  .from('movimientoscuenta_motor')
+                  .update({ debe: nuevoImporte.toString() })
+                  .eq('id_movimiento', cuotaExistente.id_movimiento)
+              );
+            }
+            continue;
           }
 
           maxIdDeuda++;
@@ -448,21 +483,19 @@ function App() {
         }
       }
 
-      // Si hubo aumento, actualizamos el precio final de los acuerdos en la base de datos solo para los que aumentaron
-      if (porcentajeAumento > 0) {
-        for (const acuerdo of listaAcuerdosEnMemoria) {
-          if (acuerdo.haAumentado) {
-            actualizacionesAcuerdos.push(
-              supabase
-                .from('acuerdos_motor')
-                .update({ importe_actual: acuerdo.importeBase.toString() })
-                .eq('id_acuerdo', acuerdo.id_acuerdo)
-            );
-          }
+      // Si hubo acuerdos con aumento aprobado, actualizamos importe_actual en acuerdos_motor
+      for (const acuerdo of listaAcuerdosEnMemoria) {
+        if (acuerdo.haAumentado) {
+          actualizacionesAcuerdos.push(
+            supabase
+              .from('acuerdos_motor')
+              .update({ importe_actual: acuerdo.importeBase.toString() })
+              .eq('id_acuerdo', acuerdo.id_acuerdo)
+          );
         }
       }
 
-      // Insertamos los movimientos generados
+      // Insertamos los movimientos nuevos generados
       if (nuevosMovimientosBulk.length > 0) {
         const { error: errorBulkInsert } = await supabase
           .from('movimientoscuenta_motor')
@@ -473,7 +506,12 @@ function App() {
         }
       }
 
-      // Guardamos la actualización de importes
+      // Actualizamos cuotas existentes si hubo relanzamiento con aumento
+      if (actualizacionesMovimientosExistentes.length > 0) {
+        await Promise.all(actualizacionesMovimientosExistentes);
+      }
+
+      // Guardamos la actualización de importes en acuerdos_motor
       if (actualizacionesAcuerdos.length > 0) {
         await Promise.all(actualizacionesAcuerdos);
       }
@@ -891,16 +929,71 @@ function App() {
 
       const ultimoPeriodoProcesado = periodosProcesados && periodosProcesados.length > 0 ? periodosProcesados[0].periodo_int : 0;
 
-      // 2. Si detecta cambio de mes y las cuotas aún no fueron procesadas, preguntar aumento interactivamente
+      // 2. Si detecta cambio de mes y las cuotas aún no fueron procesadas, desplegar listado de acuerdos que cumplen sus 3 meses
       if (ultimoPeriodoProcesado < periodoActualInt) {
+        setCargando(true);
+        setMensajeCarga('Verificando acuerdos que cumplen su ciclo trimestral de 3 meses...');
+
+        const [
+          { data: acuerdosActivos, error: errAc },
+          { data: pacientesData, error: errPac },
+          { data: prestacionesData, error: errPres }
+        ] = await Promise.all([
+          supabase.from('acuerdos_motor').select('*'),
+          supabase.from('pacientes_motor').select('id_paciente, nombre_apellido'),
+          supabase.from('prestaciones_motor').select('id_prestacion, nombre_prestacion')
+        ]);
+
+        if (errAc) throw errAc;
+        if (errPac) throw errPac;
+        if (errPres) throw errPres;
+
+        const mapPacientes = {};
+        (pacientesData || []).forEach(p => {
+          mapPacientes[String(p.id_paciente)] = p.nombre_apellido;
+        });
+
+        const mapPrestaciones = {};
+        (prestacionesData || []).forEach(pr => {
+          mapPrestaciones[String(pr.id_prestacion)] = pr.nombre_prestacion;
+        });
+
+        const mensualesActivos = (acuerdosActivos || []).filter(acuerdo => {
+          const tipo = (acuerdo.tipo_acuerdo || '').trim().toLowerCase();
+          const estado = (acuerdo.estado || '').trim().toLowerCase();
+          return tipo === 'mensual' && estado === 'activo';
+        });
+
+        const candidatos = [];
+        for (const ac of mensualesActivos) {
+          const evalTrim = evaluarCumpleTrimestreAcuerdo(ac, anioActual, mesActual);
+          if (evalTrim.correspondeAumento) {
+            candidatos.push({
+              id_acuerdo: ac.id_acuerdo,
+              id_paciente: ac.id_paciente,
+              nombre_paciente: mapPacientes[String(ac.id_paciente)] || `Paciente #${ac.id_paciente}`,
+              nombre_prestacion: mapPrestaciones[String(ac.id_prestacion)] || `Prestación #${ac.id_prestacion}`,
+              fecha_acuerdo: ac.fecha_acuerdo || 'S/D',
+              mesInicioLabel: evalTrim.mesInicioLabel,
+              importeActual: parsearImporteAcuerdo(ac.importe_actual || ac.monto_cuota_base),
+              seleccionado: true,
+              porcentaje: '10'
+            });
+          }
+        }
+
+        candidatos.sort((a, b) => a.nombre_paciente.localeCompare(b.nombre_paciente));
+
         const nombresMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
         setNuevoMesInfo({
           periodoInt: periodoActualInt,
           nombreMes: nombresMeses[mesActual - 1],
           anio: anioActual
         });
-        setTieneAumentoNuevoMes(null);
-        setAumentoNuevoMes('');
+        setTotalAcuerdosMensualesModal(mensualesActivos.length);
+        setAcuerdosCandidatosModal(candidatos);
+        setAumentoNuevoMes('10');
+        setCargando(false);
         setModalNuevoMesAbierto(true);
         return;
       }
@@ -925,13 +1018,27 @@ function App() {
     }
   };
 
-  const confirmarGeneracionNuevoMes = async (porcentaje) => {
+  const confirmarGeneracionNuevoMes = async () => {
+    const mapaAumentos = {};
+    let cantidadConAumento = 0;
+    acuerdosCandidatosModal.forEach(item => {
+      const pctNum = item.seleccionado ? (parseFloat(item.porcentaje) || 0) : 0;
+      if (pctNum > 0) {
+        mapaAumentos[item.id_acuerdo] = pctNum;
+        cantidadConAumento++;
+      } else {
+        mapaAumentos[item.id_acuerdo] = 0;
+      }
+    });
+
     setModalNuevoMesAbierto(false);
     setCargando(true);
-    setMensajeCarga(`Generando cuotas de ${nuevoMesInfo.nombreMes} ${porcentaje > 0 ? `con ${porcentaje}% de aumento` : 'sin aumento'}...`);
+    setMensajeCarga(
+      `Procesando cuotas de ${nuevoMesInfo.nombreMes} (${cantidadConAumento} acuerdo${cantidadConAumento === 1 ? '' : 's'} con actualización trimestral)...`
+    );
     try {
       const fechaActualTrabajo = obtenerFechaTrabajo();
-      await generarCuotasMensualesDB(false, porcentaje);
+      await generarCuotasMensualesDB(false, mapaAumentos);
 
       setMensajeCarga('Calculando y aplicando recargos por mora...');
       if (typeof ejecutarMotorRecargosDB === 'function') {
@@ -1261,7 +1368,7 @@ function App() {
           </button>
         </div>
 
-        {/* MODAL INTERACTIVO: DETECCIÓN DE CAMBIO DE MES Y AUMENTO DE CUOTA */}
+        {/* MODAL INTERACTIVO: DETECCIÓN DE CAMBIO DE MES Y LISTADO DE ACUERDOS QUE CUMPLEN 3 MESES */}
         {modalNuevoMesAbierto && (
           <div style={{
             position: 'fixed',
@@ -1280,102 +1387,251 @@ function App() {
               background: '#ffffff',
               color: '#1e293b',
               borderRadius: '20px',
-              maxWidth: '520px',
+              maxWidth: '880px',
               width: '100%',
-              padding: '30px',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              padding: '26px 28px',
               boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
-              textAlign: 'center',
               fontFamily: 'Segoe UI, system-ui, sans-serif',
               border: '1px solid #e2e8f0'
             }}>
-              <div style={{ fontSize: '48px', marginBottom: '10px' }}>🗓️</div>
-              <h3 style={{ margin: '0 0 10px 0', fontSize: '22px', color: '#0f172a', fontWeight: '800' }}>
-                ¡Inicio de Nuevo Período!
-              </h3>
-              <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: '#64748b', lineHeight: '1.5' }}>
-                El sistema detectó que hoy inicia el ciclo de <strong>{nuevoMesInfo.nombreMes} {nuevoMesInfo.anio}</strong> y las cuotas mensuales deben ser generadas.
-              </p>
-
-              <div style={{ background: '#f8fafc', padding: '18px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '24px', textAlign: 'left' }}>
-                <p style={{ margin: '0 0 14px 0', fontSize: '14px', fontWeight: 'bold', color: '#1e293b' }}>
-                  ¿Corresponde aplicar aumento a las cuotas de {nuevoMesInfo.nombreMes}?
-                </p>
-
-                <div style={{ display: 'flex', gap: '12px', marginBottom: tieneAumentoNuevoMes === true ? '15px' : '0' }}>
-                  <button
-                    type="button"
-                    onClick={() => setTieneAumentoNuevoMes(false)}
-                    style={{
-                      flex: 1,
-                      padding: '12px 10px',
-                      borderRadius: '10px',
-                      border: tieneAumentoNuevoMes === false ? '2px solid #64748b' : '1px solid #cbd5e1',
-                      background: tieneAumentoNuevoMes === false ? '#f1f5f9' : '#ffffff',
-                      color: '#334155',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                      fontSize: '13px',
-                      transition: 'all 0.15s'
-                    }}
-                  >
-                    ❌ NO, mantener valores (0%)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTieneAumentoNuevoMes(true)}
-                    style={{
-                      flex: 1,
-                      padding: '12px 10px',
-                      borderRadius: '10px',
-                      border: tieneAumentoNuevoMes === true ? '2px solid #0284c7' : '1px solid #cbd5e1',
-                      background: tieneAumentoNuevoMes === true ? '#e0f2fe' : '#ffffff',
-                      color: '#0369a1',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                      fontSize: '13px',
-                      transition: 'all 0.15s'
-                    }}
-                  >
-                    📈 SÍ, hay aumento
-                  </button>
+              {/* Encabezado */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '40px', lineHeight: 1 }}>🗓️</div>
+                <div style={{ textAlign: 'left', flex: 1 }}>
+                  <h3 style={{ margin: '0 0 4px 0', fontSize: '21px', color: '#0f172a', fontWeight: '800' }}>
+                    Inicio de Período: {nuevoMesInfo.nombreMes} {nuevoMesInfo.anio}
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '13.5px', color: '#475569' }}>
+                    Se encontraron <strong>{acuerdosCandidatosModal.length} acuerdo{acuerdosCandidatosModal.length === 1 ? '' : 's'}</strong> que cumplen sus <strong>3 meses de validez</strong> este mes (de un total de {totalAcuerdosMensualesModal} acuerdos mensuales activos).
+                  </p>
                 </div>
+              </div>
 
-                {tieneAumentoNuevoMes === true && (
-                  <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #cbd5e1' }}>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#0f172a', marginBottom: '6px' }}>
-                      Indique el porcentaje de aumento:
+              {acuerdosCandidatosModal.length === 0 ? (
+                <div style={{ background: '#f8fafc', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px', textAlign: 'center' }}>
+                  <p style={{ margin: 0, fontSize: '14.5px', color: '#334155', fontWeight: '600' }}>
+                    ✅ Ningún acuerdo mensual cumple su ciclo de 3 meses en {nuevoMesInfo.nombreMes} {nuevoMesInfo.anio}.
+                  </p>
+                  <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: '#64748b' }}>
+                    Todos los acuerdos activos ({totalAcuerdosMensualesModal}) se generarán manteniendo su valor actual vigente.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Barra de control rápido */}
+                  <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '12px',
+                    background: '#f0f9ff',
+                    border: '1px solid #bae6fd',
+                    borderRadius: '10px',
+                    padding: '10px 14px',
+                    marginBottom: '12px'
+                  }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '700', color: '#0369a1', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={acuerdosCandidatosModal.length > 0 && acuerdosCandidatosModal.every(a => a.seleccionado)}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setAcuerdosCandidatosModal(prev => prev.map(item => ({
+                            ...item,
+                            seleccionado: checked,
+                            porcentaje: checked && (parseFloat(item.porcentaje) || 0) <= 0 ? (aumentoNuevoMes || '10') : item.porcentaje
+                          })));
+                        }}
+                        style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                      />
+                      Marcar / Desmarcar todos ({acuerdosCandidatosModal.filter(a => a.seleccionado && (parseFloat(a.porcentaje) || 0) > 0).length} de {acuerdosCandidatosModal.length} con aumento)
                     </label>
+
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '12.5px', fontWeight: '600', color: '#0f172a' }}>% general para tildados:</span>
                       <input
                         type="number"
                         step="any"
                         min="0"
                         value={aumentoNuevoMes}
                         onChange={(e) => setAumentoNuevoMes(e.target.value)}
-                        placeholder="Ej: 10"
-                        autoFocus
                         style={{
-                          flex: 1,
-                          padding: '10px 14px',
-                          border: '2px solid #0284c7',
-                          borderRadius: '8px',
-                          fontSize: '16px',
+                          width: '68px',
+                          padding: '5px 8px',
+                          borderRadius: '6px',
+                          border: '1px solid #0284c7',
                           fontWeight: 'bold',
-                          outline: 'none',
+                          fontSize: '13px',
+                          textAlign: 'center',
                           color: '#0f172a',
                           background: '#fff'
                         }}
                       />
-                      <span style={{ fontSize: '20px', fontWeight: '800', color: '#0369a1' }}>%</span>
+                      <span style={{ fontWeight: 'bold', color: '#0369a1', fontSize: '13px' }}>%</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const pctVal = aumentoNuevoMes || '0';
+                          setAcuerdosCandidatosModal(prev => prev.map(item =>
+                            item.seleccionado ? { ...item, porcentaje: pctVal } : item
+                          ));
+                        }}
+                        style={{
+                          padding: '5px 10px',
+                          borderRadius: '6px',
+                          border: 'none',
+                          background: '#0284c7',
+                          color: '#fff',
+                          fontWeight: 'bold',
+                          fontSize: '12px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Aplicar a tildados
+                      </button>
                     </div>
-                    <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: '#64748b' }}>
-                      Este porcentaje se aplicará individualmente a los pacientes que cumplan su ciclo trimestral en {nuevoMesInfo.nombreMes}. Los demás mantendrán su cuota fija.
-                    </p>
                   </div>
-                )}
-              </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                  {/* Tabla de acuerdos que cumplen 3 meses */}
+                  <div style={{ overflowY: 'auto', flex: 1, border: '1px solid #cbd5e1', borderRadius: '10px', marginBottom: '12px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ background: '#f1f5f9', color: '#334155', borderBottom: '2px solid #cbd5e1', position: 'sticky', top: 0, zIndex: 2 }}>
+                          <th style={{ padding: '10px', width: '44px', textAlign: 'center' }}>Aplicar</th>
+                          <th style={{ padding: '10px' }}>Paciente / Prestación</th>
+                          <th style={{ padding: '10px', textAlign: 'center' }}>Inicio Ciclo</th>
+                          <th style={{ padding: '10px', textAlign: 'right' }}>Valor Actual</th>
+                          <th style={{ padding: '10px', width: '115px', textAlign: 'center' }}>% Aumento</th>
+                          <th style={{ padding: '10px', textAlign: 'right' }}>Nuevo Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {acuerdosCandidatosModal.map((item, idx) => {
+                          const pctNum = item.seleccionado ? (parseFloat(item.porcentaje) || 0) : 0;
+                          const recibeAumento = item.seleccionado && pctNum > 0;
+                          const nuevoValor = recibeAumento
+                            ? Math.round(item.importeActual * (1 + pctNum / 100))
+                            : item.importeActual;
+                          const diferencia = nuevoValor - item.importeActual;
+
+                          return (
+                            <tr
+                              key={item.id_acuerdo}
+                              style={{
+                                borderBottom: '1px solid #e2e8f0',
+                                background: recibeAumento ? (idx % 2 === 0 ? '#ffffff' : '#f8fafc') : '#f1f5f9',
+                                opacity: item.seleccionado ? 1 : 0.65
+                              }}
+                            >
+                              <td style={{ padding: '10px', textAlign: 'center' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={item.seleccionado}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    setAcuerdosCandidatosModal(prev => prev.map(row =>
+                                      row.id_acuerdo === item.id_acuerdo
+                                        ? {
+                                            ...row,
+                                            seleccionado: checked,
+                                            porcentaje: checked && (parseFloat(row.porcentaje) || 0) <= 0 ? (aumentoNuevoMes || '10') : row.porcentaje
+                                          }
+                                        : row
+                                    ));
+                                  }}
+                                  style={{ width: '17px', height: '17px', cursor: 'pointer' }}
+                                />
+                              </td>
+                              <td style={{ padding: '10px' }}>
+                                <div style={{ fontWeight: '700', color: '#0f172a', fontSize: '13.5px' }}>
+                                  {item.nombre_paciente}
+                                </div>
+                                <div style={{ fontSize: '11.5px', color: '#64748b' }}>
+                                  {item.nombre_prestacion} • Acuerdo #{item.id_acuerdo} ({item.fecha_acuerdo})
+                                </div>
+                              </td>
+                              <td style={{ padding: '10px', textAlign: 'center' }}>
+                                <span style={{
+                                  display: 'inline-block',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  fontWeight: '700',
+                                  background: '#e0f2fe',
+                                  color: '#0369a1'
+                                }}>
+                                  {item.mesInicioLabel}
+                                </span>
+                              </td>
+                              <td style={{ padding: '10px', textAlign: 'right', fontWeight: '600', color: '#475569' }}>
+                                ${item.importeActual.toLocaleString('es-AR')}
+                              </td>
+                              <td style={{ padding: '10px', textAlign: 'center' }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    min="0"
+                                    value={item.seleccionado ? item.porcentaje : '0'}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      const numVal = parseFloat(val) || 0;
+                                      setAcuerdosCandidatosModal(prev => prev.map(row =>
+                                        row.id_acuerdo === item.id_acuerdo
+                                          ? {
+                                              ...row,
+                                              porcentaje: val,
+                                              seleccionado: numVal > 0 ? true : row.seleccionado
+                                            }
+                                          : row
+                                      ));
+                                    }}
+                                    style={{
+                                      width: '64px',
+                                      padding: '6px 8px',
+                                      borderRadius: '6px',
+                                      border: recibeAumento ? '2px solid #0284c7' : '1px solid #cbd5e1',
+                                      fontWeight: 'bold',
+                                      fontSize: '13.5px',
+                                      textAlign: 'center',
+                                      color: recibeAumento ? '#0f172a' : '#64748b',
+                                      background: '#fff'
+                                    }}
+                                  />
+                                  <span style={{ fontWeight: '700', color: '#475569' }}>%</span>
+                                </div>
+                              </td>
+                              <td style={{ padding: '10px', textAlign: 'right' }}>
+                                <div style={{
+                                  fontWeight: '800',
+                                  fontSize: '14px',
+                                  color: recibeAumento ? '#15803d' : '#64748b'
+                                }}>
+                                  ${nuevoValor.toLocaleString('es-AR')}
+                                </div>
+                                <div style={{ fontSize: '11px', color: recibeAumento ? '#16a34a' : '#94a3b8', fontWeight: '600' }}>
+                                  {recibeAumento ? `+$${diferencia.toLocaleString('es-AR')} (+${pctNum}%)` : 'Sin aumento (0%)'}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b', textAlign: 'left' }}>
+                    💡 Los acuerdos destildados o con <strong>0%</strong> mantendrán su importe actual. Los restantes <strong>{Math.max(0, totalAcuerdosMensualesModal - acuerdosCandidatosModal.length)} acuerdos activos</strong> que aún están dentro de sus 3 meses de validez tampoco tendrán aumento.
+                  </p>
+                </>
+              )}
+
+              {/* Botones de acción */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid #e2e8f0', paddingTop: '14px' }}>
                 <button
                   type="button"
                   onClick={() => setModalNuevoMesAbierto(false)}
@@ -1394,28 +1650,20 @@ function App() {
                 </button>
                 <button
                   type="button"
-                  disabled={tieneAumentoNuevoMes === null || (tieneAumentoNuevoMes === true && (!aumentoNuevoMes || parseFloat(aumentoNuevoMes) <= 0))}
-                  onClick={() => {
-                    const pct = tieneAumentoNuevoMes ? (parseFloat(aumentoNuevoMes) || 0) : 0;
-                    confirmarGeneracionNuevoMes(pct);
-                  }}
+                  onClick={() => confirmarGeneracionNuevoMes()}
                   style={{
                     padding: '10px 22px',
                     borderRadius: '8px',
                     border: 'none',
-                    background: (tieneAumentoNuevoMes === null || (tieneAumentoNuevoMes === true && (!aumentoNuevoMes || parseFloat(aumentoNuevoMes) <= 0))) ? '#94a3b8' : '#0284c7',
+                    background: '#0284c7',
                     color: '#ffffff',
-                    cursor: (tieneAumentoNuevoMes === null || (tieneAumentoNuevoMes === true && (!aumentoNuevoMes || parseFloat(aumentoNuevoMes) <= 0))) ? 'not-allowed' : 'pointer',
+                    cursor: 'pointer',
                     fontWeight: 'bold',
-                    fontSize: '13px',
+                    fontSize: '13.5px',
                     boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
                   }}
                 >
-                  {tieneAumentoNuevoMes === false 
-                    ? `Generar Cuotas sin Aumento` 
-                    : tieneAumentoNuevoMes === true
-                      ? `Aplicar ${aumentoNuevoMes || '0'}% y Acceder`
-                      : 'Seleccione una opción'}
+                  ✅ Confirmar y Procesar {nuevoMesInfo.nombreMes} ({acuerdosCandidatosModal.filter(a => a.seleccionado && (parseFloat(a.porcentaje) || 0) > 0).length} con aumento)
                 </button>
               </div>
             </div>
