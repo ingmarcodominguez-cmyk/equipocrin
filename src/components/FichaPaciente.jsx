@@ -1011,7 +1011,7 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
       const nextIdMov = (ultMov && ultMov[0]?.id_movimiento ? ultMov[0].id_movimiento : 0) + 1;
 
       // 2. Registrar el movimiento en la Cuenta Corriente de la Obra Social (id_paciente = 0 para no tocar la cuenta del paciente)
-      const conceptoFactura = `Factura ${formFacturarOS.nroFactura ? '#' + formFacturarOS.nroFactura : 'S/N'} - ${osFinal} - Pac: ${pacienteSeleccionado.nombre_apellido} (ID ${pacienteSeleccionado.id_paciente}) - Prestación: ${acuerdoAFacturar.nombre_prestacion}${formFacturarOS.observaciones ? ' - ' + formFacturarOS.observaciones : ''}`;
+      const conceptoFactura = `Factura ${formFacturarOS.nroFactura ? '#' + formFacturarOS.nroFactura : 'S/N'} - ${osFinal} - Pac: ${pacienteSeleccionado.nombre_apellido} - Prestación: ${acuerdoAFacturar.nombre_prestacion}${formFacturarOS.observaciones ? ' - ' + formFacturarOS.observaciones : ''}`;
 
       const movOS = {
         id_movimiento: nextIdMov,

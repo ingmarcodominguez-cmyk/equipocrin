@@ -1,6 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase.js';
 
+// Helper para limpiar "(ID xxx)" del concepto visible
+const limpiarConceptoOS = (texto) => {
+  if (!texto) return '';
+  return String(texto).replace(/\s*\(ID\s*\d+\)/gi, '');
+};
+
 export default function CuentasObrasSociales({ onVolver, usuario }) {
   const [movimientos, setMovimientos] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -342,10 +348,23 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
           idPaciente = acData.id_paciente;
         }
       }
-      // 2. Fallback regex en concepto: "Pac: ... (ID 151)"
+      // 2. Fallback regex en concepto
       if (!idPaciente && fac.concepto) {
         const m = fac.concepto.match(/ID\s*(\d+)/i);
-        if (m && m[1]) idPaciente = parseInt(m[1]);
+        if (m && m[1]) {
+          idPaciente = parseInt(m[1]);
+        } else {
+          const mPac = fac.concepto.match(/Pac:\s*(.+?)(?:\s*-\s*Prestación:|$)/i);
+          if (mPac && mPac[1]) {
+            const nomBuscado = mPac[1].trim();
+            const { data: pacEnc } = await supabase
+              .from('pacientes_motor')
+              .select('id_paciente')
+              .ilike('nombre_apellido', nomBuscado)
+              .maybeSingle();
+            if (pacEnc?.id_paciente) idPaciente = pacEnc.id_paciente;
+          }
+        }
       }
 
       if (idPaciente) {
@@ -614,11 +633,11 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
         pacienteNombre = acuerdoAFacturarCobrar.paciente?.nombre_apellido || '';
         idAcuerdoFinal = acuerdoAFacturarCobrar.id_acuerdo;
       } else if (facturaSeleccionada) {
-        // Intentar extraer de concepto
-        const matchPac = facturaSeleccionada.concepto?.match(/Pac:\s*([^(]+)\s*\(ID\s*(\d+)\)/i);
+        // Intentar extraer de concepto (con o sin "(ID xxx)")
+        const matchPac = facturaSeleccionada.concepto?.match(/Pac:\s*(.+?)(?:\s*\(ID\s*(\d+)\))?(?:\s*-\s*Prestación:|$)/i);
         if (matchPac) {
           pacienteNombre = matchPac[1].trim();
-          pacienteId = parseInt(matchPac[2]);
+          if (matchPac[2]) pacienteId = parseInt(matchPac[2]);
         }
         const matchPrest = facturaSeleccionada.concepto?.match(/Prestación:\s*([^-$]+)/i);
         if (matchPrest) {
@@ -634,6 +653,17 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
             .maybeSingle();
           if (acRow?.id_paciente) {
             pacienteId = acRow.id_paciente;
+          }
+        }
+        // Si aún no tenemos pacienteId pero sí pacienteNombre, buscar en pacientes_motor
+        if (!pacienteId && pacienteNombre) {
+          const { data: pacByName } = await supabase
+            .from('pacientes_motor')
+            .select('id_paciente')
+            .ilike('nombre_apellido', pacienteNombre)
+            .maybeSingle();
+          if (pacByName?.id_paciente) {
+            pacienteId = pacByName.id_paciente;
           }
         }
         if (pacienteId && !pacienteNombre) {
@@ -662,7 +692,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
           tipo_movimiento: 'FACTURA_OS',
           subtipo: osNombre,
           id_origen: null,
-          concepto: `Factura #${nroFacGenerada} - ${osNombre} - Pac: ${pacienteNombre} (ID ${pacienteId}) - Prestación: ${acuerdoNombre}`,
+          concepto: `Factura #${nroFacGenerada} - ${osNombre} - Pac: ${pacienteNombre} - Prestación: ${acuerdoNombre}`,
           debe: montoNum.toString(),
           haber: '0',
           saldo: '0',
@@ -915,7 +945,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
         tipo_movimiento: 'FACTURA_OS',
         subtipo: osNombre,
         id_origen: null,
-        concepto: `Factura #${nroFac} - ${osNombre} - Pac: ${pacNombre} (ID ${ac.id_paciente}) - Prestación: ${prestNombre}`,
+        concepto: `Factura #${nroFac} - ${osNombre} - Pac: ${pacNombre} - Prestación: ${prestNombre}`,
         debe: montoNum.toString(),
         haber: '0',
         saldo: '0',
@@ -1002,7 +1032,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
     try {
       setGuardandoEdicion(true);
 
-      let nuevoConcepto = facturaAEditar.concepto || '';
+      let nuevoConcepto = limpiarConceptoOS(facturaAEditar.concepto || '');
       if (nuevoConcepto.includes(' - ')) {
         const partes = nuevoConcepto.split(' - ');
         partes[0] = `Factura #${nroFac}`;
@@ -1663,7 +1693,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                         </div>
                       </td>
                       <td style={{ padding: '12px 14px', color: '#334155' }}>
-                        {m.concepto || 'Sin concepto'}
+                        {limpiarConceptoOS(m.concepto) || 'Sin concepto'}
                       </td>
                       <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 'bold', color: debeVal > 0 ? '#2563eb' : '#94a3b8' }}>
                         {debeVal > 0 ? ('$' + debeVal.toLocaleString('es-AR', { minimumFractionDigits: 2 })) : '-'}
@@ -2204,7 +2234,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
               </div>
               <div style={{ marginBottom: '4px' }}>
                 <span style={{ color: '#64748b' }}>Detalle actual: </span>
-                <span style={{ color: '#334155' }}>{facturaAEditar.concepto}</span>
+                <span style={{ color: '#334155' }}>{limpiarConceptoOS(facturaAEditar.concepto)}</span>
               </div>
               {facturasMapeadas[facturaAEditar.id_movimiento]?.totalCobrado > 0 && (
                 <div style={{ color: '#d97706', fontWeight: '600', marginTop: '6px' }}>
@@ -2452,7 +2482,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                                 )}
                               </div>
                               <div style={{ fontSize: '11px', color: '#475569', marginTop: '3px', lineHeight: '1.3' }}>
-                                {fac.concepto}
+                                {limpiarConceptoOS(fac.concepto)}
                               </div>
                               <div style={{ fontSize: '10px', color: '#64748b', marginTop: '3px' }}>
                                 Emisión: {fac.fecha_movimiento} • Total facturado: ${fac.montoFactura.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
