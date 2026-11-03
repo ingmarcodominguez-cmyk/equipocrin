@@ -306,20 +306,30 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
     });
   }, [acuerdosOS, filtroEstadoAcuerdos, filtroOSAcuerdos, busquedaPendientes]);
 
-  // Cálculos de Totales y KPIs
+  // Cálculos de Totales y KPIs (siempre mantienen el Total Facturado, Total Cobrado y Saldo a Cobrar real de la selección)
   const totales = useMemo(() => {
     let totalDebe = 0;
     let totalHaber = 0;
+    const q = busqueda.toLowerCase().trim();
 
-    movimientosFiltrados.forEach(m => {
-      totalDebe += parsearMoneda(m.debe);
-      totalHaber += parsearMoneda(m.haber);
+    movimientos.forEach(m => {
+      const osMov = (m.subtipo || '').trim().toUpperCase();
+      const coincideOS = obraSocialSeleccionada === 'TODAS' || osMov === obraSocialSeleccionada;
+      const coincideTexto = !q ||
+        (m.concepto && m.concepto.toLowerCase().includes(q)) ||
+        (m.subtipo && m.subtipo.toLowerCase().includes(q)) ||
+        (m.usuario && m.usuario.toLowerCase().includes(q));
+
+      if (coincideOS && coincideTexto) {
+        totalDebe += parsearMoneda(m.debe);
+        totalHaber += parsearMoneda(m.haber);
+      }
     });
 
     const saldoPendiente = totalDebe - totalHaber;
 
     return { totalDebe, totalHaber, saldoPendiente };
-  }, [movimientosFiltrados]);
+  }, [movimientos, obraSocialSeleccionada, busqueda]);
 
   // Facturas pendientes filtradas según la obra social activa en el modal
   const facturasPendientesModal = useMemo(() => {
@@ -1312,7 +1322,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '15px', marginBottom: '20px' }}>
         
         <div 
-          onClick={() => setFiltroTipo('FACTURAS')}
+          onClick={() => setFiltroTipo(filtroTipo === 'FACTURAS' ? 'TODOS' : 'FACTURAS')}
           style={{ 
             background: '#fff', 
             padding: '18px', 
@@ -1322,7 +1332,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
             cursor: 'pointer',
             transition: 'all 0.15s ease'
           }}
-          title="Click para ver solo Facturas Emitidas"
+          title="Click para ver solo Facturas Emitidas (o click de nuevo para ver todo)"
         >
           <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>
             💼 Total Facturado a O.S. (Debe)
@@ -1334,7 +1344,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
         </div>
 
         <div 
-          onClick={() => setFiltroTipo('COBROS')}
+          onClick={() => setFiltroTipo(filtroTipo === 'COBROS' ? 'TODOS' : 'COBROS')}
           style={{ 
             background: '#fff', 
             padding: '18px', 
@@ -1344,7 +1354,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
             cursor: 'pointer',
             transition: 'all 0.15s ease'
           }}
-          title="Click para ver solo Cobros Recibidos"
+          title="Click para ver solo Cobros Recibidos (o click de nuevo para ver todo)"
         >
           <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>
             💵 Total Cobrado / Liquidado (Haber)
@@ -1356,7 +1366,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
         </div>
 
         <div 
-          onClick={() => setFiltroTipo('PENDIENTES')}
+          onClick={() => setFiltroTipo(filtroTipo === 'PENDIENTES' ? 'TODOS' : 'PENDIENTES')}
           style={{ 
             background: totales.saldoPendiente > 0 ? '#fffbeb' : '#f0fdf4', 
             padding: '18px', 
@@ -1366,7 +1376,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
             cursor: 'pointer',
             transition: 'all 0.15s ease'
           }}
-          title="Click para ver SOLO facturas pendientes de cobro"
+          title="Click para ver SOLO facturas pendientes de cobro (o click de nuevo para ver todo)"
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '12px', fontWeight: 'bold', color: totales.saldoPendiente > 0 ? '#854d0e' : '#166534', textTransform: 'uppercase' }}>
