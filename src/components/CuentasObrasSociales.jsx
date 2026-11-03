@@ -215,8 +215,16 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
 
   // Mapeo detallado de facturas con su estado de cobro
   const facturasMapeadas = useMemo(() => {
-    const facturas = movimientos.filter(m => m.tipo_movimiento === 'FACTURA_OS' || parsearMoneda(m.debe) > 0);
-    const cobros = movimientos.filter(m => m.tipo_movimiento === 'PAGO_OS' || parsearMoneda(m.haber) > 0);
+    const reversosIds = new Set(
+      movimientos
+        .filter(m => m.subtipo === 'reverso_pago' && m.id_pago)
+        .map(m => String(m.id_pago))
+    );
+    const facturas = movimientos.filter(m => m.tipo_movimiento === 'FACTURA_OS' || (parsearMoneda(m.debe) > 0 && m.subtipo !== 'reverso_pago'));
+    const cobros = movimientos.filter(m =>
+      (m.tipo_movimiento === 'PAGO_OS' || (parsearMoneda(m.haber) > 0 && m.subtipo !== 'reverso_pago')) &&
+      (!m.id_pago || !reversosIds.has(String(m.id_pago)))
+    );
 
     const mapa = {};
     facturas.forEach(f => {
@@ -262,8 +270,9 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
       const coincideOS = obraSocialSeleccionada === 'TODAS' || osMov === obraSocialSeleccionada;
       
       const infoFac = facturasMapeadas[m.id_movimiento];
-      const esFactura = m.tipo_movimiento === 'FACTURA_OS' || parsearMoneda(m.debe) > 0;
-      const esCobro = m.tipo_movimiento === 'PAGO_OS' || parsearMoneda(m.haber) > 0;
+      const esReverso = m.subtipo === 'reverso_pago';
+      const esFactura = !esReverso && (m.tipo_movimiento === 'FACTURA_OS' || parsearMoneda(m.debe) > 0);
+      const esCobro = esReverso || m.tipo_movimiento === 'PAGO_OS' || parsearMoneda(m.haber) > 0;
 
       let coincideTipo = true;
       if (filtroTipo === 'PENDIENTES') {
@@ -321,8 +330,14 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
         (m.usuario && m.usuario.toLowerCase().includes(q));
 
       if (coincideOS && coincideTexto) {
-        totalDebe += parsearMoneda(m.debe);
-        totalHaber += parsearMoneda(m.haber);
+        if (m.subtipo === 'reverso_pago') {
+          // Un reverso de cobro resta del Total Cobrado (Haber) y no infla el Total Facturado (Debe)
+          totalHaber -= parsearMoneda(m.debe);
+          totalHaber += parsearMoneda(m.haber);
+        } else {
+          totalDebe += parsearMoneda(m.debe);
+          totalHaber += parsearMoneda(m.haber);
+        }
       }
     });
 
@@ -1649,7 +1664,8 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                 {movimientosFiltrados.map((m) => {
                   const debeVal = parsearMoneda(m.debe);
                   const haberVal = parsearMoneda(m.haber);
-                  const esFactura = m.tipo_movimiento === 'FACTURA_OS' || debeVal > 0;
+                  const esReverso = m.subtipo === 'reverso_pago';
+                  const esFactura = !esReverso && (m.tipo_movimiento === 'FACTURA_OS' || debeVal > 0);
                   const infoFac = facturasMapeadas[m.id_movimiento];
 
                   return (
@@ -1667,10 +1683,10 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                             borderRadius: '4px',
                             fontSize: '11px',
                             fontWeight: 'bold',
-                            background: esFactura ? (infoFac?.estaSaldada ? '#f1f5f9' : '#dbeafe') : '#dcfce7',
-                            color: esFactura ? (infoFac?.estaSaldada ? '#475569' : '#1e40af') : '#15803d'
+                            background: esReverso ? '#fee2e2' : (esFactura ? (infoFac?.estaSaldada ? '#f1f5f9' : '#dbeafe') : '#dcfce7'),
+                            color: esReverso ? '#b91c1c' : (esFactura ? (infoFac?.estaSaldada ? '#475569' : '#1e40af') : '#15803d')
                           }}>
-                            {esFactura ? '📄 FACTURA' : '💵 COBRO'}
+                            {esReverso ? '↩️ REVERSO COBRO' : (esFactura ? '📄 FACTURA' : '💵 COBRO')}
                           </span>
                           {esFactura && (
                             <span style={{

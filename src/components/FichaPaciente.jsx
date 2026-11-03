@@ -1486,6 +1486,42 @@ const confirmarRegistroPago = async () => {
         .insert(nuevosMovimientos);
         
       if (errInsertMovs) throw errInsertMovs;
+
+      // Si alguna deuda pagada desde la ficha del paciente corresponde a una prestación/factura de Obra Social,
+      // reflejar también el cobro (PAGO_OS) en la cuenta corriente de la Obra Social (id_paciente = 0)
+      let offsetMovOS = nuevosMovimientos.length;
+      for (const asig of asignaciones) {
+        if (asig.id_acuerdo && (asig.concepto || '').toUpperCase().includes('O.S.')) {
+          const { data: facOS } = await supabase
+            .from('movimientoscuenta_motor')
+            .select('*')
+            .eq('id_paciente', 0)
+            .eq('id_acuerdo', asig.id_acuerdo)
+            .eq('tipo_movimiento', 'FACTURA_OS')
+            .maybeSingle();
+
+          if (facOS) {
+            const movPagoOS = {
+              id_movimiento: nextIdMovimiento + offsetMovOS,
+              id_paciente: 0,
+              id_acuerdo: asig.id_acuerdo,
+              id_origen: facOS.id_movimiento,
+              tipo_movimiento: 'PAGO_OS',
+              subtipo: facOS.subtipo || 'OBRA SOCIAL',
+              concepto: `Cobro / Liquidación O.S. ${facOS.subtipo || ''} (Cancela ${(facOS.concepto || '').split(' - ')[0] || 'Factura'}) - Comp: #S/N (${formaPago.toUpperCase()})`,
+              debe: '0',
+              haber: asig.montoAsignado.toString(),
+              saldo: '0',
+              id_pago: nextIdPago,
+              fecha_movimiento: fechaPago,
+              fecha_registro: new Date().toISOString(),
+              usuario: usuario || 'Sistema'
+            };
+            await supabase.from('movimientoscuenta_motor').insert([movPagoOS]);
+            offsetMovOS++;
+          }
+        }
+      }
       
       if (usarPagoCombinado) {
         const valEf = parseFloat(pagoEfectivo) || 0;
@@ -2280,7 +2316,19 @@ const confirmarRegistroPago = async () => {
       const nextIdMovimiento = (maxMovData && maxMovData[0]?.id_movimiento ? parseInt(maxMovData[0].id_movimiento) : 0) + 1;
 
       // 2. Insertar contra-movimientos en movimientoscuenta_motor (Reverso del Pago)
-      const nuevosReversosMov = movsOriginales.map((orig, idx) => {
+      // Para la cuenta de Obra Social (id_paciente === 0), se elimina el PAGO_OS para que la factura vuelva a quedar Pendiente limpiamente
+      const movsOSOriginales = movsOriginales.filter(orig => Number(orig.id_paciente) === 0);
+      const movsPacienteOriginales = movsOriginales.filter(orig => Number(orig.id_paciente) !== 0);
+
+      if (movsOSOriginales.length > 0) {
+        const idsMovOS = movsOSOriginales.map(o => o.id_movimiento);
+        await supabase
+          .from('movimientoscuenta_motor')
+          .delete()
+          .in('id_movimiento', idsMovOS);
+      }
+
+      const nuevosReversosMov = movsPacienteOriginales.map((orig, idx) => {
         const valDebeOrig = parsearMoneda(orig.debe);
         const valHaberOrig = parsearMoneda(orig.haber);
         
@@ -2303,11 +2351,13 @@ const confirmarRegistroPago = async () => {
         };
       });
 
-      const { error: errInsertMovs } = await supabase
-        .from('movimientoscuenta_motor')
-        .insert(nuevosReversosMov);
-        
-      if (errInsertMovs) throw errInsertMovs;
+      if (nuevosReversosMov.length > 0) {
+        const { error: errInsertMovs } = await supabase
+          .from('movimientoscuenta_motor')
+          .insert(nuevosReversosMov);
+          
+        if (errInsertMovs) throw errInsertMovs;
+      }
 
       // 3. Revertir en medios de pago (Caja, Billetera o Banco)
       // Buscar en caja_motor
