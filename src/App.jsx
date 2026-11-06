@@ -20,6 +20,7 @@ import PresupuestoPublico from './components/PresupuestoPublico.jsx'
 import PlanillaGastos from './components/PlanillaGastos.jsx'
 import BotonPantallaCompleta from './components/BotonPantallaCompleta.jsx'
 import CuentasObrasSociales from './components/CuentasObrasSociales.jsx'
+import ListadoPacientes from './components/ListadoPacientes.jsx'
 
 // Locks para evitar ejecuciones concurrentes de los motores
 let motorRecargosLock = false;
@@ -68,6 +69,7 @@ function App() {
   // Estados para buscador por ID
   const [criterioBusquedaId, setCriterioBusquedaId] = useState('')
   const [pacienteBuscado, setPacienteBuscado] = useState(null)
+  const [origenFicha, setOrigenFicha] = useState(null)
   const [buscandoId, setBuscandoId] = useState(false)
 
   // Estados para buscador de ID Deuda
@@ -1723,6 +1725,10 @@ function App() {
               onClick={() => { 
                 if (pacienteSeleccionado) {
                   setPacienteSeleccionado(null)
+                } else if (crinAccion === 'FICHA_PACIENTE' && origenFicha === 'LISTADO_PACIENTES') {
+                  setCrinAccion('LISTADO_PACIENTES')
+                  setOrigenFicha(null)
+                  setPacienteBuscado(null)
                 } else if (crinAccion) {
                   setCrinAccion(null)
                   setListaPacientes([])
@@ -1853,10 +1859,32 @@ function App() {
           </div>
         )}
 
+        {crinAccion === 'LISTADO_PACIENTES' && (
+          <div style={{ width: '100%', maxWidth: '1240px' }}>
+            <ListadoPacientes 
+              onVolver={() => setCrinAccion(null)} 
+              onAbrirFicha={(paciente) => {
+                setPacienteBuscado(paciente);
+                setOrigenFicha('LISTADO_PACIENTES');
+                setCrinAccion('FICHA_PACIENTE');
+              }}
+            />
+          </div>
+        )}
+
         {crinAccion === 'FICHA_PACIENTE' && (
           <div style={{ width: '100%', maxWidth: '1200px' }}>
              <FichaPaciente 
-               onVolver={() => { setCrinAccion(null); setPacienteBuscado(null); }} 
+               onVolver={() => { 
+                 if (origenFicha === 'LISTADO_PACIENTES') {
+                   setCrinAccion('LISTADO_PACIENTES');
+                   setOrigenFicha(null);
+                   setPacienteBuscado(null);
+                 } else {
+                   setCrinAccion(null); 
+                   setPacienteBuscado(null); 
+                 }
+               }} 
                usuario={userData?.nombre || session?.user?.email || 'Usuario'} 
                pacientePreseleccionado={pacienteBuscado}
              />
@@ -2761,6 +2789,42 @@ function App() {
               >
                 <div style={{ fontSize: '24px', marginBottom: '4px' }}>🏢💸</div>
                 PLANILLA EXPENSAS
+              </button>
+
+              {/* Button 17: LISTADO PACIENTES (WHATSAPP) */}
+              <button 
+                onClick={() => handleAccionClick('LISTADO_PACIENTES')}
+                style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 8px', 
+                  background: 'linear-gradient(135deg, #f0fdf4 100%, #dcfce7 0%)', 
+                  color: '#15803d', 
+                  border: '2px solid #86efac', 
+                  borderRadius: '12px', 
+                  cursor: 'pointer', 
+                  fontWeight: '800', 
+                  fontSize: '12.5px', 
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>📱💬</div>
+                LISTADO PACIENTES
+                <div style={{ fontSize: '10px', color: '#16a34a', fontWeight: '700', marginTop: '2px' }}>
+                  WHATSAPP &amp; FICHA
+                </div>
               </button>
             </div>
           </div>
