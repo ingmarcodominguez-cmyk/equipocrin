@@ -317,20 +317,20 @@ function App() {
 
       const ultimoPeriodoProcesado = periodosProcesados && periodosProcesados.length > 0 ? periodosProcesados[0].periodo_int : 0;
 
-      if (ultimoPeriodoProcesado >= periodoActualInt && !forzarPrueba) {
-        return;
-      }
-
-      // Determinamos los períodos a generar para cubrir cualquier brecha
+      // Determinamos los períodos a generar para cubrir cualquier brecha o acuerdo cargado tardíamente
       const periodosAProcesar = [];
       if (ultimoPeriodoProcesado === 0 || forzarPrueba) {
         periodosAProcesar.push(periodoActualInt);
-      } else {
+      } else if (ultimoPeriodoProcesado < periodoActualInt) {
         let aux = obtenerSiguientePeriodo(ultimoPeriodoProcesado);
         while (aux <= periodoActualInt) {
           periodosAProcesar.push(aux);
           aux = obtenerSiguientePeriodo(aux);
         }
+      } else {
+        // El período ya fue abierto previamente para la masa general, pero incluimos el período actual
+        // para asegurar que cualquier acuerdo nuevo o cargado tardíamente genere su cuota faltante.
+        periodosAProcesar.push(periodoActualInt);
       }
 
       // 2. Traer acuerdos activos
