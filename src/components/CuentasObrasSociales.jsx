@@ -7,7 +7,18 @@ const limpiarConceptoOS = (texto) => {
   return String(texto).replace(/\s*\(ID\s*\d+\)/gi, '');
 };
 
-export default function CuentasObrasSociales({ onVolver, usuario }) {
+// Helper para limpiar y preparar el número de WhatsApp oficial
+const limpiarTelefonoWhatsApp = (tel) => {
+  if (!tel) return null;
+  let digits = String(tel).replace(/\D/g, '');
+  if (digits.length < 7) return null;
+  if (digits.startsWith('0')) digits = digits.slice(1);
+  if (digits.startsWith('549')) return digits;
+  if (digits.startsWith('54')) return '549' + digits.slice(2);
+  return '549' + digits;
+};
+
+export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }) {
   const [movimientos, setMovimientos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [obrasSocialesLista, setObrasSocialesLista] = useState([]);
@@ -76,7 +87,7 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
 
       // 1. Cargar datos en paralelo: pacientes, prestaciones, acuerdos y movimientos
       const [resPacs, resPres, resAcuerdos, resMovs, resPrest] = await Promise.all([
-        supabase.from('pacientes_motor').select('id_paciente, nombre_apellido, dni, obra_social'),
+        supabase.from('pacientes_motor').select('id_paciente, nombre_apellido, dni, obra_social, tel_padres, tel_alternativo'),
         supabase.from('prestaciones_motor').select('*'),
         supabase.from('acuerdos_motor').select('*').order('id_acuerdo', { ascending: false }),
         supabase.from('movimientoscuenta_motor').select('*').eq('id_paciente', 0).order('fecha_movimiento', { ascending: false }),
@@ -89,7 +100,25 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
       const presData = resPres.data || [];
       const acData = resAcuerdos.data || [];
       const movs = resMovs.data || [];
-      setMovimientos(movs);
+      const pacMap = new Map(pacsData.map(p => [p.id_paciente, p]));
+      const acPacMap = new Map(acData.map(a => [a.id_acuerdo, a.id_paciente]));
+
+      const movsConPaciente = movs.map(m => {
+        let pac = null;
+        if (m.id_acuerdo && acPacMap.has(m.id_acuerdo)) {
+          const pacId = acPacMap.get(m.id_acuerdo);
+          pac = pacMap.get(pacId) || null;
+        }
+        if (!pac && m.concepto) {
+          const match = m.concepto.match(/Pac:\s*([^-\n]+)/i);
+          if (match && match[1]) {
+            const nom = match[1].trim().toLowerCase();
+            pac = pacsData.find(x => (x.nombre_apellido || '').toLowerCase().includes(nom) || nom.includes((x.nombre_apellido || '').toLowerCase())) || null;
+          }
+        }
+        return { ...m, pacienteInfo: pac };
+      });
+      setMovimientos(movsConPaciente);
 
       // 2. Procesar prestadores activos (excluyendo auxiliares que cobran por hora)
       const AUXILIARES_LIST = ['PULITTA', 'SOTO', 'LIZARRAGA', 'SORANE', 'MASCARENO', 'MASCAREÑO', 'ALBORNOZ', 'LOBO'];
@@ -289,7 +318,9 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
       const coincideTexto = !q ||
         (m.concepto && m.concepto.toLowerCase().includes(q)) ||
         (m.subtipo && m.subtipo.toLowerCase().includes(q)) ||
-        (m.usuario && m.usuario.toLowerCase().includes(q));
+        (m.usuario && m.usuario.toLowerCase().includes(q)) ||
+        (m.pacienteInfo?.nombre_apellido && m.pacienteInfo.nombre_apellido.toLowerCase().includes(q)) ||
+        (m.pacienteInfo?.dni && String(m.pacienteInfo.dni).includes(q));
 
       return coincideOS && coincideTipo && coincideTexto;
     });
@@ -327,7 +358,9 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
       const coincideTexto = !q ||
         (m.concepto && m.concepto.toLowerCase().includes(q)) ||
         (m.subtipo && m.subtipo.toLowerCase().includes(q)) ||
-        (m.usuario && m.usuario.toLowerCase().includes(q));
+        (m.usuario && m.usuario.toLowerCase().includes(q)) ||
+        (m.pacienteInfo?.nombre_apellido && m.pacienteInfo.nombre_apellido.toLowerCase().includes(q)) ||
+        (m.pacienteInfo?.dni && String(m.pacienteInfo.dni).includes(q));
 
       if (coincideOS && coincideTexto) {
         if (m.subtipo === 'reverso_pago') {
@@ -1719,7 +1752,85 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                         </div>
                       </td>
                       <td style={{ padding: '12px 14px', color: '#334155' }}>
-                        {limpiarConceptoOS(m.concepto) || 'Sin concepto'}
+                        <div style={{ fontWeight: '500', lineHeight: '1.4' }}>
+                          {limpiarConceptoOS(m.concepto) || 'Sin concepto'}
+                        </div>
+                        {m.pacienteInfo && (
+                          <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            {onAbrirFicha ? (
+                              <button
+                                type="button"
+                                onClick={() => onAbrirFicha(m.pacienteInfo)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  color: '#1d4ed8',
+                                  fontWeight: '700',
+                                  fontSize: '12px',
+                                  cursor: 'pointer',
+                                  textDecoration: 'underline',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                                title="Ver Ficha completa de este paciente"
+                              >
+                                <span>👤</span>
+                                <span>{m.pacienteInfo.nombre_apellido}</span>
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a' }}>
+                                👤 {m.pacienteInfo.nombre_apellido}
+                              </span>
+                            )}
+
+                            {(() => {
+                              const tel = m.pacienteInfo.tel_padres || m.pacienteInfo.tel_alternativo;
+                              const waClean = limpiarTelefonoWhatsApp(tel);
+                              if (waClean) {
+                                return (
+                                  <a
+                                    href={`https://wa.me/${waClean}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      background: '#25D366',
+                                      color: '#ffffff',
+                                      padding: '2px 8px',
+                                      borderRadius: '6px',
+                                      fontSize: '11px',
+                                      fontWeight: '700',
+                                      textDecoration: 'none',
+                                      boxShadow: '0 1px 3px rgba(37,211,102,0.3)',
+                                      transition: 'background 0.15s, transform 0.1s'
+                                    }}
+                                    onMouseOver={(e) => {
+                                      e.currentTarget.style.background = '#1ebd59';
+                                      e.currentTarget.style.transform = 'translateY(-1px)';
+                                    }}
+                                    onMouseOut={(e) => {
+                                      e.currentTarget.style.background = '#25D366';
+                                      e.currentTarget.style.transform = 'translateY(0)';
+                                    }}
+                                    title={`Abrir WhatsApp con ${tel}`}
+                                  >
+                                    <span>💬</span>
+                                    <span>WhatsApp ({tel})</span>
+                                  </a>
+                                );
+                              }
+                              return (
+                                <span style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic' }}>
+                                  (Sin teléfono registrado)
+                                </span>
+                              );
+                            })()}
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 'bold', color: debeVal > 0 ? '#2563eb' : '#94a3b8' }}>
                         {debeVal > 0 ? ('$' + debeVal.toLocaleString('es-AR', { minimumFractionDigits: 2 })) : '-'}
@@ -1970,6 +2081,41 @@ export default function CuentasObrasSociales({ onVolver, usuario }) {
                             <div style={{ fontSize: '11px', color: '#64748b' }}>
                               DNI: {ac.paciente?.dni || 'S/D'} • ID: {ac.id_paciente}
                             </div>
+                            {(() => {
+                              const tel = ac.paciente?.tel_padres || ac.paciente?.tel_alternativo;
+                              const waClean = limpiarTelefonoWhatsApp(tel);
+                              if (waClean) {
+                                return (
+                                  <div style={{ marginTop: "4px" }}>
+                                    <a
+                                      href={`https://wa.me/${waClean}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "4px",
+                                        background: "#25D366",
+                                        color: "#ffffff",
+                                        padding: "2px 8px",
+                                        borderRadius: "6px",
+                                        fontSize: "11px",
+                                        fontWeight: "700",
+                                        textDecoration: "none",
+                                        boxShadow: "0 1px 3px rgba(37,211,102,0.3)"
+                                      }}
+                                      onMouseOver={(e) => e.currentTarget.style.background = "#1ebd59"}
+                                      onMouseOut={(e) => e.currentTarget.style.background = "#25D366"}
+                                      title={`Abrir WhatsApp con ${tel}`}
+                                    >
+                                      <span>💬</span>
+                                      <span>WhatsApp ({tel})</span>
+                                    </a>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
                           </td>
                           <td style={{ padding: '12px 14px' }}>
                             <span style={{ fontWeight: 'bold', color: '#1e40af', background: '#dbeafe', padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>

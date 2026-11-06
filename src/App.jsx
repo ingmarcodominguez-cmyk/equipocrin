@@ -1725,8 +1725,8 @@ function App() {
               onClick={() => { 
                 if (pacienteSeleccionado) {
                   setPacienteSeleccionado(null)
-                } else if (crinAccion === 'FICHA_PACIENTE' && origenFicha === 'LISTADO_PACIENTES') {
-                  setCrinAccion('LISTADO_PACIENTES')
+                } else if (crinAccion === 'FICHA_PACIENTE' && origenFicha) {
+                  setCrinAccion(origenFicha)
                   setOrigenFicha(null)
                   setPacienteBuscado(null)
                 } else if (crinAccion) {
@@ -1876,8 +1876,8 @@ function App() {
           <div style={{ width: '100%', maxWidth: '1200px' }}>
              <FichaPaciente 
                onVolver={() => { 
-                 if (origenFicha === 'LISTADO_PACIENTES') {
-                   setCrinAccion('LISTADO_PACIENTES');
+                 if (origenFicha) {
+                  setCrinAccion(origenFicha);
                    setOrigenFicha(null);
                    setPacienteBuscado(null);
                  } else {
@@ -1997,7 +1997,15 @@ function App() {
 
         {crinAccion === 'CUENTAS_OBRAS_SOCIALES' && (
           <div style={{ width: '100%', maxWidth: '1400px' }}>
-            <CuentasObrasSociales onVolver={() => setCrinAccion(null)} usuario={userData?.nombre || session?.user?.email || 'Usuario'} />
+            <CuentasObrasSociales 
+              onVolver={() => setCrinAccion(null)} 
+              usuario={userData?.nombre || session?.user?.email || 'Usuario'} 
+              onAbrirFicha={(paciente) => {
+                setPacienteBuscado(paciente);
+                setOrigenFicha('CUENTAS_OBRAS_SOCIALES');
+                setCrinAccion('FICHA_PACIENTE');
+              }}
+            />
           </div>
         )}
 
