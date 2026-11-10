@@ -132,7 +132,7 @@ function AgendaFija({ userData }) {
         setSesiones(prev => prev.map(s => s.id === editId ? { ...s, ...payload } : s));
         setEditId(null);
       } else {
-        const { data } = await supabase.from('sesiones_fijas').insert([payload]).select();
+        const { data } = await supabase.from('sesiones_fijas').insert([{ ...payload, estado: 'ACTIVO' }]).select();
         if (data) setSesiones(prev => [...prev, ...data]);
       }
       setModalEdicionAbierto(false);
@@ -145,6 +145,30 @@ function AgendaFija({ userData }) {
     if (window.confirm("¿Seguro de eliminar?")) {
       await supabase.from('sesiones_fijas').delete().eq('id', id);
       setSesiones(prev => prev.filter(s => s.id !== id));
+    }
+  }
+
+  async function alternarSuspension(s) {
+    const estaSuspendido = (s.estado || 'ACTIVO').toUpperCase() === 'SUSPENDIDO';
+    const nuevoEstado = estaSuspendido ? 'ACTIVO' : 'SUSPENDIDO';
+    const accionTexto = estaSuspendido ? 'reactivar' : 'suspender';
+    const avisoExtra = estaSuspendido
+      ? '\n\nEl turno volverá a aparecer normalmente en Asistencia Pacientes.'
+      : '\n\nEl turno NO se eliminará, pero dejará de leerse en Asistencia Pacientes hasta que lo reactives.';
+
+    if (!window.confirm(`¿Seguro que deseas ${accionTexto} el turno de ${s.paciente_nombre} (${s.dia_semana} ${s.hora})?${avisoExtra}`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('sesiones_fijas')
+        .update({ estado: nuevoEstado })
+        .eq('id', s.id);
+      if (error) throw error;
+      setSesiones(prev => prev.map(item => item.id === s.id ? { ...item, estado: nuevoEstado } : item));
+    } catch (e) {
+      alert('Error al cambiar estado del turno: ' + e.message);
     }
   }
 
@@ -222,14 +246,49 @@ function AgendaFija({ userData }) {
              </div>
              {sesionesVisibles.map(s => {
                const prof = users.find(u => String(u.id) === String(s.profesional_id));
+               const estaSuspendido = (s.estado || 'ACTIVO').toUpperCase() === 'SUSPENDIDO';
                return (
-                 <div key={s.id} style={filaStyle}>
-                   <span style={{ fontWeight: 'bold', width: '80px' }}>{s.hora}</span>
-                   <span style={{ flexGrow: 1 }}>{s.paciente_nombre} <span style={{color: '#888', fontSize: '0.9rem'}}>({prof?.nombre || 'Sin prof'})</span></span>
+                 <div key={s.id} style={{ ...filaStyle, opacity: estaSuspendido ? 0.65 : 1, background: estaSuspendido ? '#1a1111' : 'transparent', borderRadius: estaSuspendido ? '6px' : 0 }}>
+                   <span style={{ fontWeight: 'bold', width: '80px', textDecoration: estaSuspendido ? 'line-through' : 'none', color: estaSuspendido ? '#f87171' : '#fff' }}>{s.hora}</span>
+                   <span style={{ flexGrow: 1 }}>
+                     <span style={{ textDecoration: estaSuspendido ? 'line-through' : 'none', color: estaSuspendido ? '#cbd5e1' : '#fff' }}>{s.paciente_nombre}</span>
+                     {' '}
+                     <span style={{color: '#888', fontSize: '0.9rem'}}>({prof?.nombre || 'Sin prof'})</span>
+                     {estaSuspendido && (
+                       <span style={{
+                         marginLeft: '8px',
+                         background: '#78350f',
+                         color: '#fcd34d',
+                         border: '1px solid #f59e0b',
+                         fontSize: '10px',
+                         fontWeight: 'bold',
+                         padding: '2px 6px',
+                         borderRadius: '4px'
+                       }}>
+                         ⏸️ SUSPENDIDO
+                       </span>
+                     )}
+                   </span>
                    {puedeEditar(s) && (
-                     <div style={{display: 'flex', gap: '10px'}}>
-                       <button onClick={() => {iniciarEdicion(s); setModalEdicionAbierto(true);}} style={{background:'none', border:'none', cursor:'pointer'}}>✏️</button>
-                       <button onClick={() => eliminarSesion(s.id)} style={{background:'none', border:'none', cursor:'pointer'}}>🗑️</button>
+                     <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
+                       <button onClick={() => {iniciarEdicion(s); setModalEdicionAbierto(true);}} title="Editar turno" style={{background:'none', border:'none', cursor:'pointer', fontSize: '15px'}}>✏️</button>
+                       <button
+                         onClick={() => alternarSuspension(s)}
+                         title={estaSuspendido ? "Reactivar turno" : "Suspender turno (no se borra, no sale en Asistencia Pacientes)"}
+                         style={{
+                           background: estaSuspendido ? '#064e3b' : '#451a03',
+                           border: estaSuspendido ? '1px solid #10b981' : '1px solid #f59e0b',
+                           color: estaSuspendido ? '#6ee7b7' : '#fcd34d',
+                           borderRadius: '6px',
+                           padding: '3px 8px',
+                           cursor: 'pointer',
+                           fontSize: '11px',
+                           fontWeight: 'bold'
+                         }}
+                       >
+                         {estaSuspendido ? '▶️ Reactivar' : '⏸️ Suspender'}
+                       </button>
+                       <button onClick={() => eliminarSesion(s.id)} title="Eliminar turno definitivamente" style={{background:'none', border:'none', cursor:'pointer', fontSize: '15px'}}>🗑️</button>
                      </div>
                    )}
                  </div>
@@ -253,10 +312,50 @@ function AgendaFija({ userData }) {
                 <h4 style={{ color: '#00f2ff' }}>{dia}</h4>
                 {turnos.map(s => {
                   const prof = users.find(u => String(u.id) === String(s.profesional_id));
+                  const estaSuspendido = (s.estado || 'ACTIVO').toUpperCase() === 'SUSPENDIDO';
                   return (
-                    <div key={s.id} style={{...filaStyle, justifyContent: 'space-between'}}>
-                      <span>{s.hora} - {s.paciente_nombre} <span style={{color: '#888', fontSize: '0.9rem'}}>({prof?.nombre || 'Sin prof'})</span></span>
-                      {puedeEditar(s) && <button onClick={() => {iniciarEdicion(s); setModalEdicionAbierto(true);}} style={{background:'none', border:'none', cursor:'pointer'}}>✏️</button>}
+                    <div key={s.id} style={{...filaStyle, justifyContent: 'space-between', opacity: estaSuspendido ? 0.65 : 1, background: estaSuspendido ? '#1a1111' : 'transparent', borderRadius: estaSuspendido ? '6px' : 0}}>
+                      <span>
+                        <span style={{ textDecoration: estaSuspendido ? 'line-through' : 'none', color: estaSuspendido ? '#f87171' : '#fff' }}>{s.hora} - {s.paciente_nombre}</span>
+                        {' '}
+                        <span style={{color: '#888', fontSize: '0.9rem'}}>({prof?.nombre || 'Sin prof'})</span>
+                        {estaSuspendido && (
+                          <span style={{
+                            marginLeft: '8px',
+                            background: '#78350f',
+                            color: '#fcd34d',
+                            border: '1px solid #f59e0b',
+                            fontSize: '10px',
+                            fontWeight: 'bold',
+                            padding: '2px 6px',
+                            borderRadius: '4px'
+                          }}>
+                            ⏸️ SUSPENDIDO
+                          </span>
+                        )}
+                      </span>
+                      {puedeEditar(s) && (
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <button onClick={() => {iniciarEdicion(s); setModalEdicionAbierto(true);}} title="Editar turno" style={{background:'none', border:'none', cursor:'pointer', fontSize: '15px'}}>✏️</button>
+                          <button
+                            onClick={() => alternarSuspension(s)}
+                            title={estaSuspendido ? "Reactivar turno" : "Suspender turno"}
+                            style={{
+                              background: estaSuspendido ? '#064e3b' : '#451a03',
+                              border: estaSuspendido ? '1px solid #10b981' : '1px solid #f59e0b',
+                              color: estaSuspendido ? '#6ee7b7' : '#fcd34d',
+                              borderRadius: '6px',
+                              padding: '3px 8px',
+                              cursor: 'pointer',
+                              fontSize: '11px',
+                              fontWeight: 'bold'
+                            }}
+                          >
+                            {estaSuspendido ? '▶️ Reactivar' : '⏸️ Suspender'}
+                          </button>
+                          <button onClick={() => eliminarSesion(s.id)} title="Eliminar turno definitivamente" style={{background:'none', border:'none', cursor:'pointer', fontSize: '15px'}}>🗑️</button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

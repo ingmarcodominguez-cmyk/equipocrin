@@ -1155,7 +1155,8 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
         const { data: sesiones } = await supabase
           .from('sesiones_fijas')
           .select('*')
-          .eq('paciente_id', uuidTarget);
+          .eq('paciente_id', uuidTarget)
+          .eq('estado', 'ACTIVO');
 
         if (sesiones && sesiones.length > 0) {
             const { data: users } = await supabase.from('users').select('*');
