@@ -89,7 +89,7 @@ function AgendaFija({ userData }) {
 
   const generarHorarios = () => {
     const arr = [];
-    const rangos = [{ inicio: 9, fin: 12, minFin: 30 }, { inicio: 14, fin: 20, minFin: 0 }];
+    const rangos = [{ inicio: 9, fin: 12, minFin: 45 }, { inicio: 14, fin: 20, minFin: 0 }];
     rangos.forEach(({ inicio, fin, minFin }) => {
       let h = inicio, m = 0;
       while (h < fin || (h === fin && m <= minFin)) {
