@@ -38,6 +38,19 @@ function AgendaMensualPro({ userData }) {
     diasSemana: [1] // Lunes por defecto
   })
 
+  // Estados para Consulta de Horarios Disponibles (Libres)
+  const [modalDisponiblesAbierto, setModalDisponiblesAbierto] = useState(false)
+  const [dispMes, setDispMes] = useState(new Date().getMonth())
+  const [dispAno, setDispAno] = useState(new Date().getFullYear())
+  const [dispProfesionalesIds, setDispProfesionalesIds] = useState([])
+  const [dispModoDias, setDispModoDias] = useState('semana') // 'semana' | 'fechas'
+  const [dispDiasSemana, setDispDiasSemana] = useState([1, 2, 3, 4, 5])
+  const [dispFechasExactas, setDispFechasExactas] = useState([])
+  const [dispFranja, setDispFranja] = useState('todas') // 'todas' | 'manana' | 'tarde'
+  const [dispSoloFuturos, setDispSoloFuturos] = useState(true)
+  const [dispMostrarOcupados, setDispMostrarOcupados] = useState(false)
+  const [dispCopiado, setDispCopiado] = useState(false)
+
   const diasSemanaOpciones = [
     { id: 1, label: 'Lunes', corto: 'Lun' },
     { id: 2, label: 'Martes', corto: 'Mar' },
@@ -400,6 +413,182 @@ function AgendaMensualPro({ userData }) {
     }
   }
 
+  // Lógica para Consulta de Horarios Disponibles (Libres)
+  const profesionalesParaConsulta = useMemo(() => {
+    let marinaAgregada = false;
+    return (users || []).filter(u => {
+      if (esMarinaOlivera(u.id, u.nombre)) {
+        if (marinaAgregada) return false;
+        marinaAgregada = true;
+      }
+      return true;
+    }).map(u => ({
+      ...u,
+      nombreLimpio: (u.nombre || '').trim(),
+      esClinico: ['PROFESIONAL', 'PROFESIONAL_PLUS', 'DIRECCION'].includes((u.rol || '').toUpperCase())
+    }));
+  }, [users]);
+
+  const abrirModalDisponibles = () => {
+    setDispMes(mesActual.getMonth());
+    setDispAno(mesActual.getFullYear());
+    setDispCopiado(false);
+
+    if (!esAdmin && userData?.id) {
+      const miId = usuarioEsMarina
+        ? (profesionalesParaConsulta.find(p => esMarinaOlivera(p.id, p.nombre))?.id || String(userData.id))
+        : String(userData.id);
+      setDispProfesionalesIds([String(miId)]);
+    } else if (filtroProfesional) {
+      if (filtroEsMarina) {
+        const marinaObj = profesionalesParaConsulta.find(p => esMarinaOlivera(p.id, p.nombre));
+        setDispProfesionalesIds(marinaObj ? [String(marinaObj.id)] : [String(filtroProfesional)]);
+      } else {
+        setDispProfesionalesIds([String(filtroProfesional)]);
+      }
+    } else {
+      const clinicos = profesionalesParaConsulta.filter(p => p.esClinico).map(p => String(p.id));
+      setDispProfesionalesIds(clinicos.length > 0 ? clinicos : profesionalesParaConsulta.map(p => String(p.id)));
+    }
+
+    setModalDisponiblesAbierto(true);
+  };
+
+  const toggleProfDisp = (profId) => {
+    const idStr = String(profId);
+    setDispProfesionalesIds(prev =>
+      prev.includes(idStr) ? prev.filter(id => id !== idStr) : [...prev, idStr]
+    );
+  };
+
+  const toggleDiaSemanaDisp = (diaId) => {
+    setDispDiasSemana(prev =>
+      prev.includes(diaId) ? prev.filter(d => d !== diaId) : [...prev, diaId].sort()
+    );
+  };
+
+  const toggleFechaExactaDisp = (diaNum) => {
+    setDispFechasExactas(prev =>
+      prev.includes(diaNum) ? prev.filter(d => d !== diaNum) : [...prev, diaNum].sort((a, b) => a - b)
+    );
+  };
+
+  const disponibilidadCalculada = useMemo(() => {
+    const profsSeleccionados = profesionalesParaConsulta.filter(p =>
+      dispProfesionalesIds.includes(String(p.id))
+    );
+    if (profsSeleccionados.length === 0) return { dias: [], totalLibres: 0 };
+
+    const horariosBase = listaHorarios.filter(h => {
+      const hh = parseInt(h.split(':')[0], 10);
+      if (dispFranja === 'manana') return hh < 13;
+      if (dispFranja === 'tarde') return hh >= 13;
+      return true;
+    });
+
+    const totalDias = new Date(dispAno, dispMes + 1, 0).getDate();
+    const hoy = new Date();
+    const hoyY = hoy.getFullYear();
+    const hoyM = hoy.getMonth();
+    const hoyD = hoy.getDate();
+
+    const extraerHora = (t) => {
+      const obsHora = t.observaciones?.split(']')[0]?.replace('[', '').trim();
+      if (obsHora && /^\d{1,2}:\d{2}$/.test(obsHora)) {
+        const [hh, mm] = obsHora.split(':');
+        return `${hh.padStart(2, '0')}:${mm}`;
+      }
+      if (t.fecha_inicio) {
+        const f = new Date(t.fecha_inicio);
+        return `${String(f.getUTCHours()).padStart(2, '0')}:${String(f.getUTCMinutes()).padStart(2, '0')}`;
+      }
+      return '';
+    };
+
+    const diasResultado = [];
+    let totalLibres = 0;
+
+    for (let d = 1; d <= totalDias; d++) {
+      if (dispSoloFuturos) {
+        if (dispAno < hoyY || (dispAno === hoyY && dispMes < hoyM) || (dispAno === hoyY && dispMes === hoyM && d < hoyD)) {
+          continue;
+        }
+      }
+
+      const fechaUtc = new Date(Date.UTC(dispAno, dispMes, d, 12, 0, 0));
+      const diaSemanaNum = fechaUtc.getUTCDay();
+
+      if (dispModoDias === 'semana') {
+        if (!dispDiasSemana.includes(diaSemanaNum)) continue;
+      } else {
+        if (!dispFechasExactas.includes(d)) continue;
+      }
+
+      const diaLabel = diasSemanaOpciones.find(x => x.id === diaSemanaNum)?.label || '';
+      const fechaStr = `${String(d).padStart(2, '0')}/${String(dispMes + 1).padStart(2, '0')}/${dispAno}`;
+
+      const turnosDelDia = (turnos || []).filter(t => {
+        if (!t.fecha_inicio) return false;
+        const f = new Date(t.fecha_inicio);
+        if (f.getUTCFullYear() !== dispAno || f.getUTCMonth() !== dispMes || f.getUTCDate() !== d) return false;
+        const est = (t.estado || 'pendiente').trim().toLowerCase();
+        return est !== 'cancelado' && est !== 'ausente';
+      });
+
+      const porProfesional = profsSeleccionados.map(prof => {
+        const pId = String(prof.id).trim();
+        const esMar = esMarinaOlivera(prof.id, prof.nombre);
+        const turnosProf = turnosDelDia.filter(t => {
+          const tProfId = String(t.profesional_id || '').trim();
+          return tProfId === pId || (esMar && marinaIds.includes(tProfId));
+        });
+
+        const mapaOcupados = {};
+        turnosProf.forEach(t => {
+          const hr = extraerHora(t);
+          if (hr) mapaOcupados[hr] = t.paciente_nombre || 'Ocupado';
+        });
+
+        const libres = horariosBase.filter(h => !mapaOcupados[h]);
+        const ocupados = horariosBase.filter(h => mapaOcupados[h]).map(h => ({ hora: h, paciente: mapaOcupados[h] }));
+
+        totalLibres += libres.length;
+        return { prof, libres, ocupados };
+      });
+
+      diasResultado.push({
+        dia: d,
+        diaSemanaNum,
+        diaLabel,
+        fechaStr,
+        porProfesional
+      });
+    }
+
+    return { dias: diasResultado, totalLibres };
+  }, [
+    profesionalesParaConsulta, dispProfesionalesIds, listaHorarios, dispFranja,
+    dispAno, dispMes, dispSoloFuturos, dispModoDias, dispDiasSemana, dispFechasExactas,
+    turnos, marinaIds
+  ]);
+
+  const copiarDisponibilidadTexto = () => {
+    if (disponibilidadCalculada.dias.length === 0) return;
+    const lineas = [`📅 *Horarios disponibles (${mesesNombres[dispMes]} ${dispAno})*`];
+    disponibilidadCalculada.dias.forEach(d => {
+      const profsConLibres = d.porProfesional.filter(x => x.libres.length > 0);
+      if (profsConLibres.length === 0) return;
+      lineas.push(`\n*${d.diaLabel} ${d.fechaStr}*`);
+      profsConLibres.forEach(({ prof, libres }) => {
+        lineas.push(`• ${prof.nombreLimpio}: ${libres.join(', ')}`);
+      });
+    });
+    navigator.clipboard.writeText(lineas.join('\n')).then(() => {
+      setDispCopiado(true);
+      setTimeout(() => setDispCopiado(false), 2500);
+    });
+  };
+
   return (
     <div style={{ padding: '0', backgroundColor: '#ffffff', color: '#000000', fontSize: '14px', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Barra Superior: Navegación de Mes y Carga Masiva */}
@@ -422,7 +611,31 @@ function AgendaMensualPro({ userData }) {
           </button>
         </div>
 
-        <button
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            onClick={abrirModalDisponibles}
+            style={{
+              background: 'linear-gradient(135deg, #10b981, #059669)',
+              color: '#ffffff',
+              border: 'none',
+              padding: '10px 18px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: '700',
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              boxShadow: '0 4px 10px rgba(16, 185, 129, 0.28)',
+              transition: 'all 0.15s ease'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-1px)'}
+            onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+          >
+            <span style={{ fontSize: '15px' }}>🟢</span> HORARIOS DISPONIBLES
+          </button>
+
+          <button
           onClick={() => abrirModalMasivoConDatos()}
           style={{
             background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
@@ -444,6 +657,7 @@ function AgendaMensualPro({ userData }) {
         >
           <span style={{ fontSize: '15px' }}>⚡</span> CARGA MASIVA (TRATAMIENTOS FIJOS)
         </button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', marginBottom: '20px', padding: '0 10px' }}>
@@ -1214,6 +1428,496 @@ function AgendaMensualPro({ userData }) {
                 </button>
               </div>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Consulta de Horarios Disponibles (Libres) */}
+      {modalDisponiblesAbierto && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          background: "rgba(15, 23, 42, 0.7)",
+          backdropFilter: "blur(3px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1060,
+          padding: "14px"
+        }}>
+          <div style={{
+            background: "#ffffff",
+            width: "100%",
+            maxWidth: "940px",
+            maxHeight: "92vh",
+            borderRadius: "16px",
+            boxShadow: "0 20px 35px rgba(0, 0, 0, 0.25)",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden"
+          }}>
+            {/* Header Modal */}
+            <div style={{
+              background: "linear-gradient(135deg, #059669, #047857)",
+              color: "#ffffff",
+              padding: "16px 22px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center"
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "800", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span>🟢</span> Consulta de Horarios Disponibles (Libres)
+                </h3>
+                <p style={{ margin: "3px 0 0 0", fontSize: "12px", opacity: 0.92 }}>
+                  Filtrá por uno o varios profesionales, elegí los días y hacé clic en cualquier horario libre para agendarlo.
+                </p>
+              </div>
+              <button
+                onClick={() => setModalDisponiblesAbierto(false)}
+                style={{
+                  background: "rgba(255,255,255,0.2)",
+                  border: "none",
+                  color: "#fff",
+                  fontSize: "18px",
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "50%",
+                  cursor: "pointer",
+                  fontWeight: "bold"
+                }}
+              >
+                ✖
+              </button>
+            </div>
+
+            {/* Panel de Filtros */}
+            <div style={{
+              padding: "16px 22px",
+              background: "#f8fafc",
+              borderBottom: "1px solid #e2e8f0",
+              display: "flex",
+              flexDirection: "column",
+              gap: "14px",
+              overflowY: "auto",
+              maxHeight: "45vh"
+            }}>
+              {/* Fila 1: Mes, Año, Franja y Checkboxes */}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "flex-end" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "11px", fontWeight: "bold", color: "#475569", marginBottom: "4px" }}>MES</label>
+                  <select
+                    value={dispMes}
+                    onChange={(e) => setDispMes(Number(e.target.value))}
+                    style={{ padding: "7px 10px", borderRadius: "7px", border: "1px solid #cbd5e1", fontSize: "13px", fontWeight: "bold", background: "#fff" }}
+                  >
+                    {mesesNombres.map((m, idx) => <option key={idx} value={idx}>{m}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "11px", fontWeight: "bold", color: "#475569", marginBottom: "4px" }}>AÑO</label>
+                  <input
+                    type="number"
+                    value={dispAno}
+                    onChange={(e) => setDispAno(Number(e.target.value))}
+                    style={{ width: "80px", padding: "7px 10px", borderRadius: "7px", border: "1px solid #cbd5e1", fontSize: "13px", fontWeight: "bold" }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "11px", fontWeight: "bold", color: "#475569", marginBottom: "4px" }}>FRANJA HORARIA</label>
+                  <select
+                    value={dispFranja}
+                    onChange={(e) => setDispFranja(e.target.value)}
+                    style={{ padding: "7px 10px", borderRadius: "7px", border: "1px solid #cbd5e1", fontSize: "13px", fontWeight: "bold", background: "#fff" }}
+                  >
+                    <option value="todas">Todo el día (09:00 a 20:45)</option>
+                    <option value="manana">Solo Mañana (09:00 a 12:45)</option>
+                    <option value="tarde">Solo Tarde (14:00 a 20:45)</option>
+                  </select>
+                </div>
+
+                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px", fontWeight: "600", color: "#334155", cursor: "pointer", padding: "6px 10px", background: "#fff", border: "1px solid #cbd5e1", borderRadius: "7px" }}>
+                  <input
+                    type="checkbox"
+                    checked={dispSoloFuturos}
+                    onChange={(e) => setDispSoloFuturos(e.target.checked)}
+                  />
+                  Solo desde hoy en adelante
+                </label>
+
+                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px", fontWeight: "600", color: "#334155", cursor: "pointer", padding: "6px 10px", background: "#fff", border: "1px solid #cbd5e1", borderRadius: "7px" }}>
+                  <input
+                    type="checkbox"
+                    checked={dispMostrarOcupados}
+                    onChange={(e) => setDispMostrarOcupados(e.target.checked)}
+                  />
+                  Ver también ocupados
+                </label>
+              </div>
+
+              {/* Fila 2: Selección de Uno o Varios Profesionales */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", marginBottom: "6px" }}>
+                  <label style={{ fontSize: "11px", fontWeight: "bold", color: "#475569" }}>
+                    PROFESIONALES ({dispProfesionalesIds.length} seleccionados):
+                  </label>
+                  {esAdmin && (
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => setDispProfesionalesIds(profesionalesParaConsulta.filter(p => p.esClinico).map(p => String(p.id)))}
+                        style={{ padding: "3px 9px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #10b981", background: "#ecfdf5", color: "#047857", cursor: "pointer" }}
+                      >
+                        Solo Profesionales
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDispProfesionalesIds(profesionalesParaConsulta.map(p => String(p.id)))}
+                        style={{ padding: "3px 9px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#ffffff", color: "#334155", cursor: "pointer" }}
+                      >
+                        Todos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDispProfesionalesIds([])}
+                        style={{ padding: "3px 9px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #fecaca", background: "#fef2f2", color: "#b91c1c", cursor: "pointer" }}
+                      >
+                        Limpiar
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                  {(esAdmin ? profesionalesParaConsulta : profesionalesParaConsulta.filter(p => dispProfesionalesIds.includes(String(p.id)))).map(p => {
+                    const activo = dispProfesionalesIds.includes(String(p.id));
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        disabled={!esAdmin}
+                        onClick={() => toggleProfDisp(p.id)}
+                        style={{
+                          padding: "5px 10px",
+                          borderRadius: "16px",
+                          fontSize: "12px",
+                          fontWeight: "700",
+                          cursor: esAdmin ? "pointer" : "default",
+                          border: activo ? "1.5px solid #059669" : "1px solid #cbd5e1",
+                          background: activo ? "#10b981" : "#ffffff",
+                          color: activo ? "#ffffff" : "#475569",
+                          transition: "all 0.12s"
+                        }}
+                      >
+                        {activo ? "✓ " : ""}{p.nombreLimpio}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Fila 3: Elección de Días */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", marginBottom: "6px" }}>
+                  <label style={{ fontSize: "11px", fontWeight: "bold", color: "#475569" }}>
+                    DÍAS A CONSULTAR:
+                  </label>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button
+                      type="button"
+                      onClick={() => setDispModoDias("semana")}
+                      style={{
+                        padding: "4px 10px", borderRadius: "6px", fontSize: "11.5px", fontWeight: "700", cursor: "pointer",
+                        border: dispModoDias === "semana" ? "1.5px solid #0284c7" : "1px solid #cbd5e1",
+                        background: dispModoDias === "semana" ? "#e0f2fe" : "#fff",
+                        color: dispModoDias === "semana" ? "#0369a1" : "#475569"
+                      }}
+                    >
+                      📆 Por Días de Semana / Todos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDispModoDias("fechas");
+                        if (dispFechasExactas.length === 0) {
+                          setDispFechasExactas([new Date().getDate()]);
+                        }
+                      }}
+                      style={{
+                        padding: "4px 10px", borderRadius: "6px", fontSize: "11.5px", fontWeight: "700", cursor: "pointer",
+                        border: dispModoDias === "fechas" ? "1.5px solid #0284c7" : "1px solid #cbd5e1",
+                        background: dispModoDias === "fechas" ? "#e0f2fe" : "#fff",
+                        color: dispModoDias === "fechas" ? "#0369a1" : "#475569"
+                      }}
+                    >
+                      🎯 Elegir Fechas Exactas del Mes
+                    </button>
+                  </div>
+                </div>
+
+                {dispModoDias === "semana" ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
+                    {diasSemanaOpciones.map(d => {
+                      const sel = dispDiasSemana.includes(d.id);
+                      return (
+                        <button
+                          key={d.id}
+                          type="button"
+                          onClick={() => toggleDiaSemanaDisp(d.id)}
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: "8px",
+                            fontSize: "12px",
+                            fontWeight: "700",
+                            cursor: "pointer",
+                            border: sel ? "1.5px solid #0284c7" : "1px solid #cbd5e1",
+                            background: sel ? "#0284c7" : "#ffffff",
+                            color: sel ? "#ffffff" : "#475569"
+                          }}
+                        >
+                          {d.label}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => setDispDiasSemana([1, 2, 3, 4, 5])}
+                      style={{ padding: "5px 10px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#f1f5f9", color: "#334155", cursor: "pointer", marginLeft: "4px" }}
+                    >
+                      Lun–Vie
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDispDiasSemana([1, 2, 3, 4, 5, 6, 0])}
+                      style={{ padding: "5px 10px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #059669", background: "#ecfdf5", color: "#047857", cursor: "pointer" }}
+                    >
+                      Todos los días
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
+                      {Array.from({ length: new Date(dispAno, dispMes + 1, 0).getDate() }, (_, idx) => idx + 1).map(dNum => {
+                        const sel = dispFechasExactas.includes(dNum);
+                        const dWeek = new Date(Date.UTC(dispAno, dispMes, dNum, 12, 0, 0)).getUTCDay();
+                        const corto = diasSemanaOpciones.find(x => x.id === dWeek)?.corto || "";
+                        return (
+                          <button
+                            key={dNum}
+                            type="button"
+                            onClick={() => toggleFechaExactaDisp(dNum)}
+                            style={{
+                              padding: "4px 8px",
+                              borderRadius: "6px",
+                              fontSize: "11.5px",
+                              fontWeight: "700",
+                              cursor: "pointer",
+                              border: sel ? "1.5px solid #0284c7" : "1px solid #cbd5e1",
+                              background: sel ? "#0284c7" : "#ffffff",
+                              color: sel ? "#ffffff" : "#334155"
+                            }}
+                          >
+                            {corto} {dNum}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <button
+                        type="button"
+                        onClick={() => setDispFechasExactas(Array.from({ length: new Date(dispAno, dispMes + 1, 0).getDate() }, (_, i) => i + 1))}
+                        style={{ padding: "3px 9px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", cursor: "pointer" }}
+                      >
+                        Todos del mes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDispFechasExactas([])}
+                        style={{ padding: "3px 9px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #fecaca", background: "#fef2f2", color: "#b91c1c", cursor: "pointer" }}
+                      >
+                        Limpiar fechas
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Barra de Resumen + Copiar */}
+            <div style={{
+              padding: "10px 22px",
+              background: "#ecfdf5",
+              borderBottom: "1px solid #a7f3d0",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "10px"
+            }}>
+              <div style={{ fontSize: "13px", color: "#065f46", fontWeight: "700" }}>
+                📊 {disponibilidadCalculada.dias.length} día(s) consultados • <span style={{ fontSize: "15px" }}>{disponibilidadCalculada.totalLibres}</span> horario(s) libres encontrados
+              </div>
+              <button
+                type="button"
+                onClick={copiarDisponibilidadTexto}
+                disabled={disponibilidadCalculada.totalLibres === 0}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "7px",
+                  border: "none",
+                  background: dispCopiado ? "#047857" : "#059669",
+                  color: "#fff",
+                  fontWeight: "700",
+                  fontSize: "12px",
+                  cursor: disponibilidadCalculada.totalLibres === 0 ? "not-allowed" : "pointer",
+                  opacity: disponibilidadCalculada.totalLibres === 0 ? 0.5 : 1
+                }}
+              >
+                {dispCopiado ? "✓ ¡Copiado para WhatsApp!" : "📋 Copiar horarios libres (WhatsApp)"}
+              </button>
+            </div>
+
+            {/* Resultados por Día y Profesional */}
+            <div style={{ padding: "16px 22px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: "12px", background: "#ffffff" }}>
+              {dispProfesionalesIds.length === 0 ? (
+                <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+                  👆 Seleccioná al menos un profesional arriba para ver sus horarios libres.
+                </div>
+              ) : disponibilidadCalculada.dias.length === 0 ? (
+                <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+                  ℹ️ No hay días que coincidan con los filtros seleccionados (revisá los días elegidos o el filtro «Solo desde hoy en adelante»).
+                </div>
+              ) : (
+                disponibilidadCalculada.dias.map(diaObj => (
+                  <div
+                    key={diaObj.dia}
+                    style={{
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "10px",
+                      overflow: "hidden",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
+                    }}
+                  >
+                    <div style={{
+                      background: "#f1f5f9",
+                      padding: "8px 14px",
+                      fontWeight: "800",
+                      color: "#0f172a",
+                      fontSize: "13.5px",
+                      borderBottom: "1px solid #e2e8f0",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}>
+                      <span>📅 {diaObj.diaLabel.toUpperCase()} {diaObj.fechaStr}</span>
+                      <span style={{ fontSize: "11.5px", fontWeight: "700", color: "#047857" }}>
+                        {diaObj.porProfesional.reduce((acc, x) => acc + x.libres.length, 0)} libres en total
+                      </span>
+                    </div>
+
+                    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                      {diaObj.porProfesional.map(({ prof, libres, ocupados }) => (
+                        <div key={prof.id} style={{ borderBottom: "1px dashed #e2e8f0", paddingBottom: "8px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                            <span style={{ fontWeight: "700", fontSize: "13px", color: "#1e293b" }}>👤 {prof.nombreLimpio}</span>
+                            <span style={{
+                              fontSize: "11px",
+                              fontWeight: "700",
+                              padding: "2px 7px",
+                              borderRadius: "10px",
+                              background: libres.length > 0 ? "#dcfce7" : "#fee2e2",
+                              color: libres.length > 0 ? "#166534" : "#991b1b"
+                            }}>
+                              {libres.length > 0 ? `${libres.length} disponibles` : "Sin turnos libres"}
+                            </span>
+                          </div>
+
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                            {libres.map(hr => (
+                              <button
+                                key={hr}
+                                type="button"
+                                onClick={() => {
+                                  setMesActual(new Date(dispAno, dispMes, 1));
+                                  setDiaSeleccionado(diaObj.dia);
+                                  setTurnoEditando(null);
+                                  setForm(prev => ({
+                                    ...prev,
+                                    hora: hr,
+                                    profesional_id: String(prof.id),
+                                    paciente_nombre: "",
+                                    estado: "pendiente",
+                                    horario_especial: ""
+                                  }));
+                                  setModalDisponiblesAbierto(false);
+                                }}
+                                title={`Agendar turno el ${diaObj.fechaStr} a las ${hr} con ${prof.nombreLimpio}`}
+                                style={{
+                                  padding: "5px 10px",
+                                  borderRadius: "7px",
+                                  border: "1px solid #86efac",
+                                  background: "#f0fdf4",
+                                  color: "#15803d",
+                                  fontWeight: "700",
+                                  fontSize: "12px",
+                                  cursor: "pointer",
+                                  transition: "all 0.12s"
+                                }}
+                                onMouseOver={(e) => {
+                                  e.currentTarget.style.background = "#10b981";
+                                  e.currentTarget.style.color = "#ffffff";
+                                }}
+                                onMouseOut={(e) => {
+                                  e.currentTarget.style.background = "#f0fdf4";
+                                  e.currentTarget.style.color = "#15803d";
+                                }}
+                              >
+                                ✅ {hr}
+                              </button>
+                            ))}
+
+                            {dispMostrarOcupados && ocupados.map(oc => (
+                              <span
+                                key={oc.hora}
+                                title={`Ocupado: ${oc.paciente}`}
+                                style={{
+                                  padding: "5px 10px",
+                                  borderRadius: "7px",
+                                  border: "1px solid #fecaca",
+                                  background: "#fef2f2",
+                                  color: "#991b1b",
+                                  fontWeight: "600",
+                                  fontSize: "11.5px",
+                                  textDecoration: "line-through"
+                                }}
+                              >
+                                ❌ {oc.hora} ({oc.paciente})
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Footer Modal */}
+            <div style={{ padding: "12px 22px", borderTop: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setModalDisponiblesAbierto(false)}
+                style={{ padding: "9px 20px", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#ffffff", color: "#334155", fontWeight: "700", cursor: "pointer" }}
+              >
+                Cerrar
+              </button>
             </div>
           </div>
         </div>
