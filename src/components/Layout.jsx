@@ -33,7 +33,7 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
   const esDireccion = rol === 'DIRECCION'
   
   // Definimos la condición para ver documentos
-  const puedeVerDocumentos = ['DIRECCION', 'PROFESIONAL_PLUS'].includes(rol)
+  const puedeVerDocumentos = ['DIRECCION', 'PROFESIONAL_PLUS', 'PROFESIONAL'].includes(rol)
 
   // Verificación dinámica de perfiles para usuarios duales (Auxiliar y Profesional al mismo tiempo)
   useEffect(() => {
@@ -159,7 +159,7 @@ function Layout({ userData, logout, actualizarMoraYCuotas }) {
               </button>
             )}
 
-            {/* DOCUMENTOS SOLO PARA DIRECCIÓN Y PROFESIONAL_PLUS */}
+            {/* DOCUMENTOS PARA DIRECCIÓN, PROFESIONAL_PLUS Y PROFESIONAL */}
             {puedeVerDocumentos && (
               <button onClick={() => setVista('documentos')} style={{...btnHubStyle, borderColor: '#fff'}}>📁 DOCUMENTOS</button>
             )}
