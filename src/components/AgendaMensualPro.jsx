@@ -415,8 +415,13 @@ function AgendaMensualPro({ userData }) {
 
   // Lógica para Consulta de Horarios Disponibles (Libres)
   const profesionalesParaConsulta = useMemo(() => {
+    const idsConTurnos = new Set((turnos || []).map(t => String(t.profesional_id || "").trim()).filter(Boolean));
     let marinaAgregada = false;
     return (users || []).filter(u => {
+      const r = (u.rol || "").trim().toUpperCase();
+      const esRolProfesional = ["PROFESIONAL", "PROFESIONAL_PLUS"].includes(r);
+      const tieneTurnos = idsConTurnos.has(String(u.id).trim());
+      if (!esRolProfesional && !tieneTurnos) return false;
       if (esMarinaOlivera(u.id, u.nombre)) {
         if (marinaAgregada) return false;
         marinaAgregada = true;
@@ -424,10 +429,10 @@ function AgendaMensualPro({ userData }) {
       return true;
     }).map(u => ({
       ...u,
-      nombreLimpio: (u.nombre || '').trim(),
-      esClinico: ['PROFESIONAL', 'PROFESIONAL_PLUS', 'DIRECCION'].includes((u.rol || '').toUpperCase())
+      nombreLimpio: (u.nombre || "").trim(),
+      esClinico: true
     }));
-  }, [users]);
+  }, [users, turnos]);
 
   const abrirModalDisponibles = () => {
     setDispMes(mesActual.getMonth());
@@ -1582,13 +1587,6 @@ function AgendaMensualPro({ userData }) {
                     </label>
                     {esAdmin && (
                       <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                        <button
-                          type="button"
-                          onClick={() => setDispProfesionalesIds(profesionalesParaConsulta.filter(p => p.esClinico).map(p => String(p.id)))}
-                          style={{ padding: "4px 10px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #10b981", background: "#ecfdf5", color: "#047857", cursor: "pointer" }}
-                        >
-                          Solo Profesionales
-                        </button>
                         <button
                           type="button"
                           onClick={() => setDispProfesionalesIds(profesionalesParaConsulta.map(p => String(p.id)))}
