@@ -1447,27 +1447,30 @@ function AgendaMensualPro({ userData }) {
           alignItems: "center",
           justifyContent: "center",
           zIndex: 1060,
-          padding: "14px"
+          padding: "14px",
+          boxSizing: "border-box"
         }}>
           <div style={{
             background: "#ffffff",
             width: "100%",
-            maxWidth: "940px",
-            maxHeight: "92vh",
+            maxWidth: "960px",
+            height: "90vh",
+            maxHeight: "90vh",
             borderRadius: "16px",
             boxShadow: "0 20px 35px rgba(0, 0, 0, 0.25)",
             display: "flex",
             flexDirection: "column",
             overflow: "hidden"
           }}>
-            {/* Header Modal */}
+            {/* Header Modal (Fijo arriba) */}
             <div style={{
               background: "linear-gradient(135deg, #059669, #047857)",
               color: "#ffffff",
-              padding: "16px 22px",
+              padding: "14px 22px",
               display: "flex",
               justifyContent: "space-between",
-              alignItems: "center"
+              alignItems: "center",
+              flexShrink: 0
             }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "800", display: "flex", alignItems: "center", gap: "8px" }}>
@@ -1478,6 +1481,7 @@ function AgendaMensualPro({ userData }) {
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setModalDisponiblesAbierto(false)}
                 style={{
                   background: "rgba(255,255,255,0.2)",
@@ -1488,429 +1492,444 @@ function AgendaMensualPro({ userData }) {
                   height: "32px",
                   borderRadius: "50%",
                   cursor: "pointer",
-                  fontWeight: "bold"
+                  fontWeight: "bold",
+                  flexShrink: 0
                 }}
               >
                 ✖
               </button>
             </div>
 
-            {/* Panel de Filtros */}
+            {/* Cuerpo completo con scroll único (Filtros + Barra Resumen Sticky + Resultados) */}
             <div style={{
-              padding: "16px 22px",
-              background: "#f8fafc",
-              borderBottom: "1px solid #e2e8f0",
+              flex: 1,
+              minHeight: 0,
+              overflowY: "auto",
               display: "flex",
               flexDirection: "column",
-              gap: "14px",
-              overflowY: "auto",
-              maxHeight: "45vh"
+              background: "#ffffff"
             }}>
-              {/* Fila 1: Mes, Año, Franja y Checkboxes */}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "flex-end" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "11px", fontWeight: "bold", color: "#475569", marginBottom: "4px" }}>MES</label>
-                  <select
-                    value={dispMes}
-                    onChange={(e) => setDispMes(Number(e.target.value))}
-                    style={{ padding: "7px 10px", borderRadius: "7px", border: "1px solid #cbd5e1", fontSize: "13px", fontWeight: "bold", background: "#fff" }}
-                  >
-                    {mesesNombres.map((m, idx) => <option key={idx} value={idx}>{m}</option>)}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "11px", fontWeight: "bold", color: "#475569", marginBottom: "4px" }}>AÑO</label>
-                  <input
-                    type="number"
-                    value={dispAno}
-                    onChange={(e) => setDispAno(Number(e.target.value))}
-                    style={{ width: "80px", padding: "7px 10px", borderRadius: "7px", border: "1px solid #cbd5e1", fontSize: "13px", fontWeight: "bold" }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "11px", fontWeight: "bold", color: "#475569", marginBottom: "4px" }}>FRANJA HORARIA</label>
-                  <select
-                    value={dispFranja}
-                    onChange={(e) => setDispFranja(e.target.value)}
-                    style={{ padding: "7px 10px", borderRadius: "7px", border: "1px solid #cbd5e1", fontSize: "13px", fontWeight: "bold", background: "#fff" }}
-                  >
-                    <option value="todas">Todo el día (09:00 a 20:45)</option>
-                    <option value="manana">Solo Mañana (09:00 a 12:45)</option>
-                    <option value="tarde">Solo Tarde (14:00 a 20:45)</option>
-                  </select>
-                </div>
-
-                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px", fontWeight: "600", color: "#334155", cursor: "pointer", padding: "6px 10px", background: "#fff", border: "1px solid #cbd5e1", borderRadius: "7px" }}>
-                  <input
-                    type="checkbox"
-                    checked={dispSoloFuturos}
-                    onChange={(e) => setDispSoloFuturos(e.target.checked)}
-                  />
-                  Solo desde hoy en adelante
-                </label>
-
-                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px", fontWeight: "600", color: "#334155", cursor: "pointer", padding: "6px 10px", background: "#fff", border: "1px solid #cbd5e1", borderRadius: "7px" }}>
-                  <input
-                    type="checkbox"
-                    checked={dispMostrarOcupados}
-                    onChange={(e) => setDispMostrarOcupados(e.target.checked)}
-                  />
-                  Ver también ocupados
-                </label>
-              </div>
-
-              {/* Fila 2: Selección de Uno o Varios Profesionales */}
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", marginBottom: "6px" }}>
-                  <label style={{ fontSize: "11px", fontWeight: "bold", color: "#475569" }}>
-                    PROFESIONALES ({dispProfesionalesIds.length} seleccionados):
-                  </label>
-                  {esAdmin && (
-                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                      <button
-                        type="button"
-                        onClick={() => setDispProfesionalesIds(profesionalesParaConsulta.filter(p => p.esClinico).map(p => String(p.id)))}
-                        style={{ padding: "3px 9px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #10b981", background: "#ecfdf5", color: "#047857", cursor: "pointer" }}
-                      >
-                        Solo Profesionales
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDispProfesionalesIds(profesionalesParaConsulta.map(p => String(p.id)))}
-                        style={{ padding: "3px 9px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#ffffff", color: "#334155", cursor: "pointer" }}
-                      >
-                        Todos
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDispProfesionalesIds([])}
-                        style={{ padding: "3px 9px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #fecaca", background: "#fef2f2", color: "#b91c1c", cursor: "pointer" }}
-                      >
-                        Limpiar
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                  {(esAdmin ? profesionalesParaConsulta : profesionalesParaConsulta.filter(p => dispProfesionalesIds.includes(String(p.id)))).map(p => {
-                    const activo = dispProfesionalesIds.includes(String(p.id));
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        disabled={!esAdmin}
-                        onClick={() => toggleProfDisp(p.id)}
-                        style={{
-                          padding: "5px 10px",
-                          borderRadius: "16px",
-                          fontSize: "12px",
-                          fontWeight: "700",
-                          cursor: esAdmin ? "pointer" : "default",
-                          border: activo ? "1.5px solid #059669" : "1px solid #cbd5e1",
-                          background: activo ? "#10b981" : "#ffffff",
-                          color: activo ? "#ffffff" : "#475569",
-                          transition: "all 0.12s"
-                        }}
-                      >
-                        {activo ? "✓ " : ""}{p.nombreLimpio}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Fila 3: Elección de Días */}
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", marginBottom: "6px" }}>
-                  <label style={{ fontSize: "11px", fontWeight: "bold", color: "#475569" }}>
-                    DÍAS A CONSULTAR:
-                  </label>
-                  <div style={{ display: "flex", gap: "6px" }}>
-                    <button
-                      type="button"
-                      onClick={() => setDispModoDias("semana")}
-                      style={{
-                        padding: "4px 10px", borderRadius: "6px", fontSize: "11.5px", fontWeight: "700", cursor: "pointer",
-                        border: dispModoDias === "semana" ? "1.5px solid #0284c7" : "1px solid #cbd5e1",
-                        background: dispModoDias === "semana" ? "#e0f2fe" : "#fff",
-                        color: dispModoDias === "semana" ? "#0369a1" : "#475569"
-                      }}
+              {/* Panel de Filtros */}
+              <div style={{
+                padding: "16px 22px",
+                background: "#f8fafc",
+                borderBottom: "1px solid #e2e8f0",
+                display: "flex",
+                flexDirection: "column",
+                gap: "14px",
+                flexShrink: 0
+              }}>
+                {/* Fila 1: Mes, Año, Franja y Checkboxes */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "flex-end" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "11px", fontWeight: "bold", color: "#475569", marginBottom: "4px" }}>MES</label>
+                    <select
+                      value={dispMes}
+                      onChange={(e) => setDispMes(Number(e.target.value))}
+                      style={{ padding: "7px 10px", borderRadius: "7px", border: "1px solid #cbd5e1", fontSize: "13px", fontWeight: "bold", background: "#fff", color: "#0f172a" }}
                     >
-                      📆 Por Días de Semana / Todos
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDispModoDias("fechas");
-                        if (dispFechasExactas.length === 0) {
-                          setDispFechasExactas([new Date().getDate()]);
-                        }
-                      }}
-                      style={{
-                        padding: "4px 10px", borderRadius: "6px", fontSize: "11.5px", fontWeight: "700", cursor: "pointer",
-                        border: dispModoDias === "fechas" ? "1.5px solid #0284c7" : "1px solid #cbd5e1",
-                        background: dispModoDias === "fechas" ? "#e0f2fe" : "#fff",
-                        color: dispModoDias === "fechas" ? "#0369a1" : "#475569"
-                      }}
-                    >
-                      🎯 Elegir Fechas Exactas del Mes
-                    </button>
+                      {mesesNombres.map((m, idx) => <option key={idx} value={idx}>{m}</option>)}
+                    </select>
                   </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "11px", fontWeight: "bold", color: "#475569", marginBottom: "4px" }}>AÑO</label>
+                    <input
+                      type="number"
+                      value={dispAno}
+                      onChange={(e) => setDispAno(Number(e.target.value))}
+                      style={{ width: "84px", padding: "7px 10px", borderRadius: "7px", border: "1px solid #cbd5e1", fontSize: "13px", fontWeight: "bold", color: "#0f172a", background: "#fff" }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "11px", fontWeight: "bold", color: "#475569", marginBottom: "4px" }}>FRANJA HORARIA</label>
+                    <select
+                      value={dispFranja}
+                      onChange={(e) => setDispFranja(e.target.value)}
+                      style={{ padding: "7px 10px", borderRadius: "7px", border: "1px solid #cbd5e1", fontSize: "13px", fontWeight: "bold", background: "#fff", color: "#0f172a" }}
+                    >
+                      <option value="todas">Todo el día (09:00 a 20:45)</option>
+                      <option value="manana">Solo Mañana (09:00 a 12:45)</option>
+                      <option value="tarde">Solo Tarde (14:00 a 20:45)</option>
+                    </select>
+                  </div>
+
+                  <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px", fontWeight: "600", color: "#334155", cursor: "pointer", padding: "7px 10px", background: "#fff", border: "1px solid #cbd5e1", borderRadius: "7px" }}>
+                    <input
+                      type="checkbox"
+                      checked={dispSoloFuturos}
+                      onChange={(e) => setDispSoloFuturos(e.target.checked)}
+                    />
+                    Solo desde hoy en adelante
+                  </label>
+
+                  <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px", fontWeight: "600", color: "#334155", cursor: "pointer", padding: "7px 10px", background: "#fff", border: "1px solid #cbd5e1", borderRadius: "7px" }}>
+                    <input
+                      type="checkbox"
+                      checked={dispMostrarOcupados}
+                      onChange={(e) => setDispMostrarOcupados(e.target.checked)}
+                    />
+                    Ver también ocupados
+                  </label>
                 </div>
 
-                {dispModoDias === "semana" ? (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
-                    {diasSemanaOpciones.map(d => {
-                      const sel = dispDiasSemana.includes(d.id);
+                {/* Fila 2: Selección de Uno o Varios Profesionales */}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", marginBottom: "6px" }}>
+                    <label style={{ fontSize: "11px", fontWeight: "bold", color: "#475569" }}>
+                      PROFESIONALES ({dispProfesionalesIds.length} seleccionados):
+                    </label>
+                    {esAdmin && (
+                      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => setDispProfesionalesIds(profesionalesParaConsulta.filter(p => p.esClinico).map(p => String(p.id)))}
+                          style={{ padding: "4px 10px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #10b981", background: "#ecfdf5", color: "#047857", cursor: "pointer" }}
+                        >
+                          Solo Profesionales
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDispProfesionalesIds(profesionalesParaConsulta.map(p => String(p.id)))}
+                          style={{ padding: "4px 10px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#ffffff", color: "#334155", cursor: "pointer" }}
+                        >
+                          Todos
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDispProfesionalesIds([])}
+                          style={{ padding: "4px 10px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #fecaca", background: "#fef2f2", color: "#b91c1c", cursor: "pointer" }}
+                        >
+                          Limpiar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                    {(esAdmin ? profesionalesParaConsulta : profesionalesParaConsulta.filter(p => dispProfesionalesIds.includes(String(p.id)))).map(p => {
+                      const activo = dispProfesionalesIds.includes(String(p.id));
                       return (
                         <button
-                          key={d.id}
+                          key={p.id}
                           type="button"
-                          onClick={() => toggleDiaSemanaDisp(d.id)}
+                          disabled={!esAdmin}
+                          onClick={() => toggleProfDisp(p.id)}
                           style={{
-                            padding: "6px 12px",
-                            borderRadius: "8px",
+                            padding: "5px 11px",
+                            borderRadius: "16px",
                             fontSize: "12px",
                             fontWeight: "700",
-                            cursor: "pointer",
-                            border: sel ? "1.5px solid #0284c7" : "1px solid #cbd5e1",
-                            background: sel ? "#0284c7" : "#ffffff",
-                            color: sel ? "#ffffff" : "#475569"
+                            cursor: esAdmin ? "pointer" : "default",
+                            border: activo ? "1.5px solid #059669" : "1px solid #cbd5e1",
+                            background: activo ? "#10b981" : "#ffffff",
+                            color: activo ? "#ffffff" : "#475569",
+                            transition: "all 0.12s"
                           }}
                         >
-                          {d.label}
+                          {activo ? "✓ " : ""}{p.nombreLimpio}
                         </button>
                       );
                     })}
-                    <button
-                      type="button"
-                      onClick={() => setDispDiasSemana([1, 2, 3, 4, 5])}
-                      style={{ padding: "5px 10px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#f1f5f9", color: "#334155", cursor: "pointer", marginLeft: "4px" }}
-                    >
-                      Lun–Vie
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDispDiasSemana([1, 2, 3, 4, 5, 6, 0])}
-                      style={{ padding: "5px 10px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #059669", background: "#ecfdf5", color: "#047857", cursor: "pointer" }}
-                    >
-                      Todos los días
-                    </button>
                   </div>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
-                      {Array.from({ length: new Date(dispAno, dispMes + 1, 0).getDate() }, (_, idx) => idx + 1).map(dNum => {
-                        const sel = dispFechasExactas.includes(dNum);
-                        const dWeek = new Date(Date.UTC(dispAno, dispMes, dNum, 12, 0, 0)).getUTCDay();
-                        const corto = diasSemanaOpciones.find(x => x.id === dWeek)?.corto || "";
+                </div>
+
+                {/* Fila 3: Elección de Días */}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", marginBottom: "6px" }}>
+                    <label style={{ fontSize: "11px", fontWeight: "bold", color: "#475569" }}>
+                      DÍAS A CONSULTAR:
+                    </label>
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <button
+                        type="button"
+                        onClick={() => setDispModoDias("semana")}
+                        style={{
+                          padding: "4px 10px", borderRadius: "6px", fontSize: "11.5px", fontWeight: "700", cursor: "pointer",
+                          border: dispModoDias === "semana" ? "1.5px solid #0284c7" : "1px solid #cbd5e1",
+                          background: dispModoDias === "semana" ? "#e0f2fe" : "#fff",
+                          color: dispModoDias === "semana" ? "#0369a1" : "#475569"
+                        }}
+                      >
+                        📆 Por Días de Semana / Todos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDispModoDias("fechas");
+                          if (dispFechasExactas.length === 0) {
+                            setDispFechasExactas([new Date().getDate()]);
+                          }
+                        }}
+                        style={{
+                          padding: "4px 10px", borderRadius: "6px", fontSize: "11.5px", fontWeight: "700", cursor: "pointer",
+                          border: dispModoDias === "fechas" ? "1.5px solid #0284c7" : "1px solid #cbd5e1",
+                          background: dispModoDias === "fechas" ? "#e0f2fe" : "#fff",
+                          color: dispModoDias === "fechas" ? "#0369a1" : "#475569"
+                        }}
+                      >
+                        🎯 Elegir Fechas Exactas del Mes
+                      </button>
+                    </div>
+                  </div>
+
+                  {dispModoDias === "semana" ? (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
+                      {diasSemanaOpciones.map(d => {
+                        const sel = dispDiasSemana.includes(d.id);
                         return (
                           <button
-                            key={dNum}
+                            key={d.id}
                             type="button"
-                            onClick={() => toggleFechaExactaDisp(dNum)}
+                            onClick={() => toggleDiaSemanaDisp(d.id)}
                             style={{
-                              padding: "4px 8px",
-                              borderRadius: "6px",
-                              fontSize: "11.5px",
+                              padding: "6px 12px",
+                              borderRadius: "8px",
+                              fontSize: "12px",
                               fontWeight: "700",
                               cursor: "pointer",
                               border: sel ? "1.5px solid #0284c7" : "1px solid #cbd5e1",
                               background: sel ? "#0284c7" : "#ffffff",
-                              color: sel ? "#ffffff" : "#334155"
+                              color: sel ? "#ffffff" : "#475569"
                             }}
                           >
-                            {corto} {dNum}
+                            {d.label}
                           </button>
                         );
                       })}
-                    </div>
-                    <div style={{ display: "flex", gap: "6px" }}>
                       <button
                         type="button"
-                        onClick={() => setDispFechasExactas(Array.from({ length: new Date(dispAno, dispMes + 1, 0).getDate() }, (_, i) => i + 1))}
-                        style={{ padding: "3px 9px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", cursor: "pointer" }}
+                        onClick={() => setDispDiasSemana([1, 2, 3, 4, 5])}
+                        style={{ padding: "6px 10px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#f1f5f9", color: "#334155", cursor: "pointer", marginLeft: "4px" }}
                       >
-                        Todos del mes
+                        Lun–Vie
                       </button>
                       <button
                         type="button"
-                        onClick={() => setDispFechasExactas([])}
-                        style={{ padding: "3px 9px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #fecaca", background: "#fef2f2", color: "#b91c1c", cursor: "pointer" }}
+                        onClick={() => setDispDiasSemana([1, 2, 3, 4, 5, 6, 0])}
+                        style={{ padding: "6px 10px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #059669", background: "#ecfdf5", color: "#047857", cursor: "pointer" }}
                       >
-                        Limpiar fechas
+                        Todos los días
                       </button>
                     </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
+                        {Array.from({ length: new Date(dispAno, dispMes + 1, 0).getDate() }, (_, idx) => idx + 1).map(dNum => {
+                          const sel = dispFechasExactas.includes(dNum);
+                          const dWeek = new Date(Date.UTC(dispAno, dispMes, dNum, 12, 0, 0)).getUTCDay();
+                          const corto = diasSemanaOpciones.find(x => x.id === dWeek)?.corto || "";
+                          return (
+                            <button
+                              key={dNum}
+                              type="button"
+                              onClick={() => toggleFechaExactaDisp(dNum)}
+                              style={{
+                                padding: "5px 9px",
+                                borderRadius: "6px",
+                                fontSize: "11.5px",
+                                fontWeight: "700",
+                                cursor: "pointer",
+                                border: sel ? "1.5px solid #0284c7" : "1px solid #cbd5e1",
+                                background: sel ? "#0284c7" : "#ffffff",
+                                color: sel ? "#ffffff" : "#334155"
+                              }}
+                            >
+                              {corto} {dNum}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <button
+                          type="button"
+                          onClick={() => setDispFechasExactas(Array.from({ length: new Date(dispAno, dispMes + 1, 0).getDate() }, (_, i) => i + 1))}
+                          style={{ padding: "4px 10px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", color: "#334155", cursor: "pointer" }}
+                        >
+                          Todos del mes
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDispFechasExactas([])}
+                          style={{ padding: "4px 10px", fontSize: "11px", fontWeight: "700", borderRadius: "6px", border: "1px solid #fecaca", background: "#fef2f2", color: "#b91c1c", cursor: "pointer" }}
+                        >
+                          Limpiar fechas
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Barra de Resumen + Copiar (Sticky al hacer scroll) */}
+              <div style={{
+                position: "sticky",
+                top: 0,
+                zIndex: 10,
+                padding: "10px 22px",
+                background: "#ecfdf5",
+                borderBottom: "1px solid #a7f3d0",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "10px",
+                flexShrink: 0
+              }}>
+                <div style={{ fontSize: "13px", color: "#065f46", fontWeight: "700" }}>
+                  📊 {disponibilidadCalculada.dias.length} día(s) consultados • <span style={{ fontSize: "15px" }}>{disponibilidadCalculada.totalLibres}</span> horario(s) libres encontrados
+                </div>
+                <button
+                  type="button"
+                  onClick={copiarDisponibilidadTexto}
+                  disabled={disponibilidadCalculada.totalLibres === 0}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: "7px",
+                    border: "none",
+                    background: dispCopiado ? "#047857" : "#059669",
+                    color: "#fff",
+                    fontWeight: "700",
+                    fontSize: "12px",
+                    cursor: disponibilidadCalculada.totalLibres === 0 ? "not-allowed" : "pointer",
+                    opacity: disponibilidadCalculada.totalLibres === 0 ? 0.5 : 1
+                  }}
+                >
+                  {dispCopiado ? "✓ ¡Copiado para WhatsApp!" : "📋 Copiar horarios libres (WhatsApp)"}
+                </button>
+              </div>
+
+              {/* Resultados por Día y Profesional */}
+              <div style={{ padding: "16px 22px", display: "flex", flexDirection: "column", gap: "14px", background: "#ffffff" }}>
+                {dispProfesionalesIds.length === 0 ? (
+                  <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+                    👆 Seleccioná al menos un profesional arriba para ver sus horarios libres.
                   </div>
+                ) : disponibilidadCalculada.dias.length === 0 ? (
+                  <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+                    ℹ️ No hay días que coincidan con los filtros seleccionados (revisá los días elegidos o el filtro «Solo desde hoy en adelante»).
+                  </div>
+                ) : (
+                  disponibilidadCalculada.dias.map(diaObj => (
+                    <div
+                      key={diaObj.dia}
+                      style={{
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "10px",
+                        overflow: "hidden",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+                        flexShrink: 0
+                      }}
+                    >
+                      <div style={{
+                        background: "#f1f5f9",
+                        padding: "9px 14px",
+                        fontWeight: "800",
+                        color: "#0f172a",
+                        fontSize: "13.5px",
+                        borderBottom: "1px solid #e2e8f0",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center"
+                      }}>
+                        <span>📅 {diaObj.diaLabel.toUpperCase()} {diaObj.fechaStr}</span>
+                        <span style={{ fontSize: "11.5px", fontWeight: "700", color: "#047857" }}>
+                          {diaObj.porProfesional.reduce((acc, x) => acc + x.libres.length, 0)} libres en total
+                        </span>
+                      </div>
+
+                      <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                        {diaObj.porProfesional.map(({ prof, libres, ocupados }) => (
+                          <div key={prof.id} style={{ borderBottom: "1px dashed #e2e8f0", paddingBottom: "10px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                              <span style={{ fontWeight: "700", fontSize: "13px", color: "#1e293b" }}>👤 {prof.nombreLimpio}</span>
+                              <span style={{
+                                fontSize: "11px",
+                                fontWeight: "700",
+                                padding: "2px 8px",
+                                borderRadius: "10px",
+                                background: libres.length > 0 ? "#dcfce7" : "#fee2e2",
+                                color: libres.length > 0 ? "#166534" : "#991b1b"
+                              }}>
+                                {libres.length > 0 ? `${libres.length} disponibles` : "Sin turnos libres"}
+                              </span>
+                            </div>
+
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                              {libres.map(hr => (
+                                <button
+                                  key={hr}
+                                  type="button"
+                                  onClick={() => {
+                                    setMesActual(new Date(dispAno, dispMes, 1));
+                                    setDiaSeleccionado(diaObj.dia);
+                                    setTurnoEditando(null);
+                                    setForm(prev => ({
+                                      ...prev,
+                                      hora: hr,
+                                      profesional_id: String(prof.id),
+                                      paciente_nombre: "",
+                                      estado: "pendiente",
+                                      horario_especial: ""
+                                    }));
+                                    setModalDisponiblesAbierto(false);
+                                  }}
+                                  title={`Agendar turno el ${diaObj.fechaStr} a las ${hr} con ${prof.nombreLimpio}`}
+                                  style={{
+                                    padding: "5px 10px",
+                                    borderRadius: "7px",
+                                    border: "1px solid #86efac",
+                                    background: "#f0fdf4",
+                                    color: "#15803d",
+                                    fontWeight: "700",
+                                    fontSize: "12px",
+                                    cursor: "pointer",
+                                    transition: "all 0.12s"
+                                  }}
+                                  onMouseOver={(e) => {
+                                    e.currentTarget.style.background = "#10b981";
+                                    e.currentTarget.style.color = "#ffffff";
+                                  }}
+                                  onMouseOut={(e) => {
+                                    e.currentTarget.style.background = "#f0fdf4";
+                                    e.currentTarget.style.color = "#15803d";
+                                  }}
+                                >
+                                  ✅ {hr}
+                                </button>
+                              ))}
+
+                              {dispMostrarOcupados && ocupados.map(oc => (
+                                <span
+                                  key={oc.hora}
+                                  title={`Ocupado: ${oc.paciente}`}
+                                  style={{
+                                    padding: "5px 10px",
+                                    borderRadius: "7px",
+                                    border: "1px solid #fecaca",
+                                    background: "#fef2f2",
+                                    color: "#991b1b",
+                                    fontWeight: "600",
+                                    fontSize: "11.5px",
+                                    textDecoration: "line-through"
+                                  }}
+                                >
+                                  ❌ {oc.hora} ({oc.paciente})
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>
 
-            {/* Barra de Resumen + Copiar */}
-            <div style={{
-              padding: "10px 22px",
-              background: "#ecfdf5",
-              borderBottom: "1px solid #a7f3d0",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: "10px"
-            }}>
-              <div style={{ fontSize: "13px", color: "#065f46", fontWeight: "700" }}>
-                📊 {disponibilidadCalculada.dias.length} día(s) consultados • <span style={{ fontSize: "15px" }}>{disponibilidadCalculada.totalLibres}</span> horario(s) libres encontrados
-              </div>
-              <button
-                type="button"
-                onClick={copiarDisponibilidadTexto}
-                disabled={disponibilidadCalculada.totalLibres === 0}
-                style={{
-                  padding: "6px 14px",
-                  borderRadius: "7px",
-                  border: "none",
-                  background: dispCopiado ? "#047857" : "#059669",
-                  color: "#fff",
-                  fontWeight: "700",
-                  fontSize: "12px",
-                  cursor: disponibilidadCalculada.totalLibres === 0 ? "not-allowed" : "pointer",
-                  opacity: disponibilidadCalculada.totalLibres === 0 ? 0.5 : 1
-                }}
-              >
-                {dispCopiado ? "✓ ¡Copiado para WhatsApp!" : "📋 Copiar horarios libres (WhatsApp)"}
-              </button>
-            </div>
-
-            {/* Resultados por Día y Profesional */}
-            <div style={{ padding: "16px 22px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: "12px", background: "#ffffff" }}>
-              {dispProfesionalesIds.length === 0 ? (
-                <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
-                  👆 Seleccioná al menos un profesional arriba para ver sus horarios libres.
-                </div>
-              ) : disponibilidadCalculada.dias.length === 0 ? (
-                <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
-                  ℹ️ No hay días que coincidan con los filtros seleccionados (revisá los días elegidos o el filtro «Solo desde hoy en adelante»).
-                </div>
-              ) : (
-                disponibilidadCalculada.dias.map(diaObj => (
-                  <div
-                    key={diaObj.dia}
-                    style={{
-                      border: "1px solid #cbd5e1",
-                      borderRadius: "10px",
-                      overflow: "hidden",
-                      boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
-                    }}
-                  >
-                    <div style={{
-                      background: "#f1f5f9",
-                      padding: "8px 14px",
-                      fontWeight: "800",
-                      color: "#0f172a",
-                      fontSize: "13.5px",
-                      borderBottom: "1px solid #e2e8f0",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center"
-                    }}>
-                      <span>📅 {diaObj.diaLabel.toUpperCase()} {diaObj.fechaStr}</span>
-                      <span style={{ fontSize: "11.5px", fontWeight: "700", color: "#047857" }}>
-                        {diaObj.porProfesional.reduce((acc, x) => acc + x.libres.length, 0)} libres en total
-                      </span>
-                    </div>
-
-                    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: "10px" }}>
-                      {diaObj.porProfesional.map(({ prof, libres, ocupados }) => (
-                        <div key={prof.id} style={{ borderBottom: "1px dashed #e2e8f0", paddingBottom: "8px" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-                            <span style={{ fontWeight: "700", fontSize: "13px", color: "#1e293b" }}>👤 {prof.nombreLimpio}</span>
-                            <span style={{
-                              fontSize: "11px",
-                              fontWeight: "700",
-                              padding: "2px 7px",
-                              borderRadius: "10px",
-                              background: libres.length > 0 ? "#dcfce7" : "#fee2e2",
-                              color: libres.length > 0 ? "#166534" : "#991b1b"
-                            }}>
-                              {libres.length > 0 ? `${libres.length} disponibles` : "Sin turnos libres"}
-                            </span>
-                          </div>
-
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                            {libres.map(hr => (
-                              <button
-                                key={hr}
-                                type="button"
-                                onClick={() => {
-                                  setMesActual(new Date(dispAno, dispMes, 1));
-                                  setDiaSeleccionado(diaObj.dia);
-                                  setTurnoEditando(null);
-                                  setForm(prev => ({
-                                    ...prev,
-                                    hora: hr,
-                                    profesional_id: String(prof.id),
-                                    paciente_nombre: "",
-                                    estado: "pendiente",
-                                    horario_especial: ""
-                                  }));
-                                  setModalDisponiblesAbierto(false);
-                                }}
-                                title={`Agendar turno el ${diaObj.fechaStr} a las ${hr} con ${prof.nombreLimpio}`}
-                                style={{
-                                  padding: "5px 10px",
-                                  borderRadius: "7px",
-                                  border: "1px solid #86efac",
-                                  background: "#f0fdf4",
-                                  color: "#15803d",
-                                  fontWeight: "700",
-                                  fontSize: "12px",
-                                  cursor: "pointer",
-                                  transition: "all 0.12s"
-                                }}
-                                onMouseOver={(e) => {
-                                  e.currentTarget.style.background = "#10b981";
-                                  e.currentTarget.style.color = "#ffffff";
-                                }}
-                                onMouseOut={(e) => {
-                                  e.currentTarget.style.background = "#f0fdf4";
-                                  e.currentTarget.style.color = "#15803d";
-                                }}
-                              >
-                                ✅ {hr}
-                              </button>
-                            ))}
-
-                            {dispMostrarOcupados && ocupados.map(oc => (
-                              <span
-                                key={oc.hora}
-                                title={`Ocupado: ${oc.paciente}`}
-                                style={{
-                                  padding: "5px 10px",
-                                  borderRadius: "7px",
-                                  border: "1px solid #fecaca",
-                                  background: "#fef2f2",
-                                  color: "#991b1b",
-                                  fontWeight: "600",
-                                  fontSize: "11.5px",
-                                  textDecoration: "line-through"
-                                }}
-                              >
-                                ❌ {oc.hora} ({oc.paciente})
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Footer Modal */}
-            <div style={{ padding: "12px 22px", borderTop: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "flex-end" }}>
+            {/* Footer Modal (Fijo abajo) */}
+            <div style={{ padding: "12px 22px", borderTop: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
               <button
                 type="button"
                 onClick={() => setModalDisponiblesAbierto(false)}
