@@ -38,6 +38,7 @@ const formatearFecha = formatearFechaDDMMAAAA;
 
 export default function FichaPaciente({ onVolver, usuario, pacientePreseleccionado }) {
   const [listaPacientes, setListaPacientes] = useState([]);
+  const [busquedaPacienteSelect, setBusquedaPacienteSelect] = useState('');
 
   // Estados para Observaciones y Tareas
   const [observaciones, setObservaciones] = useState([]);
@@ -2660,26 +2661,161 @@ const confirmarRegistroPago = async () => {
         </div>
       )}
 
-      {!pacienteSeleccionado && (
-        <div style={{ marginBottom: '25px' }}>
-          <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', color: '#334155', marginBottom: '8px' }}>
-            Seleccionar Paciente (`pacientes_motor`):
-          </label>
-          <select
-            onChange={(e) => seleccionarPacientePorId(e, true)}
-            value={pacienteSeleccionado ? pacienteSeleccionado.id_paciente : ''}
-            disabled={cargandoPacientes}
-            style={{ width: '100%', padding: '12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '15px', background: '#f8fafc', color: '#0f172a', fontWeight: '500' }}
-          >
-            <option value="">{cargandoPacientes ? 'Cargando pacientes...' : '-- Seleccioná un paciente --'}</option>
-            {listaPacientes.map((p) => (
-              <option key={p.id_paciente} value={p.id_paciente}>
-                {p.nombre_apellido} {p.dni ? `- DNI: ${p.dni}` : ''} (ID: {p.id_paciente})
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+      {!pacienteSeleccionado && (() => {
+        const term = busquedaPacienteSelect.trim().toLowerCase();
+        const pacientesFiltrados = term
+          ? listaPacientes.filter(p =>
+              (p.nombre_apellido && p.nombre_apellido.toLowerCase().includes(term)) ||
+              (p.dni && String(p.dni).includes(term)) ||
+              String(p.id_paciente) === term ||
+              (p.obra_social && p.obra_social.toLowerCase().includes(term))
+            )
+          : listaPacientes;
+
+        return (
+          <div style={{ marginBottom: '25px' }}>
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', color: '#334155', marginBottom: '8px' }}>
+              🔍 Buscar y Seleccionar Paciente:
+            </label>
+
+            <div style={{ position: 'relative', marginBottom: '12px' }}>
+              <input
+                type="text"
+                autoFocus
+                disabled={cargandoPacientes}
+                placeholder={cargandoPacientes ? 'Cargando pacientes...' : 'Escribí apellido, nombre, DNI o ID del paciente...'}
+                value={busquedaPacienteSelect}
+                onChange={(e) => setBusquedaPacienteSelect(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && pacientesFiltrados.length === 1) {
+                    seleccionarPacientePorId(String(pacientesFiltrados[0].id_paciente), true);
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '13px 40px 13px 14px',
+                  border: '2px solid #93c5fd',
+                  borderRadius: '10px',
+                  fontSize: '15px',
+                  background: '#ffffff',
+                  color: '#0f172a',
+                  fontWeight: '500',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                  boxShadow: '0 2px 6px rgba(59, 130, 246, 0.08)'
+                }}
+              />
+              {busquedaPacienteSelect && (
+                <button
+                  type="button"
+                  onClick={() => setBusquedaPacienteSelect('')}
+                  title="Limpiar búsqueda"
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: '#64748b',
+                    fontSize: '16px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    padding: '4px'
+                  }}
+                >
+                  ✖
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: '#64748b', marginBottom: '8px', padding: '0 2px' }}>
+              <span>
+                Mostrando <strong>{pacientesFiltrados.length}</strong> de {listaPacientes.length} pacientes
+              </span>
+              {pacientesFiltrados.length === 1 && (
+                <span style={{ color: '#059669', fontWeight: '700' }}>
+                  💡 Presioná Enter o hacé clic para abrir
+                </span>
+              )}
+            </div>
+
+            <div style={{
+              maxHeight: '420px',
+              overflowY: 'auto',
+              border: '1px solid #e2e8f0',
+              borderRadius: '10px',
+              background: '#f8fafc',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              padding: '8px'
+            }}>
+              {cargandoPacientes ? (
+                <div style={{ padding: '30px', textAlign: 'center', color: '#64748b' }}>
+                  Cargando pacientes...
+                </div>
+              ) : pacientesFiltrados.length === 0 ? (
+                <div style={{ padding: '30px', textAlign: 'center', color: '#64748b' }}>
+                  No se encontró ningún paciente con &ldquo;<strong>{busquedaPacienteSelect}</strong>&rdquo;.
+                </div>
+              ) : (
+                pacientesFiltrados.map((p) => (
+                  <button
+                    key={p.id_paciente}
+                    type="button"
+                    onClick={() => seleccionarPacientePorId(String(p.id_paciente), true)}
+                    style={{
+                      width: '100%',
+                      padding: '11px 14px',
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      textAlign: 'left',
+                      transition: 'all 0.12s',
+                      gap: '10px'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.background = '#eff6ff';
+                      e.currentTarget.style.borderColor = '#60a5fa';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = '#e2e8f0';
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: '700', color: '#0f172a', fontSize: '14.5px' }}>
+                        👤 {p.nombre_apellido}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                        DNI: <strong>{p.dni || 'S/D'}</strong> • ID: <strong>{p.id_paciente}</strong>
+                        {p.obra_social ? ` • O.S.: ${p.obra_social}` : ''}
+                      </div>
+                    </div>
+                    <span style={{
+                      background: '#eff6ff',
+                      color: '#1d4ed8',
+                      border: '1px solid #bfdbfe',
+                      padding: '5px 11px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      Abrir Ficha →
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {pacienteSeleccionado && (
         <div>
@@ -2691,7 +2827,7 @@ const confirmarRegistroPago = async () => {
               </p>
             </div>
             <button
-              onClick={() => { setPacienteSeleccionado(null); setAcuerdos([]); setDeudasAgrupadas([]); setMovimientosDetallados([]); setVistaActiva('menu'); setModalTareasPopupAbierto(false); setTareasPendientesPopup([]); }}
+              onClick={() => { setPacienteSeleccionado(null); setAcuerdos([]); setDeudasAgrupadas([]); setMovimientosDetallados([]); setVistaActiva('menu'); setModalTareasPopupAbierto(false); setTareasPendientesPopup([]); setBusquedaPacienteSelect(''); }}
               style={{ background: 'transparent', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', color: '#475569', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
             >
               Cambiar Paciente
