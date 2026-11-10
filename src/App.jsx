@@ -409,10 +409,12 @@ function App() {
         const mes = periodo % 100;
         const nombreMesStr = nombresMeses[mes - 1];
 
-        controlPeriodosBulk.push({
-          periodo_int: periodo,
-          nombre_periodo: `${nombreMesStr} ${anio}`
-        });
+        if (periodo > ultimoPeriodoProcesado) {
+          controlPeriodosBulk.push({
+            periodo_int: periodo,
+            nombre_periodo: `${nombreMesStr} ${anio}`
+          });
+        }
 
         for (const acuerdo of listaAcuerdosEnMemoria) {
           const keyCuota = `${acuerdo.id_acuerdo}_${periodo}`;
@@ -522,7 +524,7 @@ function App() {
       if (controlPeriodosBulk.length > 0) {
         const { error: errorControl } = await supabase
           .from('control_periodos_motor')
-          .upsert(controlPeriodosBulk);
+          .upsert(controlPeriodosBulk, { onConflict: 'periodo_int' });
 
         if (errorControl) {
           throw new Error("Error al insertar control de períodos: " + errorControl.message);
