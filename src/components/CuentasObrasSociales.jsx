@@ -30,9 +30,22 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
   // Estados para Modal de Cobro a O.S.
   const [modalCobroAbierto, setModalCobroAbierto] = useState(false);
   const [facturaSeleccionada, setFacturaSeleccionada] = useState(null);
+  const IMPUESTOS_RETENCION = [
+    'IIBB (Ingresos Brutos)',
+    'GANANCIAS (Impuesto a las Ganancias)',
+    'SUSS (Seguridad Social)',
+    'IVA (Impuesto al Valor Agregado)',
+    'TEM / MUNICIPAL',
+    'OTRO'
+  ];
+
   const [formCobro, setFormCobro] = useState({
     obraSocial: '',
     monto: '',
+    tieneRetencion: false,
+    montoRetencion: '',
+    impuestoRetencion: 'IIBB (Ingresos Brutos)',
+    impuestoOtro: '',
     nroComprobante: '',
     formaPago: 'TRANSFERENCIA BANCARIA',
     banco: 'GALICIA',
@@ -303,7 +316,8 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
       const infoFac = facturasMapeadas[m.id_movimiento];
       const esReverso = m.subtipo === 'reverso_pago';
       const esFactura = !esReverso && (m.tipo_movimiento === 'FACTURA_OS' || parsearMoneda(m.debe) > 0);
-      const esCobro = esReverso || m.tipo_movimiento === 'PAGO_OS' || parsearMoneda(m.haber) > 0;
+      const esRetencion = !esReverso && m.tipo_movimiento === 'RETENCION_OS';
+      const esCobro = esReverso || m.tipo_movimiento === 'PAGO_OS' || esRetencion || parsearMoneda(m.haber) > 0;
 
       let coincideTipo = true;
       if (filtroTipo === 'PENDIENTES') {
@@ -314,6 +328,8 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
         coincideTipo = esFactura;
       } else if (filtroTipo === 'COBROS') {
         coincideTipo = esCobro;
+      } else if (filtroTipo === 'RETENCIONES') {
+        coincideTipo = esRetencion;
       }
 
       const q = busqueda.toLowerCase().trim();
@@ -352,6 +368,8 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
   const totales = useMemo(() => {
     let totalDebe = 0;
     let totalHaber = 0;
+    let totalRetenciones = 0;
+    let totalNetoCobrado = 0;
     const q = busqueda.toLowerCase().trim();
 
     movimientos.forEach(m => {
@@ -369,16 +387,24 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
           // Un reverso de cobro resta del Total Cobrado (Haber) y no infla el Total Facturado (Debe)
           totalHaber -= parsearMoneda(m.debe);
           totalHaber += parsearMoneda(m.haber);
+          totalNetoCobrado -= parsearMoneda(m.debe);
+          totalNetoCobrado += parsearMoneda(m.haber);
         } else {
           totalDebe += parsearMoneda(m.debe);
-          totalHaber += parsearMoneda(m.haber);
+          const haberItem = parsearMoneda(m.haber);
+          totalHaber += haberItem;
+          if (m.tipo_movimiento === 'RETENCION_OS') {
+            totalRetenciones += haberItem;
+          } else if (haberItem > 0) {
+            totalNetoCobrado += haberItem;
+          }
         }
       }
     });
 
     const saldoPendiente = totalDebe - totalHaber;
 
-    return { totalDebe, totalHaber, saldoPendiente };
+    return { totalDebe, totalHaber, totalRetenciones, totalNetoCobrado, saldoPendiente };
   }, [movimientos, obraSocialSeleccionada, busqueda]);
 
   // Facturas pendientes filtradas según la obra social activa en el modal
@@ -529,6 +555,10 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
       setFormCobro({
         obraSocial: factura.subtipo || '',
         monto: String(saldo || ''),
+        tieneRetencion: false,
+        montoRetencion: '',
+        impuestoRetencion: 'IIBB (Ingresos Brutos)',
+        impuestoOtro: '',
         nroComprobante: '',
         formaPago: 'TRANSFERENCIA BANCARIA',
         banco: 'GALICIA',
@@ -542,6 +572,10 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
       setFormCobro({
         obraSocial: osDefault,
         monto: '',
+        tieneRetencion: false,
+        montoRetencion: '',
+        impuestoRetencion: 'IIBB (Ingresos Brutos)',
+        impuestoOtro: '',
         nroComprobante: '',
         formaPago: 'TRANSFERENCIA BANCARIA',
         banco: 'GALICIA',
@@ -555,7 +589,13 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
   const seleccionarFacturaEnModal = (fac) => {
     if (facturaSeleccionada?.id_movimiento === fac.id_movimiento) {
       setFacturaSeleccionada(null);
-      setFormCobro(prev => ({ ...prev, monto: '', observaciones: '' }));
+      setFormCobro(prev => ({
+        ...prev,
+        monto: '',
+        tieneRetencion: false,
+        montoRetencion: '',
+        observaciones: ''
+      }));
       const sesZero = {};
       prestadoresList.forEach(p => { sesZero[p.id_prestador] = 0; });
       setSesionesPrestadores(sesZero);
@@ -566,6 +606,8 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
         ...prev,
         obraSocial: fac.subtipo || prev.obraSocial,
         monto: String(fac.saldoPendiente || fac.montoFactura || ''),
+        tieneRetencion: false,
+        montoRetencion: '',
         observaciones: `Cancelación ${nroFac}`
       }));
       autocompletarSesionesFactura(fac, prestadoresList);
@@ -577,9 +619,36 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
     e.preventDefault();
     const montoNum = parsearMoneda(formCobro.monto);
     if (!montoNum || montoNum <= 0) {
-      alert('Por favor, ingresá un importe válido y mayor a 0.');
+      alert('Por favor, ingresá un importe real cobrado válido y mayor a 0.');
       return;
     }
+
+    const retencionNum = formCobro.tieneRetencion ? parsearMoneda(formCobro.montoRetencion) : 0;
+    if (formCobro.tieneRetencion && retencionNum < 0) {
+      alert('El monto de retención no puede ser negativo.');
+      return;
+    }
+
+    const impuestoFinal = formCobro.impuestoRetencion === 'OTRO'
+      ? (formCobro.impuestoOtro || '').trim().toUpperCase()
+      : (formCobro.impuestoRetencion || '').trim();
+
+    if (retencionNum > 0 && !impuestoFinal) {
+      alert('Por favor, especificá a qué impuesto pertenece la retención.');
+      return;
+    }
+
+    const totalCancelacionOS = Math.round((montoNum + retencionNum) * 100) / 100;
+
+    if (facturaSeleccionada && totalCancelacionOS > (facturaSeleccionada.saldoPendiente + 0.05)) {
+      const confirmaExceso = window.confirm(
+        `La suma de Cobro Real ($${montoNum.toLocaleString('es-AR', { minimumFractionDigits: 2 })}) + Retención ($${retencionNum.toLocaleString('es-AR', { minimumFractionDigits: 2 })}) = $${totalCancelacionOS.toLocaleString('es-AR', { minimumFractionDigits: 2 })} supera el saldo pendiente de la factura ($${facturaSeleccionada.saldoPendiente.toLocaleString('es-AR', { minimumFractionDigits: 2 })}).
+
+¿Deseás registrarlo igual?`
+      );
+      if (!confirmaExceso) return;
+    }
+
     const osNombre = (formCobro.obraSocial || '').trim().toUpperCase();
     if (!osNombre) {
       alert('Por favor, indicá la Obra Social.');
@@ -754,7 +823,7 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
           subtipo: osNombre,
           id_origen: null,
           concepto: `Factura #${nroFacGenerada} - ${osNombre} - Pac: ${pacienteNombre} - Prestación: ${acuerdoNombre}`,
-          debe: montoNum.toString(),
+          debe: totalCancelacionOS.toString(),
           haber: '0',
           saldo: '0',
           id_pago: null,
@@ -773,10 +842,14 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
         ? ` (Cancela ${facturaSeleccionada.concepto?.split(' - ')[0] || ('Factura #' + facturaSeleccionada.id_movimiento)})` 
         : (acuerdoAFacturarCobrar ? ` (Factura #${formCobro.nroFactura || 'AGOSTO 2026'})` : '');
 
-      const conceptoCobro = 'Cobro / Liquidación O.S. ' + osNombre + refFactura + ' - Comp: #' + (formCobro.nroComprobante || 'S/N') + ' (' + formCobro.formaPago + ')' + (formCobro.observaciones ? ' - ' + formCobro.observaciones : '');
+      const notaRetencionCobro = retencionNum > 0
+        ? ` [Neto real sin retención ${impuestoFinal}: $${retencionNum.toLocaleString('es-AR', { minimumFractionDigits: 2 })}]`
+        : '';
 
-      // 4. Insertar movimiento en cuenta de Obra Social (id_paciente: 0)
-      const nuevoMovOS = {
+      const conceptoCobro = 'Cobro Real O.S. ' + osNombre + refFactura + ' - Comp: #' + (formCobro.nroComprobante || 'S/N') + ' (' + formCobro.formaPago + ')' + notaRetencionCobro + (formCobro.observaciones ? ' - ' + formCobro.observaciones : '');
+
+      // 4. Insertar movimiento de cobro real en cuenta de Obra Social (id_paciente: 0)
+      const movsCuentaOS = [{
         id_movimiento: nextIdMov,
         id_paciente: 0,
         id_acuerdo: idAcuerdoFinal,
@@ -791,14 +864,35 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
         fecha_movimiento: formCobro.fecha || new Date().toISOString().split('T')[0],
         fecha_registro: new Date().toISOString(),
         usuario: usuario || 'Admin'
-      };
+      }];
+      nextIdMov++;
+
+      // 4a. Si hubo Retención Impositiva, registrarla por separado en la cuenta de la O.S. para saldar la factura
+      if (retencionNum > 0) {
+        movsCuentaOS.push({
+          id_movimiento: nextIdMov,
+          id_paciente: 0,
+          id_acuerdo: idAcuerdoFinal,
+          id_origen: idMovFactura,
+          tipo_movimiento: 'RETENCION_OS',
+          subtipo: osNombre,
+          concepto: `Retención Impositiva [${impuestoFinal}] - O.S. ${osNombre}${refFactura} - Comp: #${formCobro.nroComprobante || 'S/N'}${formCobro.observaciones ? ' - ' + formCobro.observaciones : ''}`,
+          debe: 0,
+          haber: retencionNum,
+          saldo: 0,
+          id_pago: nextIdPago,
+          fecha_movimiento: formCobro.fecha || new Date().toISOString().split('T')[0],
+          fecha_registro: new Date().toISOString(),
+          usuario: usuario || 'Admin'
+        });
+        nextIdMov++;
+      }
 
       const { error: errInsertMov } = await supabase
         .from('movimientoscuenta_motor')
-        .insert([nuevoMovOS]);
+        .insert(movsCuentaOS);
 
       if (errInsertMov) throw errInsertMov;
-      nextIdMov++;
 
       // 4b. IMPACTO EN EL DEBE Y HABER DE LA CUENTA DEL PACIENTE
       if (pacienteId) {
@@ -887,7 +981,7 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
         id_paciente: pacienteId ? pacienteId.toString() : '0',
         fecha_pago: formCobro.fecha || new Date().toISOString().split('T')[0],
         importe: montoNum.toString().replace('.', ','),
-        observacion: `Cobro Obra Social ${osNombre}${refFactura} | Comp: #${formCobro.nroComprobante || 'S/N'}${formCobro.observaciones ? ' - ' + formCobro.observaciones : ''}`,
+        observacion: `Cobro Obra Social ${osNombre}${refFactura}${retencionNum > 0 ? ` | Retención ${impuestoFinal}: $${retencionNum.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : ''} | Comp: #${formCobro.nroComprobante || 'S/N'}${formCobro.observaciones ? ' - ' + formCobro.observaciones : ''}`,
         forma_pago: formCobro.formaPago.toUpperCase(),
         usuario: usuario || 'Admin',
         fecha_registro: new Date().toISOString(),
@@ -923,7 +1017,7 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
           .from('acuerdos_motor')
           .update({
             importe_actual: String(montoNum),
-            observaciones: `Cobertura Obra Social: ${osNombre} [FACTURADO Y COBRADO O.S: $${montoNum.toLocaleString('es-AR')} - Pago #${nextIdPago}]`
+            observaciones: `Cobertura Obra Social: ${osNombre} [FACTURADO Y COBRADO O.S: $${montoNum.toLocaleString('es-AR')}${retencionNum > 0 ? ` + Ret. ${impuestoFinal}: $${retencionNum.toLocaleString('es-AR')}` : ''} - Pago #${nextIdPago}]`
           })
           .eq('id_acuerdo', idAcuerdoFinal);
       }
@@ -934,6 +1028,10 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
       setFormCobro({
         obraSocial: '',
         monto: '',
+        tieneRetencion: false,
+        montoRetencion: '',
+        impuestoRetencion: 'IIBB (Ingresos Brutos)',
+        impuestoOtro: '',
         nroComprobante: '',
         nroFactura: 'AGOSTO 2026',
         formaPago: 'TRANSFERENCIA BANCARIA',
@@ -944,7 +1042,7 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
 
       const cantPrestDist = prestadoresAcreditar.length;
       setMensaje({
-        texto: `✅ Cobro de $${montoNum.toLocaleString('es-AR')} registrado con éxito en ${osNombre} e impactado en la cuenta del paciente.${cantPrestDist > 0 ? ` Se acreditaron honorarios a ${cantPrestDist} prestador(es).` : ''}`,
+        texto: `✅ Cobro real de $${montoNum.toLocaleString('es-AR')}${retencionNum > 0 ? ` (+ Retención ${impuestoFinal}: $${retencionNum.toLocaleString('es-AR')})` : ''} registrado con éxito en ${osNombre}.${cantPrestDist > 0 ? ` Se liquidaron honorarios sobre los $${montoNum.toLocaleString('es-AR')} cobrados a ${cantPrestDist} prestador(es).` : ''}`,
         tipo: 'exito'
       });
       setTimeout(() => setMensaje({ texto: '', tipo: '' }), 5000);
@@ -1167,6 +1265,10 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
     setFormCobro({
       obraSocial: osDefault,
       monto: importeSugerido,
+      tieneRetencion: false,
+      montoRetencion: '',
+      impuestoRetencion: 'IIBB (Ingresos Brutos)',
+      impuestoOtro: '',
       nroComprobante: '',
       nroFactura: 'AGOSTO 2026',
       formaPago: 'TRANSFERENCIA BANCARIA',
@@ -1413,7 +1515,11 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
           <div style={{ fontSize: '24px', fontWeight: '800', color: '#16a34a', marginTop: '6px' }}>
             {'$' + totales.totalHaber.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
           </div>
-          <span style={{ fontSize: '11px', color: '#94a3b8' }}>Cobranzas y transferencias ingresadas (Click para filtrar)</span>
+          <span style={{ fontSize: '11px', color: totales.totalRetenciones > 0 ? '#475569' : '#94a3b8', fontWeight: totales.totalRetenciones > 0 ? '600' : 'normal' }}>
+            {totales.totalRetenciones > 0
+              ? `Neto real: $${totales.totalNetoCobrado.toLocaleString('es-AR', { minimumFractionDigits: 2 })} • Retenciones: $${totales.totalRetenciones.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+              : 'Cobranzas y transferencias ingresadas (Click para filtrar)'}
+          </span>
         </div>
 
         <div 
@@ -1509,6 +1615,7 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
             <option value="COBRADAS">✅ Facturas Cobradas / Saldadas ({facturasSaldadas.length})</option>
             <option value="FACTURAS">📄 Todas las Facturas Emitidas (Debe)</option>
             <option value="COBROS">💵 Solo Cobros Recibidos (Haber)</option>
+            <option value="RETENCIONES">🧾 Solo Retenciones Impositivas ({movimientos.filter(m => m.tipo_movimiento === 'RETENCION_OS').length})</option>
           </select>
         </div>
 
@@ -1654,7 +1761,25 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
             transition: 'all 0.15s ease'
           }}
         >
-          💵 Solo Cobros Recibidos ({movimientos.filter(m => m.tipo_movimiento === 'PAGO_OS' || parsearMoneda(m.haber) > 0).length})
+          💵 Solo Cobros Recibidos ({movimientos.filter(m => m.tipo_movimiento === 'PAGO_OS' || m.tipo_movimiento === 'RETENCION_OS' || parsearMoneda(m.haber) > 0).length})
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setFiltroTipo('RETENCIONES')}
+          style={{
+            padding: '7px 14px',
+            borderRadius: '20px',
+            fontSize: '13px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            border: filtroTipo === 'RETENCIONES' ? '2px solid #7c3aed' : '1px solid #ddd6fe',
+            background: filtroTipo === 'RETENCIONES' ? '#f5f3ff' : '#faf5ff',
+            color: filtroTipo === 'RETENCIONES' ? '#6d28d9' : '#7c3aed',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          🧾 Retenciones ({movimientos.filter(m => m.tipo_movimiento === 'RETENCION_OS').length})
         </button>
       </div>
 
@@ -1702,6 +1827,7 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
                   const haberVal = parsearMoneda(m.haber);
                   const esReverso = m.subtipo === 'reverso_pago';
                   const esFactura = !esReverso && (m.tipo_movimiento === 'FACTURA_OS' || debeVal > 0);
+                  const esRetencion = !esReverso && m.tipo_movimiento === 'RETENCION_OS';
                   const infoFac = facturasMapeadas[m.id_movimiento];
 
                   return (
@@ -1719,10 +1845,10 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
                             borderRadius: '4px',
                             fontSize: '11px',
                             fontWeight: 'bold',
-                            background: esReverso ? '#fee2e2' : (esFactura ? (infoFac?.estaSaldada ? '#f1f5f9' : '#dbeafe') : '#dcfce7'),
-                            color: esReverso ? '#b91c1c' : (esFactura ? (infoFac?.estaSaldada ? '#475569' : '#1e40af') : '#15803d')
+                            background: esReverso ? '#fee2e2' : (esFactura ? (infoFac?.estaSaldada ? '#f1f5f9' : '#dbeafe') : (esRetencion ? '#f3e8ff' : '#dcfce7')),
+                            color: esReverso ? '#b91c1c' : (esFactura ? (infoFac?.estaSaldada ? '#475569' : '#1e40af') : (esRetencion ? '#7e22ce' : '#15803d'))
                           }}>
-                            {esReverso ? '↩️ REVERSO COBRO' : (esFactura ? '📄 FACTURA' : '💵 COBRO')}
+                            {esReverso ? '↩️ REVERSO COBRO' : (esFactura ? '📄 FACTURA' : (esRetencion ? '🧾 RETENCIÓN' : '💵 COBRO'))}
                           </span>
                           {esFactura && (
                             <span style={{
@@ -2689,10 +2815,10 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '13px', color: '#334155' }}>
-                    Importe Cobrado ($) *
+                    Importe Real Cobrado ($) *
                   </label>
                   <input
                     type="number"
@@ -2703,6 +2829,9 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
                     style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '15px', fontWeight: 'bold', color: '#16a34a' }}
                     required
                   />
+                  <span style={{ display: 'block', fontSize: '11px', color: '#64748b', marginTop: '3px' }}>
+                    Monto neto depositado/recibido (sin retención). Base para prestadores.
+                  </span>
                 </div>
 
                 <div>
@@ -2718,6 +2847,159 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
                   />
                 </div>
               </div>
+
+              {/* SECCIÓN RETENCIÓN IMPOSITIVA */}
+              {(() => {
+                const saldoFac = facturaSeleccionada ? parsearMoneda(facturaSeleccionada.saldoPendiente ?? facturaSeleccionada.debe) : 0;
+                const montoReal = parsearMoneda(formCobro.monto);
+                const diffFac = saldoFac > 0 ? Math.round((saldoFac - montoReal) * 100) / 100 : 0;
+                const retencionVal = formCobro.tieneRetencion ? parsearMoneda(formCobro.montoRetencion) : 0;
+                const impuestoPreview = formCobro.impuestoRetencion === 'OTRO'
+                  ? (formCobro.impuestoOtro || 'Otro impuesto')
+                  : formCobro.impuestoRetencion;
+
+                return (
+                  <div style={{
+                    marginBottom: '14px',
+                    border: formCobro.tieneRetencion ? '1.5px solid #a855f7' : '1px solid #e2e8f0',
+                    background: formCobro.tieneRetencion ? '#faf5ff' : '#f8fafc',
+                    borderRadius: '8px',
+                    padding: '10px 12px'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', color: '#581c87' }}>
+                        <input
+                          type="checkbox"
+                          checked={!!formCobro.tieneRetencion}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setFormCobro(prev => ({
+                              ...prev,
+                              tieneRetencion: checked,
+                              montoRetencion: checked && !prev.montoRetencion && diffFac > 0.01 ? String(diffFac) : prev.montoRetencion
+                            }));
+                          }}
+                          style={{ width: '16px', height: '16px', accentColor: '#7c3aed', cursor: 'pointer' }}
+                        />
+                        <span>🧾 Tuvo Retención Impositiva (O.S. retuvo impuestos)</span>
+                      </label>
+
+                      {!formCobro.tieneRetencion && diffFac > 0.01 && (
+                        <button
+                          type="button"
+                          onClick={() => setFormCobro(prev => ({
+                            ...prev,
+                            tieneRetencion: true,
+                            montoRetencion: String(diffFac)
+                          }))}
+                          style={{
+                            background: '#f3e8ff',
+                            color: '#6b21a8',
+                            border: '1px solid #d8b4fe',
+                            borderRadius: '6px',
+                            padding: '4px 9px',
+                            fontSize: '11.5px',
+                            fontWeight: 'bold',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ⚡ Cargar diferencia ($$${diffFac.toLocaleString('es-AR', { minimumFractionDigits: 2 })}) como Retención
+                        </button>
+                      )}
+                    </div>
+
+                    {formCobro.tieneRetencion && (
+                      <div style={{ marginTop: '10px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '8px' }}>
+                          <div>
+                            <label style={{ display: 'block', marginBottom: '4px', fontWeight: 'bold', fontSize: '12px', color: '#581c87' }}>
+                              Monto Retenido ($) *
+                            </label>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="Ej: 15565.20"
+                                value={formCobro.montoRetencion}
+                                onChange={(e) => setFormCobro({ ...formCobro, montoRetencion: e.target.value })}
+                                style={{ flex: 1, minWidth: 0, padding: '8px', borderRadius: '6px', border: '1px solid #c084fc', fontSize: '14px', fontWeight: 'bold', color: '#7e22ce', background: '#fff' }}
+                              />
+                              {diffFac > 0.01 && Math.abs(diffFac - retencionVal) > 0.01 && (
+                                <button
+                                  type="button"
+                                  title="Completar con la diferencia respecto al saldo de la factura"
+                                  onClick={() => setFormCobro(prev => ({ ...prev, montoRetencion: String(diffFac) }))}
+                                  style={{
+                                    background: '#e9d5ff',
+                                    color: '#581c87',
+                                    border: '1px solid #c084fc',
+                                    borderRadius: '6px',
+                                    padding: '0 8px',
+                                    fontSize: '11px',
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  ⚡ Dif.
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div>
+                            <label style={{ display: 'block', marginBottom: '4px', fontWeight: 'bold', fontSize: '12px', color: '#581c87' }}>
+                              Impuesto Retenido *
+                            </label>
+                            <select
+                              value={formCobro.impuestoRetencion}
+                              onChange={(e) => setFormCobro({ ...formCobro, impuestoRetencion: e.target.value })}
+                              style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #c084fc', fontSize: '13px', background: '#fff', fontWeight: '600', color: '#3b0764' }}
+                            >
+                              {IMPUESTOS_RETENCION.map(imp => (
+                                <option key={imp} value={imp}>{imp}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {formCobro.impuestoRetencion === 'OTRO' && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <input
+                              type="text"
+                              placeholder="Escribí el nombre del impuesto retenido (ej: Ingresos Brutos Tucumán)..."
+                              value={formCobro.impuestoOtro}
+                              onChange={(e) => setFormCobro({ ...formCobro, impuestoOtro: e.target.value })}
+                              style={{ width: '100%', padding: '7px 9px', borderRadius: '6px', border: '1px solid #c084fc', fontSize: '12.5px', background: '#fff' }}
+                            />
+                          </div>
+                        )}
+
+                        <div style={{
+                          background: '#ffffff',
+                          border: '1px solid #e9d5ff',
+                          borderRadius: '6px',
+                          padding: '7px 10px',
+                          fontSize: '12px',
+                          color: '#334155',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: '6px'
+                        }}>
+                          <span>Real Cobrado: <strong style={{ color: '#16a34a' }}>${montoReal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong></span>
+                          <span>+ Retención ({impuestoPreview}): <strong style={{ color: '#7e22ce' }}>${retencionVal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong></span>
+                          <span>= Cancela O.S.: <strong style={{ color: '#0f172a' }}>${(montoReal + retencionVal).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong></span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#6b21a8', marginTop: '4px', fontWeight: '600' }}>
+                          ✓ La liquidación a prestadores se calcula solo sobre los ${montoReal.toLocaleString('es-AR', { minimumFractionDigits: 2 })} cobrados (sin retención), pero la factura queda saldada completa.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div style={{ display: 'grid', gridTemplateColumns: (formCobro.formaPago === 'TRANSFERENCIA BANCARIA' || formCobro.formaPago === 'DEPOSITO') ? '1fr 1fr 1fr' : '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
                 <div>
@@ -2869,7 +3151,7 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
                           marginBottom: '12px',
                           border: `1px solid ${superaTotal ? '#fca5a5' : '#cbd5e1'}`
                         }}>
-                          <span>Total Cobro: <strong>${impCobro.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong></span>
+                          <span>Cobro Real (Sin Ret.): <strong>${impCobro.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong></span>
                           <span>Distribuido: <strong style={{ color: superaTotal ? '#dc2626' : '#16a34a' }}>
                             ${totalDistribuido.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                           </strong></span>
@@ -2878,7 +3160,7 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
                               ⚠️ Excede por ${(totalDistribuido - impCobro).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                             </span>
                           ) : (
-                            <span>Retención / Centro: <strong style={{ color: '#475569' }}>
+                            <span>Centro / Sin distribuir: <strong style={{ color: '#475569' }}>
                               ${restante.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                             </strong></span>
                           )}
