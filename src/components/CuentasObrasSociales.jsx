@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase.js';
+import { extraerPeriodoDeFacturaOS, obtenerSesionesPacienteParaPeriodo, formatearPeriodoNombre } from '../lib/agendaHistorial.js';
 
 // Helper para limpiar "(ID xxx)" del concepto visible
 const limpiarConceptoOS = (texto) => {
@@ -48,6 +49,7 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
   const [sesionesPrestadores, setSesionesPrestadores] = useState({});
   const [montosPrestadores, setMontosPrestadores] = useState({});
   const [cargandoPrestadores, setCargandoPrestadores] = useState(false);
+  const [infoAgendaHistorica, setInfoAgendaHistorica] = useState(null);
 
   // Pestañas y Acuerdos de Obra Social
   const [tabActiva, setTabActiva] = useState('libro'); // 'libro' | 'pendientes'
@@ -393,6 +395,7 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
     if (!lista || lista.length === 0) return;
 
     setCargandoPrestadores(true);
+    setInfoAgendaHistorica(null);
     try {
       let idPaciente = null;
       // 1. Consultar acuerdos_motor si tiene id_acuerdo
@@ -427,11 +430,9 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
 
       if (idPaciente) {
         const uuidTarget = '00000000-0000-0000-0000-' + String(idPaciente).padStart(12, '0');
-        const { data: sesiones } = await supabase
-          .from('sesiones_fijas')
-          .select('*')
-          .eq('paciente_id', uuidTarget)
-          .eq('estado', 'ACTIVO');
+        const periodoFactura = extraerPeriodoDeFacturaOS(fac.concepto, fac.fecha_movimiento);
+        const { sesiones, origen, huboCambiosEnMes } = await obtenerSesionesPacienteParaPeriodo(uuidTarget, periodoFactura);
+        setInfoAgendaHistorica({ origen, periodo: periodoFactura, huboCambiosEnMes });
 
         if (sesiones && sesiones.length > 0) {
           const { data: users } = await supabase.from('users').select('*');
@@ -519,6 +520,7 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
     setSesionesPrestadores(sesZero);
     setDistribuirAPrestadores(true);
     setDistribucionPorMonto(false);
+    setInfoAgendaHistorica(null);
 
     if (factura) {
       setFacturaSeleccionada(factura);
@@ -2883,6 +2885,44 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
                         </div>
                       );
                     })()}
+
+                    {infoAgendaHistorica && infoAgendaHistorica.origen !== 'SIN_SESIONES' && (
+                      <div style={{
+                        marginBottom: '10px',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        border: infoAgendaHistorica.origen === 'CONSOLIDADO_MES'
+                          ? '1px solid #86efac'
+                          : (infoAgendaHistorica.origen === 'CAMBIO_AGENDA' || infoAgendaHistorica.huboCambiosEnMes)
+                            ? '1px solid #93c5fd'
+                            : '1px solid #fde68a',
+                        background: infoAgendaHistorica.origen === 'CONSOLIDADO_MES'
+                          ? '#f0fdf4'
+                          : (infoAgendaHistorica.origen === 'CAMBIO_AGENDA' || infoAgendaHistorica.huboCambiosEnMes)
+                            ? '#eff6ff'
+                            : '#fffbeb',
+                        color: infoAgendaHistorica.origen === 'CONSOLIDADO_MES'
+                          ? '#166534'
+                          : (infoAgendaHistorica.origen === 'CAMBIO_AGENDA' || infoAgendaHistorica.huboCambiosEnMes)
+                            ? '#1e40af'
+                            : '#92400e'
+                      }}>
+                        {infoAgendaHistorica.origen === 'CONSOLIDADO_MES' && !infoAgendaHistorica.huboCambiosEnMes && (
+                          <span>📜 <strong>Agenda histórica consolidada ({formatearPeriodoNombre(infoAgendaHistorica.periodo)}):</strong> sesiones precargadas según el prestador que atendía al paciente en ese mes.</span>
+                        )}
+                        {(infoAgendaHistorica.origen === 'CAMBIO_AGENDA' || infoAgendaHistorica.huboCambiosEnMes) && (
+                          <span>🔄 <strong>Cambio de agenda detectado en {formatearPeriodoNombre(infoAgendaHistorica.periodo)}:</strong> se muestran las sesiones registradas en el historial para ese período. Revisá la distribución antes de confirmar.</span>
+                        )}
+                        {infoAgendaHistorica.origen === 'ACTIVO_VIGENTE' && !infoAgendaHistorica.huboCambiosEnMes && (
+                          <span>✅ <strong>Agenda vigente desde {formatearPeriodoNombre(infoAgendaHistorica.periodo)}:</strong> sin cambios registrados posteriores.</span>
+                        )}
+                        {infoAgendaHistorica.origen === 'ACTUAL_FALLBACK' && (
+                          <span>⚠️ <strong>Sin historial guardado para {formatearPeriodoNombre(infoAgendaHistorica.periodo)}</strong> (anterior al inicio del historial). Se muestra la agenda fija actual: verificá si el prestador cambió en aquel mes.</span>
+                        )}
+                      </div>
+                    )}
 
                     {/* Tabla Interactiva de Prestadores */}
                     {cargandoPrestadores ? (

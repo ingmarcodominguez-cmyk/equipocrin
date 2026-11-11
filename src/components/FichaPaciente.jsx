@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase.js';
+import { extraerPeriodoDeFacturaOS, obtenerSesionesPacienteParaPeriodo, obtenerPeriodoActual, formatearPeriodoNombre } from '../lib/agendaHistorial.js';
 import FormularioAcuerdo from './FormularioAcuerdo.jsx';
 import Documentos from './Documentos.jsx';
 
@@ -100,6 +101,7 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
   const [sesionesPrestadores, setSesionesPrestadores] = useState({});
   const [distribucionPorMonto, setDistribucionPorMonto] = useState(false);
   const [montosPrestadores, setMontosPrestadores] = useState({});
+  const [infoAgendaHistoricaPago, setInfoAgendaHistoricaPago] = useState(null);
   const [procesandoPago, setProcesandoPago] = useState(false);
   const [cargandoUltimaDist, setCargandoUltimaDist] = useState(false);
   const [ultimaDistInfo, setUltimaDistInfo] = useState(null);
@@ -1135,13 +1137,32 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
     });
 
     let deberiaAutocompletar = false;
+    let periodoDeuda = obtenerPeriodoActual();
+    setInfoAgendaHistoricaPago(null);
     if (idDeuda === '' || idDeuda === 'FIFO') {
       deberiaAutocompletar = (acuerdos || []).some(ac => ac.tipo_acuerdo === 'MENSUAL' && ac.estado === 'ACTIVO');
+      const primeraPendiente = deudasAgrupadas.find(d => d.saldoPendiente > 0.01);
+      if (primeraPendiente) {
+        if (primeraPendiente.ciclo_mora && /^\d{6}$/.test(String(primeraPendiente.ciclo_mora))) {
+          const cm = String(primeraPendiente.ciclo_mora);
+          periodoDeuda = `${cm.slice(0, 4)}-${cm.slice(4, 6)}`;
+        } else if (primeraPendiente.fecha_vencimiento) {
+          periodoDeuda = String(primeraPendiente.fecha_vencimiento).slice(0, 7);
+        }
+      }
     } else if (idDeuda) {
       const deudaSel = deudasAgrupadas.find(d => String(d.id_deuda) === String(idDeuda));
       if (deudaSel) {
         const acuerdoAsociado = acuerdos.find(ac => String(ac.id_acuerdo) === String(deudaSel.id_acuerdo));
         deberiaAutocompletar = acuerdoAsociado?.tipo_acuerdo === 'MENSUAL';
+        if (deudaSel.ciclo_mora && /^\d{6}$/.test(String(deudaSel.ciclo_mora))) {
+          const cm = String(deudaSel.ciclo_mora);
+          periodoDeuda = `${cm.slice(0, 4)}-${cm.slice(4, 6)}`;
+        } else if (deudaSel.fecha_vencimiento) {
+          periodoDeuda = String(deudaSel.fecha_vencimiento).slice(0, 7);
+        } else if (deudaSel.concepto) {
+          periodoDeuda = extraerPeriodoDeFacturaOS(deudaSel.concepto, deudaSel.fecha_movimiento);
+        }
       }
     }
 
@@ -1153,11 +1174,8 @@ export default function FichaPaciente({ onVolver, usuario, pacientePreselecciona
     if (pacienteSeleccionado?.id_paciente) {
       try {
         const uuidTarget = '00000000-0000-0000-0000-' + String(pacienteSeleccionado.id_paciente).padStart(12, '0');
-        const { data: sesiones } = await supabase
-          .from('sesiones_fijas')
-          .select('*')
-          .eq('paciente_id', uuidTarget)
-          .eq('estado', 'ACTIVO');
+        const { sesiones, origen, huboCambiosEnMes } = await obtenerSesionesPacienteParaPeriodo(uuidTarget, periodoDeuda);
+        setInfoAgendaHistoricaPago({ origen, periodo: periodoDeuda, huboCambiosEnMes });
 
         if (sesiones && sesiones.length > 0) {
             const { data: users } = await supabase.from('users').select('*');
@@ -4274,6 +4292,44 @@ const confirmarRegistroPago = async () => {
                   <span>Restante: <strong style={{ color: ((parseFloat(importePago) || 0) - Object.values(montosPrestadores).reduce((acc, curr) => acc + (parseFloat(curr) || 0), 0)) < 0 ? '#dc2626' : '#475569' }}>
                     ${((parseFloat(importePago) || 0) - Object.values(montosPrestadores).reduce((acc, curr) => acc + (parseFloat(curr) || 0), 0)).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                   </strong></span>
+                </div>
+              )}
+
+              {infoAgendaHistoricaPago && infoAgendaHistoricaPago.origen !== 'SIN_SESIONES' && (
+                <div style={{
+                  marginBottom: '10px',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  border: infoAgendaHistoricaPago.origen === 'CONSOLIDADO_MES'
+                    ? '1px solid #86efac'
+                    : (infoAgendaHistoricaPago.origen === 'CAMBIO_AGENDA' || infoAgendaHistoricaPago.huboCambiosEnMes)
+                      ? '1px solid #93c5fd'
+                      : '1px solid #fde68a',
+                  background: infoAgendaHistoricaPago.origen === 'CONSOLIDADO_MES'
+                    ? '#f0fdf4'
+                    : (infoAgendaHistoricaPago.origen === 'CAMBIO_AGENDA' || infoAgendaHistoricaPago.huboCambiosEnMes)
+                      ? '#eff6ff'
+                      : '#fffbeb',
+                  color: infoAgendaHistoricaPago.origen === 'CONSOLIDADO_MES'
+                    ? '#166534'
+                    : (infoAgendaHistoricaPago.origen === 'CAMBIO_AGENDA' || infoAgendaHistoricaPago.huboCambiosEnMes)
+                      ? '#1e40af'
+                      : '#92400e'
+                }}>
+                  {infoAgendaHistoricaPago.origen === 'CONSOLIDADO_MES' && !infoAgendaHistoricaPago.huboCambiosEnMes && (
+                    <span>📜 <strong>Agenda histórica consolidada ({formatearPeriodoNombre(infoAgendaHistoricaPago.periodo)}):</strong> sesiones según cómo atendían ese mes.</span>
+                  )}
+                  {(infoAgendaHistoricaPago.origen === 'CAMBIO_AGENDA' || infoAgendaHistoricaPago.huboCambiosEnMes) && (
+                    <span>🔄 <strong>Cambio de agenda detectado en {formatearPeriodoNombre(infoAgendaHistoricaPago.periodo)}:</strong> revisá la distribución según los cambios históricos de ese período.</span>
+                  )}
+                  {infoAgendaHistoricaPago.origen === 'ACTIVO_VIGENTE' && !infoAgendaHistoricaPago.huboCambiosEnMes && (
+                    <span>✅ <strong>Agenda vigente en {formatearPeriodoNombre(infoAgendaHistoricaPago.periodo)}</strong>.</span>
+                  )}
+                  {infoAgendaHistoricaPago.origen === 'ACTUAL_FALLBACK' && (
+                    <span>⚠️ <strong>Sin historial guardado para {formatearPeriodoNombre(infoAgendaHistoricaPago.periodo)}</strong> (anterior al inicio del historial). Se muestra la agenda actual.</span>
+                  )}
                 </div>
               )}
 
