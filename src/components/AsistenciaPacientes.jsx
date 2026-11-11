@@ -39,7 +39,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
   const empaquetarObsConSesiones = (sesiones, obsLibre) => {
     const notasLibres = (obsLibre || '').replace(/\[SES_SNAPSHOT:[^\]]*\]/gi, '').trim();
     if (!sesiones || sesiones.length === 0) return notasLibres;
-    const sesSimple = sesiones.map(s => ({
+    const sesSimple = ordenarSesionesPorHora(sesiones).map(s => ({
       hora: s.hora || '',
       profesional_nombre: s.profesional_nombre || s.profesional || 'Sin prof.'
     }));
@@ -47,12 +47,21 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
     return notasLibres ? `${tag} ${notasLibres}` : tag;
   };
 
+  const horaAMinutos = (horaStr) => {
+    const m = String(horaStr || '').trim().match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return Number.MAX_SAFE_INTEGER;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  };
+
+  const ordenarSesionesPorHora = (sesiones = []) =>
+    [...sesiones].sort((a, b) => horaAMinutos(a?.hora) - horaAMinutos(b?.hora));
+
   const desempaquetarObsYSesiones = (obsRaw, sesionesFallback = []) => {
     if (!obsRaw || !obsRaw.includes('[SES_SNAPSHOT:')) {
-      return { sesiones: sesionesFallback, obs: obsRaw || '' };
+      return { sesiones: ordenarSesionesPorHora(sesionesFallback), obs: obsRaw || '' };
     }
     const match = obsRaw.match(/\[SES_SNAPSHOT:([^\]]+)\]/);
-    if (!match) return { sesiones: sesionesFallback, obs: obsRaw || '' };
+    if (!match) return { sesiones: ordenarSesionesPorHora(sesionesFallback), obs: obsRaw || '' };
     let sesionesExtract = sesionesFallback;
     try {
       const parsed = JSON.parse(decodeURIComponent(match[1]));
@@ -70,7 +79,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
       console.error("Error al desempaquetar sesiones snapshot:", e);
     }
     const obsLimpia = obsRaw.replace(/\[SES_SNAPSHOT:[^\]]*\]/g, '').trim();
-    return { sesiones: sesionesExtract, obs: obsLimpia };
+    return { sesiones: ordenarSesionesPorHora(sesionesExtract), obs: obsLimpia };
   };
 
   const getDiaSemana = (fechaStr) => {
@@ -81,8 +90,8 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
 
   const getTurno = (sesiones) => {
     if (!sesiones || sesiones.length === 0) return 'Tarde';
-    const sortedHours = [...sesiones].sort((a, b) => a.hora.localeCompare(b.hora));
-    return sortedHours[0].hora < '13:00' ? 'Mañana' : 'Tarde';
+    const sortedHours = ordenarSesionesPorHora(sesiones);
+    return horaAMinutos(sortedHours[0].hora) < 13 * 60 ? 'Mañana' : 'Tarde';
   };
 
   const diaSemanaNombre = getDiaSemana(fechaTrabajo);
@@ -203,6 +212,11 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
         }
       });
 
+      // Ordenar sesiones de cada paciente cronológicamente (menor a mayor horario)
+      Object.values(mapaPacientesAgrupados).forEach(p => {
+        p.sesiones = ordenarSesionesPorHora(p.sesiones);
+      });
+
       // Ordenar por turno (Mañana primero, Tarde después) y luego alfabéticamente por nombre de paciente
       const listadoFinal = Object.values(mapaPacientesAgrupados).sort((a, b) => {
         const turnoA = getTurno(a.sesiones);
@@ -243,7 +257,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
   // Horarios de atención únicos del día
   const horariosDisponibles = Array.from(
     new Set(pacientesCargados.flatMap(p => p.sesiones.map(s => s.hora)))
-  ).sort((a, b) => a.localeCompare(b));
+  ).sort((a, b) => horaAMinutos(a) - horaAMinutos(b));
 
   // Filtrar pacientes según el selector de horario
   const pacientesFiltrados = pacientesCargados.filter(p => {
@@ -481,7 +495,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
         return {
           fecha: f,
           dia_semana: diaSem,
-          sesiones: ses,
+          sesiones: ordenarSesionesPorHora(ses),
           estado: est,
           obs: obs,
           esFuturo
