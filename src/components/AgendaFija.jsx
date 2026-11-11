@@ -175,10 +175,20 @@ function AgendaFija({ userData }) {
     const p = pacientes.find(p => String(p.id) === String(pacienteSeleccionado));
     if (!p) { alert("Error: Seleccioná un paciente válido."); return; }
 
+    const horaBase = hora === '__ESPECIAL__'
+      ? horarioManual.trim()
+      : (horarioManual.trim() !== '' ? horarioManual.trim() : String(hora || '').trim());
+
+    if (!horaBase || horaBase === '__ESPECIAL__') {
+      alert('Por favor, ingresá el horario especial (ej: 13:30).');
+      return;
+    }
+
+    const horaFinal = /^\d:\d{2}$/.test(horaBase) ? `0${horaBase}` : horaBase;
+
     setGuardando(true);
     const hoy = obtenerFechaHoyISO();
     const vigenciaFinal = fechaVigencia && /^\d{4}-\d{2}-\d{2}$/.test(fechaVigencia) ? fechaVigencia : hoy;
-    const horaFinal = horarioManual.trim() !== '' ? horarioManual : hora;
     const payload = {
       paciente_id: p.id,
       paciente_nombre: p.nombre,
@@ -524,7 +534,30 @@ function AgendaFija({ userData }) {
             <h3>{editId ? '✏️ Editar Sesión' : '➕ Nueva Sesión'}</h3>
             <div style={{ display: 'grid', gap: '10px' }}>
               <select style={inputStyle} value={dia} onChange={(e) => setDia(e.target.value)}>{dias.map(d => <option key={d} value={d}>{d}</option>)}</select>
-              <select style={inputStyle} value={hora} onChange={(e) => { setHora(e.target.value); setHorarioManual(''); }}>{generarHorarios().map(h => <option key={h} value={h}>{h}</option>)}</select>
+              <select
+                style={inputStyle}
+                value={hora}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setHora(val);
+                  if (val !== '__ESPECIAL__') setHorarioManual('');
+                }}
+              >
+                {generarHorarios().map(h => <option key={h} value={h}>{h}</option>)}
+                <option value="__ESPECIAL__">⏰ Horario especial (cargar otro horario)...</option>
+              </select>
+              {hora === '__ESPECIAL__' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', background: '#111827', padding: '8px 10px', borderRadius: '8px', border: '1px solid #00f2ff' }}>
+                  <label style={{ fontSize: '12px', color: '#00f2ff', fontWeight: 'bold' }}>⏰ Horario especial:</label>
+                  <input
+                    type="time"
+                    style={{ ...inputStyle, flex: 1, minWidth: '140px' }}
+                    value={horarioManual}
+                    onChange={(e) => setHorarioManual(e.target.value)}
+                  />
+                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>Ej: 08:15, 13:30, 20:30</span>
+                </div>
+              )}
               <select style={inputStyle} value={pacienteSeleccionado} onChange={(e) => setPacienteSeleccionado(e.target.value)} onFocus={recargarPacientes}><option value="">Paciente...</option>{pacientes.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select>
               <select style={inputStyle} value={prestadorSeleccionado} onChange={(e) => setPrestadorSeleccionado(e.target.value)}><option value="">Profesional...</option>{users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
@@ -937,7 +970,17 @@ function AgendaFija({ userData }) {
             </p>
             <div style={{ display: 'grid', gap: '10px' }}>
               <select style={inputStyle} value={dia} onChange={(e) => setDia(e.target.value)}>{dias.map(d => <option key={d} value={d}>{d}</option>)}</select>
-              <input style={inputStyle} value={hora} onChange={(e) => setHora(e.target.value)} />
+              <div>
+                <label style={{ display: 'block', fontSize: '11.5px', color: '#94a3b8', fontWeight: 'bold', marginBottom: '4px' }}>
+                  ⏰ Horario (podés editar a cualquier horario especial):
+                </label>
+                <input
+                  type="time"
+                  style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
+                  value={/^\d:\d{2}$/.test(String(hora || '')) ? `0${hora}` : hora}
+                  onChange={(e) => setHora(e.target.value)}
+                />
+              </div>
               <select style={inputStyle} value={prestadorSeleccionado} onChange={(e) => setPrestadorSeleccionado(e.target.value)}>{users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
               <div>
                 <label style={{ display: 'block', fontSize: '11.5px', color: '#38bdf8', fontWeight: 'bold', marginBottom: '4px' }}>
