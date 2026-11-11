@@ -32,6 +32,34 @@ export function obtenerPeriodoActual() {
   return obtenerFechaHoyISO().slice(0, 7);
 }
 
+export function obtenerUltimoDiaMesISO(periodoYYYYMM) {
+  if (!periodoYYYYMM || !/^\d{4}-\d{2}$/.test(periodoYYYYMM)) return `${obtenerPeriodoActual()}-28`;
+  const [anio, mes] = periodoYYYYMM.split('-').map(Number);
+  const ultimoDia = new Date(anio, mes, 0).getDate();
+  return `${periodoYYYYMM}-${String(ultimoDia).padStart(2, '0')}`;
+}
+
+export function restarUnDiaISO(fechaYYYYMMDD) {
+  if (!fechaYYYYMMDD || !/^\d{4}-\d{2}-\d{2}$/.test(fechaYYYYMMDD)) return obtenerFechaHoyISO();
+  const d = new Date(`${fechaYYYYMMDD}T12:00:00`);
+  d.setDate(d.getDate() - 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function calcularHastaAnterior(fechaNuevaVigencia, fechaDesdeOriginal) {
+  const base = fechaNuevaVigencia && /^\d{4}-\d{2}-\d{2}$/.test(fechaNuevaVigencia)
+    ? fechaNuevaVigencia
+    : obtenerFechaHoyISO();
+  const diaAnterior = restarUnDiaISO(base);
+  if (fechaDesdeOriginal && /^\d{4}-\d{2}-\d{2}$/.test(fechaDesdeOriginal) && diaAnterior < fechaDesdeOriginal) {
+    return fechaDesdeOriginal;
+  }
+  return diaAnterior;
+}
+
 export function formatearPeriodoNombre(periodoYYYYMM) {
   if (!periodoYYYYMM || !/^\d{4}-\d{2}$/.test(periodoYYYYMM)) return periodoYYYYMM || 'S/D';
   const [anio, mes] = periodoYYYYMM.split('-');
@@ -131,11 +159,14 @@ export async function fetchTodasSesionesFijas(filtrosFn = null) {
 /**
  * Archiva una sesión antes de editarla, suspenderla o eliminarla, guardando su vigencia [desde..hasta].
  */
-export async function archivarCambioSesion(sesionOriginal, accion, nota = '') {
+export async function archivarCambioSesion(sesionOriginal, accion, nota = '', fechaHastaCustom = null) {
   if (!sesionOriginal) return null;
   const hoy = obtenerFechaHoyISO();
   const meta = parsearMetadataSesion(sesionOriginal);
   const desde = meta.desde || (sesionOriginal.created_at ? String(sesionOriginal.created_at).slice(0, 10) : hoy);
+  const hastaFinal = fechaHastaCustom && /^\d{4}-\d{2}-\d{2}$/.test(fechaHastaCustom)
+    ? (hastaClamp(fechaHastaCustom, desde))
+    : hoy;
 
   const registroHistorico = {
     paciente_id: sesionOriginal.paciente_id,
@@ -148,7 +179,7 @@ export async function archivarCambioSesion(sesionOriginal, accion, nota = '') {
     asistencia: 'Histórico',
     observaciones: construirObservacionHistCambio({
       desde,
-      hasta: hoy,
+      hasta: hastaFinal,
       accion,
       nota
     })
@@ -161,6 +192,66 @@ export async function archivarCambioSesion(sesionOriginal, accion, nota = '') {
 
   if (error) throw error;
   return data?.[0] || null;
+}
+
+function hastaClamp(hasta, desde) {
+  if (desde && hasta < desde) return desde;
+  return hasta;
+}
+
+/**
+ * Si un mes ya estaba consolidado y se carga/edita un cambio con vigencia exacta al día 01 de ese mes,
+ * actualiza únicamente el snapshot de ese paciente en ese período para mantener coherencia.
+ */
+export async function sincronizarSnapshotMesPaciente(uuidPaciente, periodoYYYYMM) {
+  if (!uuidPaciente || !periodoYYYYMM || !/^\d{4}-\d{2}$/.test(periodoYYYYMM)) return false;
+
+  const todasPac = await fetchTodasSesionesFijas(q => q.eq('paciente_id', uuidPaciente));
+  const idsSnapshotMes = todasPac
+    .filter(s => (s.estado || '').toUpperCase() === 'HISTORICO')
+    .filter(s => {
+      const m = parsearMetadataSesion(s);
+      return m.categoria === 'HIST_MES' && m.periodo === periodoYYYYMM;
+    })
+    .map(s => s.id);
+
+  // Solo sincronizamos si ese período ya fue consolidado previamente en el sistema
+  const existeConsolidadoMes = idsSnapshotMes.length > 0 || (await fetchTodasSesionesFijas(q =>
+    q.eq('estado', 'HISTORICO').like('observaciones', `${PREFIJO_HIST_MES}%`)
+  )).some(s => parsearMetadataSesion(s).periodo === periodoYYYYMM);
+
+  if (!existeConsolidadoMes) return false;
+
+  if (idsSnapshotMes.length > 0) {
+    const { error: errDel } = await supabase.from('sesiones_fijas').delete().in('id', idsSnapshotMes);
+    if (errDel) throw errDel;
+  }
+
+  const activasVigentes = todasPac.filter(s => {
+    if ((s.estado || 'ACTIVO').toUpperCase() !== 'ACTIVO') return false;
+    const m = parsearMetadataSesion(s);
+    const pDesde = (m.desde || (s.created_at ? String(s.created_at).slice(0, 10) : '2026-01-01')).slice(0, 7);
+    return pDesde <= periodoYYYYMM;
+  });
+
+  if (activasVigentes.length > 0) {
+    const obsSnapshot = construirObservacionHistMes(periodoYYYYMM, obtenerFechaHoyISO());
+    const nuevos = activasVigentes.map(s => ({
+      paciente_id: s.paciente_id,
+      paciente_nombre: s.paciente_nombre,
+      profesional_id: s.profesional_id,
+      dia_semana: s.dia_semana,
+      hora: s.hora,
+      tipo_prestacion: s.tipo_prestacion || null,
+      estado: 'HISTORICO',
+      asistencia: 'Consolidado',
+      observaciones: obsSnapshot
+    }));
+    const { error: errIns } = await supabase.from('sesiones_fijas').insert(nuevos);
+    if (errIns) throw errIns;
+  }
+
+  return true;
 }
 
 /**
@@ -269,6 +360,9 @@ export async function obtenerSesionesPacienteParaPeriodo(uuidPaciente, periodoYY
     return meta.categoria === 'HIST_MES' && meta.periodo === periodoYYYYMM;
   });
 
+  const primerDiaMes = periodoYYYYMM ? `${periodoYYYYMM}-01` : '';
+  const ultimoDiaMes = periodoYYYYMM ? obtenerUltimoDiaMesISO(periodoYYYYMM) : '';
+
   // También revisar si hubo cambios registrados dentro de ese mes exacto
   const cambiosEnMes = todas.filter(s => {
     if ((s.estado || '').toUpperCase() !== 'HISTORICO') return false;
@@ -280,12 +374,23 @@ export async function obtenerSesionesPacienteParaPeriodo(uuidPaciente, periodoYY
     return pDesde <= periodoYYYYMM && pHasta >= periodoYYYYMM;
   });
 
+  const huboCambioMitadMes = Boolean(periodoYYYYMM && (
+    cambiosEnMes.some(s => {
+      const meta = parsearMetadataSesion(s);
+      return meta.hasta && meta.hasta >= primerDiaMes && meta.hasta < ultimoDiaMes;
+    }) ||
+    activas.some(s => {
+      const meta = parsearMetadataSesion(s);
+      return meta.categoria === 'VIGENCIA' && meta.desde && meta.desde > primerDiaMes && meta.desde <= ultimoDiaMes;
+    })
+  ));
+
   if (snapshotsMes.length > 0) {
     return {
       sesiones: snapshotsMes,
       origen: 'CONSOLIDADO_MES',
       periodo: periodoYYYYMM,
-      huboCambiosEnMes: cambiosEnMes.length > 0
+      huboCambiosEnMes: huboCambioMitadMes
     };
   }
 
@@ -304,13 +409,11 @@ export async function obtenerSesionesPacienteParaPeriodo(uuidPaciente, periodoYY
     });
 
     if (vigentesEnPeriodo.length > 0) {
-      // Si hubo cambio dentro del mismo mes, puede haber tanto la sesión vieja (HIST_CAMBIO) como la nueva (ACTIVO).
-      // Si ya hay sesiones de cambio en ese mes y también activas creadas ese mismo mes, devolvemos las vigentes pero informamos.
       return {
         sesiones: vigentesEnPeriodo,
-        origen: cambiosEnMes.length > 0 ? 'CAMBIO_AGENDA' : 'ACTIVO_VIGENTE',
+        origen: huboCambioMitadMes ? 'CAMBIO_AGENDA' : 'ACTIVO_VIGENTE',
         periodo: periodoYYYYMM,
-        huboCambiosEnMes: cambiosEnMes.length > 0
+        huboCambiosEnMes: huboCambioMitadMes
       };
     }
   }

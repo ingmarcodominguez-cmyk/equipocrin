@@ -6,6 +6,8 @@ import {
   consolidarMesAgenda,
   parsearMetadataSesion,
   construirObservacionVigencia,
+  calcularHastaAnterior,
+  sincronizarSnapshotMesPaciente,
   obtenerFechaHoyISO,
   obtenerPeriodoActual,
   formatearPeriodoNombre
@@ -27,7 +29,15 @@ function AgendaFija({ userData }) {
   const [horarioManual, setHorarioManual] = useState('');
   const [pacienteSeleccionado, setPacienteSeleccionado] = useState('');
   const [prestadorSeleccionado, setPrestadorSeleccionado] = useState('');
+  const [fechaVigencia, setFechaVigencia] = useState(obtenerFechaHoyISO());
   const [editId, setEditId] = useState(null);
+  const [modalCambioModalidad, setModalCambioModalidad] = useState({
+    abierto: false,
+    pacienteId: '',
+    pacienteNombre: '',
+    cantidadTurnos: 0,
+    fechaVigencia: obtenerFechaHoyISO()
+  });
 
   // Filtros
   const [diaConsulta, setDiaConsulta] = useState('Lunes');
@@ -167,6 +177,7 @@ function AgendaFija({ userData }) {
 
     setGuardando(true);
     const hoy = obtenerFechaHoyISO();
+    const vigenciaFinal = fechaVigencia && /^\d{4}-\d{2}-\d{2}$/.test(fechaVigencia) ? fechaVigencia : hoy;
     const horaFinal = horarioManual.trim() !== '' ? horarioManual : hora;
     const payload = {
       paciente_id: p.id,
@@ -175,7 +186,7 @@ function AgendaFija({ userData }) {
       dia_semana: dia,
       hora: horaFinal,
       asistencia: 'Pendiente',
-      observaciones: construirObservacionVigencia(hoy)
+      observaciones: construirObservacionVigencia(vigenciaFinal)
     };
 
     try {
@@ -191,12 +202,27 @@ function AgendaFija({ userData }) {
             String(sesionOriginal.paciente_id || '') !== String(payload.paciente_id || '');
 
           if (cambioRelevante) {
-            archivoCreado = await archivarCambioSesion(sesionOriginal, 'EDITADO');
+            const metaOrig = parsearMetadataSesion(sesionOriginal);
+            const desdeOrig = metaOrig.desde || (sesionOriginal.created_at ? String(sesionOriginal.created_at).slice(0, 10) : vigenciaFinal);
+            const hastaAnterior = calcularHastaAnterior(vigenciaFinal, desdeOrig);
+            archivoCreado = await archivarCambioSesion(sesionOriginal, 'EDITADO', '', hastaAnterior);
           }
         }
 
         const { error } = await supabase.from('sesiones_fijas').update(payload).eq('id', editId);
         if (error) throw error;
+
+        if (vigenciaFinal.endsWith('-01')) {
+          const sincronizado = await sincronizarSnapshotMesPaciente(p.id, vigenciaFinal.slice(0, 7));
+          if (sincronizado) {
+            await cargarDatos(false);
+            setEditId(null);
+            setModalEdicionAbierto(false);
+            alert(`✅ Sesión guardada (vigente desde ${vigenciaFinal} — historial y mes actualizados)`);
+            setGuardando(false);
+            return;
+          }
+        }
 
         setSesiones(prev => {
           const updated = prev.map(s => s.id === editId ? { ...s, ...payload } : s);
@@ -209,10 +235,22 @@ function AgendaFija({ userData }) {
           .insert([{ ...payload, estado: 'ACTIVO' }])
           .select();
         if (error) throw error;
+
+        if (vigenciaFinal.endsWith('-01')) {
+          const sincronizado = await sincronizarSnapshotMesPaciente(p.id, vigenciaFinal.slice(0, 7));
+          if (sincronizado) {
+            await cargarDatos(false);
+            setModalEdicionAbierto(false);
+            alert(`✅ Sesión guardada (vigente desde ${vigenciaFinal} — historial y mes actualizados)`);
+            setGuardando(false);
+            return;
+          }
+        }
+
         if (data) setSesiones(prev => [...prev, ...data]);
       }
       setModalEdicionAbierto(false);
-      alert('✅ Sesión guardada (con historial protegido)');
+      alert(`✅ Sesión guardada (vigente desde ${vigenciaFinal}, con historial protegido)`);
     } catch (e) {
       alert("Error: " + e.message);
     }
@@ -276,7 +314,7 @@ function AgendaFija({ userData }) {
     }
   }
 
-  async function cambiarModalidadPaciente(pacienteId) {
+  function cambiarModalidadPaciente(pacienteId) {
     const sesionesDelPaciente = sesionesVigentes.filter(s => String(s.paciente_id) === String(pacienteId));
     if (sesionesDelPaciente.length === 0) {
       alert('Este paciente no tiene sesiones vigentes para cerrar.');
@@ -284,15 +322,40 @@ function AgendaFija({ userData }) {
     }
 
     const nombrePac = sesionesDelPaciente[0].paciente_nombre || 'el paciente';
-    if (!window.confirm(`¿Cerrar la modalidad actual de ${nombrePac} (${sesionesDelPaciente.length} turno/s) y empezar una nueva?\n\n• Todos sus días, horarios y prestadores actuales quedarán guardados en el Historial hasta hoy.\n• Se limpiará su agenda vigente para que cargues la nueva modalidad.`)) {
+    setModalCambioModalidad({
+      abierto: true,
+      pacienteId: String(pacienteId),
+      pacienteNombre: nombrePac,
+      cantidadTurnos: sesionesDelPaciente.length,
+      fechaVigencia: obtenerFechaHoyISO()
+    });
+  }
+
+  async function confirmarCambioModalidad() {
+    const { pacienteId, pacienteNombre, fechaVigencia: fechaModalidad } = modalCambioModalidad;
+    const sesionesDelPaciente = sesionesVigentes.filter(s => String(s.paciente_id) === String(pacienteId));
+    if (sesionesDelPaciente.length === 0) {
+      setModalCambioModalidad(prev => ({ ...prev, abierto: false }));
       return;
     }
+
+    const vigenciaFinal = fechaModalidad && /^\d{4}-\d{2}-\d{2}$/.test(fechaModalidad)
+      ? fechaModalidad
+      : obtenerFechaHoyISO();
 
     try {
       setGuardando(true);
       const archivos = [];
       for (const s of sesionesDelPaciente) {
-        const arch = await archivarCambioSesion(s, 'CAMBIO_MODALIDAD', 'Cambio completo de modalidad');
+        const metaOrig = parsearMetadataSesion(s);
+        const desdeOrig = metaOrig.desde || (s.created_at ? String(s.created_at).slice(0, 10) : vigenciaFinal);
+        const hastaAnterior = calcularHastaAnterior(vigenciaFinal, desdeOrig);
+        const arch = await archivarCambioSesion(
+          s,
+          'CAMBIO_MODALIDAD',
+          `Cambio de modalidad (nueva rige desde ${vigenciaFinal})`,
+          hastaAnterior
+        );
         if (arch) archivos.push(arch);
       }
 
@@ -300,13 +363,22 @@ function AgendaFija({ userData }) {
       const { error } = await supabase.from('sesiones_fijas').delete().in('id', idsAEliminar);
       if (error) throw error;
 
-      setSesiones(prev => [
-        ...prev.filter(s => !idsAEliminar.includes(s.id)),
-        ...archivos
-      ]);
+      if (vigenciaFinal.endsWith('-01')) {
+        await sincronizarSnapshotMesPaciente(pacienteId, vigenciaFinal.slice(0, 7));
+        await cargarDatos(false);
+      } else {
+        setSesiones(prev => [
+          ...prev.filter(s => !idsAEliminar.includes(s.id)),
+          ...archivos
+        ]);
+      }
 
+      setModalCambioModalidad(prev => ({ ...prev, abierto: false }));
       setPacienteSeleccionado(String(pacienteId));
-      alert(`✅ Modalidad anterior archivada en el Historial.\n\nYa podés cargar los nuevos días, horarios y prestadores para ${nombrePac} desde la pestaña "📅 Agenda".`);
+      setFechaVigencia(vigenciaFinal);
+      setEditId(null);
+      setVistaActiva('agenda');
+      alert(`✅ Modalidad anterior archivada hasta el día previo a ${vigenciaFinal}.\n\nYa podés cargar los nuevos turnos para ${pacienteNombre} en "📅 Agenda" (ya quedó seleccionada la fecha ${vigenciaFinal}).`);
     } catch (e) {
       alert('Error al cambiar modalidad: ' + e.message);
     } finally {
@@ -343,6 +415,7 @@ function AgendaFija({ userData }) {
   function iniciarEdicion(s) {
     setEditId(s.id); setDia(s.dia_semana); setHora(s.hora); setHorarioManual('');
     setPacienteSeleccionado(String(s.paciente_id)); setPrestadorSeleccionado(String(s.profesional_id));
+    setFechaVigencia(obtenerFechaHoyISO());
   }
 
   // Separar sesiones vigentes (ACTIVO / SUSPENDIDO) de registros históricos (HISTORICO)
@@ -454,6 +527,15 @@ function AgendaFija({ userData }) {
               <select style={inputStyle} value={hora} onChange={(e) => { setHora(e.target.value); setHorarioManual(''); }}>{generarHorarios().map(h => <option key={h} value={h}>{h}</option>)}</select>
               <select style={inputStyle} value={pacienteSeleccionado} onChange={(e) => setPacienteSeleccionado(e.target.value)} onFocus={recargarPacientes}><option value="">Paciente...</option>{pacientes.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select>
               <select style={inputStyle} value={prestadorSeleccionado} onChange={(e) => setPrestadorSeleccionado(e.target.value)}><option value="">Profesional...</option>{users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 'bold' }}>📅 Vigente desde:</label>
+                <input
+                  type="date"
+                  style={{ ...inputStyle, flex: 1, minWidth: '160px' }}
+                  value={fechaVigencia}
+                  onChange={(e) => setFechaVigencia(e.target.value)}
+                />
+              </div>
               <button disabled={guardando} onClick={guardarSesion} style={btnAccionStyle}>{guardando ? '...' : (editId ? 'ACTUALIZAR' : 'GUARDAR')}</button>
             </div>
           </div>
@@ -848,17 +930,69 @@ function AgendaFija({ userData }) {
       {/* MODAL DE EDICIÓN */}
       {modalEdicionAbierto && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-          <div style={{ ...cardStyle, width: '90%', maxWidth: '400px' }}>
+          <div style={{ ...cardStyle, width: '90%', maxWidth: '420px' }}>
             <h3>✏️ Editar Turno</h3>
             <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '-6px', marginBottom: '12px' }}>
-              Al guardar cambios, la versión anterior queda archivada automáticamente en el Historial hasta hoy.
+              Al guardar cambios, la versión anterior queda archivada automáticamente en el Historial hasta el día previo a la fecha de vigencia elegida.
             </p>
             <div style={{ display: 'grid', gap: '10px' }}>
               <select style={inputStyle} value={dia} onChange={(e) => setDia(e.target.value)}>{dias.map(d => <option key={d} value={d}>{d}</option>)}</select>
               <input style={inputStyle} value={hora} onChange={(e) => setHora(e.target.value)} />
               <select style={inputStyle} value={prestadorSeleccionado} onChange={(e) => setPrestadorSeleccionado(e.target.value)}>{users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
+              <div>
+                <label style={{ display: 'block', fontSize: '11.5px', color: '#38bdf8', fontWeight: 'bold', marginBottom: '4px' }}>
+                  📅 Vigente a partir del:
+                </label>
+                <input
+                  type="date"
+                  style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
+                  value={fechaVigencia}
+                  onChange={(e) => setFechaVigencia(e.target.value)}
+                />
+              </div>
               <button disabled={guardando} onClick={guardarSesion} style={btnAccionStyle}>{guardando ? 'GUARDANDO...' : 'GUARDAR'}</button>
-              <button onClick={() => { setModalEdicionAbierto(false); setEditId(null); }} style={{ ...btnAccionStyle, background: '#444' }}>CERRAR</button>
+              <button onClick={() => { setModalEdicionAbierto(false); setEditId(null); }} style={{ ...btnAccionStyle, background: '#444', color: '#fff' }}>CERRAR</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CAMBIO COMPLETO DE MODALIDAD CON FECHA */}
+      {modalCambioModalidad.abierto && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div style={{ ...cardStyle, width: '92%', maxWidth: '450px', border: '1px solid #f59e0b' }}>
+            <h3 style={{ marginTop: 0, color: '#fbbf24' }}>🔄 Cambiar Modalidad de {modalCambioModalidad.pacienteNombre}</h3>
+            <p style={{ fontSize: '12.5px', color: '#cbd5e1', lineHeight: '1.45' }}>
+              Se archivarán sus <strong>{modalCambioModalidad.cantidadTurnos} turno(s)</strong> actuales en el Historial hasta el día previo a la fecha elegida, y se limpiará su agenda vigente para cargar la nueva modalidad.
+            </p>
+            <div style={{ display: 'grid', gap: '12px', marginTop: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#38bdf8', fontWeight: 'bold', marginBottom: '5px' }}>
+                  📅 Nueva modalidad vigente a partir del:
+                </label>
+                <input
+                  type="date"
+                  style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
+                  value={modalCambioModalidad.fechaVigencia}
+                  onChange={(e) => setModalCambioModalidad(prev => ({ ...prev, fechaVigencia: e.target.value }))}
+                />
+              </div>
+              <button
+                type="button"
+                disabled={guardando}
+                onClick={confirmarCambioModalidad}
+                style={{ ...btnAccionStyle, background: '#f59e0b', color: '#000' }}
+              >
+                {guardando ? 'ARCHIVANDO...' : '✅ CONFIRMAR Y CARGAR NUEVA MODALIDAD'}
+              </button>
+              <button
+                type="button"
+                disabled={guardando}
+                onClick={() => setModalCambioModalidad(prev => ({ ...prev, abierto: false }))}
+                style={{ ...btnAccionStyle, background: '#444', color: '#fff' }}
+              >
+                CANCELAR
+              </button>
             </div>
           </div>
         </div>
