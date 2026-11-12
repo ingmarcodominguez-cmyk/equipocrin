@@ -3,8 +3,10 @@ import { supabase } from '../lib/supabase';
 import CuentaFacturasPrestadores from './CuentaFacturasPrestadores';
 import {
   ACUERDO_FACTURA_RECIBIDA,
+  ACUERDO_FACTURAR_MANUAL,
   FECHA_INICIO_FACTURACION_PRESTADORES,
   calcularMontoFacturarMovimiento,
+  construirMapaFacturarManual,
   esPrestadorExcluidoFacturacion,
   fetchMapaPagosPorIds,
   fetchIdsPacientesExcluidosFacturacion
@@ -71,6 +73,9 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
   const [busquedaRealizada, setBusquedaRealizada] = useState(false);
   const [esCelular, setEsCelular] = useState(() => typeof window !== 'undefined' ? window.innerWidth <= 768 : false);
   const [vistaFacturacion, setVistaFacturacion] = useState(false);
+  const [editandoFacturarId, setEditandoFacturarId] = useState(null);
+  const [montoFacturarEdit, setMontoFacturarEdit] = useState('');
+  const [guardandoFacturarManual, setGuardandoFacturarManual] = useState(false);
 
   useEffect(() => {
     const handleResize = () => setEsCelular(window.innerWidth <= 768);
@@ -143,7 +148,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
         }
       });
       const filtered = allData.filter(
-        m => m.acuerdo !== ACUERDO_FACTURA_RECIBIDA && (!m.id_pago || !revertedPagoIds.has(m.id_pago))
+        m => m.acuerdo !== ACUERDO_FACTURA_RECIBIDA && m.acuerdo !== ACUERDO_FACTURAR_MANUAL && (!m.id_pago || !revertedPagoIds.has(m.id_pago))
       );
 
       setGlobalResults(filtered);
@@ -428,8 +433,9 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
         }
       });
 
+      const manualFacturarMap = construirMapaFacturarManual(data || []);
       const filtered = (data || []).filter(
-        m => m.acuerdo !== ACUERDO_FACTURA_RECIBIDA && (!m.id_pago || !revertedPagoIds.has(m.id_pago))
+        m => m.acuerdo !== ACUERDO_FACTURA_RECIBIDA && m.acuerdo !== ACUERDO_FACTURAR_MANUAL && (!m.id_pago || !revertedPagoIds.has(m.id_pago))
       );
 
       const nombrePrestador =
@@ -465,11 +471,13 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
         const debe = parsearDecimal(m.debe);
         const haber = parsearDecimal(m.haber);
         saldoAcumulado += (haber - debe);
-        const montoFacturar = calcularMontoFacturarMovimiento(m, pagosMap, nombrePrestador, pacientesExcluidosIds);
+        const montoFacturar = calcularMontoFacturarMovimiento(m, pagosMap, nombrePrestador, pacientesExcluidosIds, manualFacturarMap);
+        const facturarManualInfo = manualFacturarMap[String(m.id_mov)] || null;
         return {
           ...m,
           saldoAcumulado: saldoAcumulado,
-          montoFacturar
+          montoFacturar,
+          facturarManualInfo
         };
       });
 
@@ -607,6 +615,71 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
     }
   };
 
+  const guardarMontoFacturarManual = async (mov, valorStr, quitarManual = false) => {
+    if (!mov || !prestadorSeleccionado) return;
+    setGuardandoFacturarManual(true);
+    try {
+      const overrideId = mov.facturarManualInfo?.id_mov_override;
+      const textoLimpio = String(valorStr ?? '').trim();
+
+      if (quitarManual || textoLimpio === '') {
+        if (overrideId) {
+          const { error } = await supabase
+            .from('movprestadores_motor')
+            .delete()
+            .eq('id_mov', overrideId);
+          if (error) throw error;
+          mostrarAlerta('Se restauró el cálculo automático de facturación.', 'exito');
+        }
+      } else {
+        const montoNum = parsearDecimal(textoLimpio);
+        if (isNaN(montoNum) || montoNum < 0) {
+          alert('Ingresá un importe válido (mayor o igual a 0).');
+          return;
+        }
+        const montoRedondeado = Math.round(montoNum * 100) / 100;
+
+        if (overrideId) {
+          const { error } = await supabase
+            .from('movprestadores_motor')
+            .update({
+              saldo: montoRedondeado.toFixed(2),
+              usuario: usuario || 'Sistema'
+            })
+            .eq('id_mov', overrideId);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase
+            .from('movprestadores_motor')
+            .insert([{
+              id_prestador: mov.id_prestador || prestadorSeleccionado.id_prestador,
+              fecha: mov.fecha,
+              concepto: `FACTURAR_MANUAL#${mov.id_mov}`,
+              debe: '0',
+              haber: '0',
+              saldo: montoRedondeado.toFixed(2),
+              usuario: usuario || 'Sistema',
+              acuerdo: ACUERDO_FACTURAR_MANUAL
+            }]);
+          if (error) throw error;
+        }
+        mostrarAlerta(
+          `Monto a facturar (${montoRedondeado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}) guardado y vinculado a Cuenta de Facturas.`,
+          'exito'
+        );
+      }
+
+      setEditandoFacturarId(null);
+      setMontoFacturarEdit('');
+      await cargarMovimientos(prestadorSeleccionado.id_prestador, prestadorSeleccionado.nombre_prestador);
+    } catch (error) {
+      console.error('Error al guardar monto a facturar manual:', error);
+      alert('Error al guardar monto a facturar: ' + error.message);
+    } finally {
+      setGuardandoFacturarManual(false);
+    }
+  };
+
   const manejarEliminarAjusteManual = async (mov) => {
     const concepto = mov.concepto || 'Ajuste';
     const valHaber = parsearDecimal(mov.haber);
@@ -625,6 +698,13 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
     if (!confirmar) return;
 
     try {
+      if (mov.facturarManualInfo?.id_mov_override) {
+        await supabase
+          .from('movprestadores_motor')
+          .delete()
+          .eq('id_mov', mov.facturarManualInfo.id_mov_override);
+      }
+
       const { error } = await supabase
         .from('movprestadores_motor')
         .delete()
@@ -1234,8 +1314,95 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                           <td style={{ padding: '10px', textAlign: 'right', color: valHaber > 0 ? '#15803d' : '#94a3b8', fontWeight: '600' }}>
                             {valHaber > 0 ? `${valHaber.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
                           </td>
-                          <td style={{ padding: '10px', textAlign: 'right', color: m.montoFacturar > 0 ? '#7e22ce' : '#94a3b8', fontWeight: m.montoFacturar > 0 ? '700' : '400' }}>
-                            {m.montoFacturar > 0 ? `${m.montoFacturar.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                          <td style={{ padding: '10px', textAlign: 'right', color: m.montoFacturar > 0 ? '#7e22ce' : '#94a3b8', fontWeight: m.montoFacturar > 0 ? '700' : '400', whiteSpace: 'nowrap' }}>
+                            {(() => {
+                              const esElegibleNov =
+                                String(m.fecha || '').slice(0, 10) >= FECHA_INICIO_FACTURACION_PRESTADORES &&
+                                !esPrestadorExcluidoFacturacion(prestadorSeleccionado?.nombre_prestador);
+
+                              if (editandoFacturarId === m.id_mov) {
+                                return (
+                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+                                    <input
+                                      type="text"
+                                      value={montoFacturarEdit}
+                                      onChange={(e) => setMontoFacturarEdit(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          e.preventDefault();
+                                          guardarMontoFacturarManual(m, montoFacturarEdit);
+                                        } else if (e.key === 'Escape') {
+                                          setEditandoFacturarId(null);
+                                          setMontoFacturarEdit('');
+                                        }
+                                      }}
+                                      placeholder="0.00"
+                                      autoFocus
+                                      disabled={guardandoFacturarManual}
+                                      style={{ width: '95px', padding: '4px 6px', border: '1px solid #a855f7', borderRadius: '6px', textAlign: 'right', fontSize: '12px', outline: 'none' }}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => guardarMontoFacturarManual(m, montoFacturarEdit)}
+                                      disabled={guardandoFacturarManual}
+                                      title="Guardar monto a facturar"
+                                      style={{ background: '#7e22ce', color: '#fff', border: 'none', borderRadius: '5px', padding: '4px 7px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                                    >
+                                      ✓
+                                    </button>
+                                    {m.facturarManualInfo && (
+                                      <button
+                                        type="button"
+                                        onClick={() => guardarMontoFacturarManual(m, '', true)}
+                                        disabled={guardandoFacturarManual}
+                                        title="Quitar ajuste manual y volver al cálculo automático"
+                                        style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fcd34d', borderRadius: '5px', padding: '3px 6px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                                      >
+                                        ↺
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => { setEditandoFacturarId(null); setMontoFacturarEdit(''); }}
+                                      disabled={guardandoFacturarManual}
+                                      title="Cancelar"
+                                      style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', borderRadius: '5px', padding: '3px 6px', cursor: 'pointer', fontSize: '11px' }}
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
+                                  <span title={m.facturarManualInfo ? 'Monto cargado manualmente (vinculante con Cuenta de Facturas)' : ''}>
+                                    {m.montoFacturar > 0 ? `${m.montoFacturar.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                                  </span>
+                                  {m.facturarManualInfo && (
+                                    <span style={{ fontSize: '9.5px', background: '#f3e8ff', color: '#7e22ce', border: '1px solid #d8b4fe', padding: '1px 4px', borderRadius: '4px', fontWeight: 'bold' }}>
+                                      manual
+                                    </span>
+                                  )}
+                                  {esElegibleNov && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const sugerido = m.montoFacturar > 0
+                                          ? String(m.montoFacturar)
+                                          : (valHaber > 0 ? String(valHaber) : '');
+                                        setEditandoFacturarId(m.id_mov);
+                                        setMontoFacturarEdit(sugerido);
+                                      }}
+                                      title="Cargar o editar monto a facturar manualmente"
+                                      style={{ background: 'transparent', border: '1px dashed #c084fc', color: '#7e22ce', borderRadius: '5px', padding: '1px 5px', cursor: 'pointer', fontSize: '11px', lineHeight: 1.2 }}
+                                    >
+                                      ✏️
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td style={{ padding: '10px', textAlign: 'right', color: m.saldoAcumulado >= 0 ? '#15803d' : '#b91c1c', fontWeight: 'bold' }}>
                             ${m.saldoAcumulado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

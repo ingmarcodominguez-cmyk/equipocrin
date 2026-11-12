@@ -2,6 +2,7 @@ import { supabase } from './supabase.js';
 
 export const FECHA_INICIO_FACTURACION_PRESTADORES = '2026-11-01';
 export const ACUERDO_FACTURA_RECIBIDA = 'FACTURA_RECIBIDA';
+export const ACUERDO_FACTURAR_MANUAL = 'FACTURAR_MANUAL';
 export const PERIODO_INICIO_FACTURACION_AUXILIARES = { mes: 10, anio: 2026 }; // Oct 2026 cerrada -> se factura en Nov 2026
 
 export function parsearDecimalSeguro(val) {
@@ -207,14 +208,45 @@ export async function fetchMapaPagosPorIds(idPagos = []) {
   return mapa;
 }
 
+export function construirMapaFacturarManual(rows = []) {
+  const mapa = {};
+  (rows || []).forEach(r => {
+    if (r?.acuerdo !== ACUERDO_FACTURAR_MANUAL) return;
+    const targetId = String(r.concepto || '').replace(/^FACTURAR_MANUAL#/, '').trim();
+    if (!targetId) return;
+    mapa[targetId] = {
+      id_mov_override: r.id_mov,
+      monto: Math.round(parsearDecimalSeguro(r.saldo) * 100) / 100
+    };
+  });
+  return mapa;
+}
+
 /**
  * Calcula el importe que debe facturar el prestador por un movimiento individual.
  * Solo aplica desde FECHA_INICIO_FACTURACION_PRESTADORES ('2026-11-01') y excluye a prestadores/pacientes exceptuados
  * (Viviana Jiménez, Dra. Valeria Medina y paciente Quevedo Guadalupe).
+ * Si existe una carga manual vinculante en manualFacturarMap para mov.id_mov, utiliza ese importe.
  */
-export function calcularMontoFacturarMovimiento(mov, pagosMap, nombrePrestador, pacientesExcluidosIds = null) {
+export function calcularMontoFacturarMovimiento(
+  mov,
+  pagosMap,
+  nombrePrestador,
+  pacientesExcluidosIds = null,
+  manualFacturarMap = null
+) {
   if (!mov || esPrestadorExcluidoFacturacion(nombrePrestador)) return 0;
-  if (mov.acuerdo === ACUERDO_FACTURA_RECIBIDA) return 0;
+  if (mov.acuerdo === ACUERDO_FACTURA_RECIBIDA || mov.acuerdo === ACUERDO_FACTURAR_MANUAL) return 0;
+  const fecha = String(mov.fecha || '').slice(0, 10);
+  if (!fecha || fecha < FECHA_INICIO_FACTURACION_PRESTADORES) return 0;
+
+  if (manualFacturarMap && mov.id_mov !== undefined && mov.id_mov !== null) {
+    const manualEntry = manualFacturarMap[String(mov.id_mov)];
+    if (manualEntry !== undefined) {
+      return Math.max(0, Math.round(parsearDecimalSeguro(manualEntry.monto) * 100) / 100);
+    }
+  }
+
   if (esPacienteExcluidoFacturacion(mov.concepto)) return 0;
   if (
     pacientesExcluidosIds &&
@@ -224,8 +256,6 @@ export function calcularMontoFacturarMovimiento(mov, pagosMap, nombrePrestador, 
   ) {
     return 0;
   }
-  const fecha = String(mov.fecha || '').slice(0, 10);
-  if (!fecha || fecha < FECHA_INICIO_FACTURACION_PRESTADORES) return 0;
   const haber = parsearDecimalSeguro(mov.haber);
   if (haber <= 0 || !mov.id_pago) return 0;
 

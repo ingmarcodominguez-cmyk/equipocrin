@@ -3,11 +3,13 @@ import { supabase } from '../lib/supabase';
 import {
   FECHA_INICIO_FACTURACION_PRESTADORES,
   ACUERDO_FACTURA_RECIBIDA,
+  ACUERDO_FACTURAR_MANUAL,
   parsearDecimalSeguro,
   esPrestadorExcluidoFacturacion,
   esAuxiliarIncluidoFacturacion,
   esPeriodoAuxiliarFacturable,
   formatearConceptoLiquidacionAuxiliar,
+  construirMapaFacturarManual,
   fetchMapaPagosPorIds,
   fetchIdsPacientesExcluidosFacturacion,
   calcularMontoFacturarMovimiento
@@ -25,6 +27,7 @@ export default function CuentaFacturasPrestadores({
   const [auxiliaresFacturables, setAuxiliaresFacturables] = useState([]);
   const [movsAuxiliares, setMovsAuxiliares] = useState([]);
   const [pagosMap, setPagosMap] = useState({});
+  const [manualFacturarMap, setManualFacturarMap] = useState({});
   const [pacientesExcluidosIds, setPacientesExcluidosIds] = useState(() => new Set());
   const [prestadorFocusId, setPrestadorFocusId] = useState(
     prestadorInicial && !esPrestadorExcluidoFacturacion(prestadorInicial.nombre_prestador)
@@ -62,7 +65,7 @@ export default function CuentaFacturasPrestadores({
         const { data, error } = await supabase
           .from('movprestadores_motor')
           .select('*')
-          .or(`fecha.gte.${FECHA_INICIO_FACTURACION_PRESTADORES},acuerdo.eq.${ACUERDO_FACTURA_RECIBIDA}`)
+          .or(`fecha.gte.${FECHA_INICIO_FACTURACION_PRESTADORES},acuerdo.eq.${ACUERDO_FACTURA_RECIBIDA},acuerdo.eq.${ACUERDO_FACTURAR_MANUAL}`)
           .order('fecha', { ascending: true })
           .order('id_mov', { ascending: true })
           .range(from, from + pageSize - 1);
@@ -106,11 +109,15 @@ export default function CuentaFacturasPrestadores({
         movsAux = dataMovsAux || [];
       }
 
+      const mapaManual = construirMapaFacturarManual(limpios);
+      const movsPrest = limpios.filter(m => m.acuerdo !== ACUERDO_FACTURAR_MANUAL);
+
       setPagosMap(mapaPagos);
+      setManualFacturarMap(mapaManual);
       setPacientesExcluidosIds(idsPacExcluidos);
       setAuxiliaresFacturables(auxIncluidos);
       setMovsAuxiliares(movsAux);
-      setMovsDesdeNov(limpios);
+      setMovsDesdeNov(movsPrest);
     } catch (err) {
       console.error('Error cargando cuenta de facturas:', err);
       setMensaje({ texto: 'Error al cargar datos de facturación: ' + err.message, tipo: 'error' });
@@ -186,13 +193,16 @@ export default function CuentaFacturasPrestadores({
       }
 
       const haber = parsearDecimalSeguro(m.haber);
-      if (haber > 0 && String(m.fecha || '').slice(0, 10) >= FECHA_INICIO_FACTURACION_PRESTADORES) {
-        entry.totalHonorariosNov = Math.round((entry.totalHonorariosNov + haber) * 100) / 100;
+      if (String(m.fecha || '').slice(0, 10) >= FECHA_INICIO_FACTURACION_PRESTADORES) {
+        if (haber > 0) {
+          entry.totalHonorariosNov = Math.round((entry.totalHonorariosNov + haber) * 100) / 100;
+        }
         const aFacturar = calcularMontoFacturarMovimiento(
           m,
           pagosMap,
           entry.prestador.nombre_prestador,
-          pacientesExcluidosIds
+          pacientesExcluidosIds,
+          manualFacturarMap
         );
         if (aFacturar > 0) {
           entry.totalDebeFacturar = Math.round((entry.totalDebeFacturar + aFacturar) * 100) / 100;
@@ -258,7 +268,7 @@ export default function CuentaFacturasPrestadores({
         };
       })
       .sort((a, b) => b.pendienteFacturar - a.pendienteFacturar || a.prestador.nombre_prestador.localeCompare(b.prestador.nombre_prestador));
-  }, [prestadoresObligados, auxiliaresFacturables, movsDesdeNov, movsAuxiliares, pagosMap, pacientesExcluidosIds]);
+  }, [prestadoresObligados, auxiliaresFacturables, movsDesdeNov, movsAuxiliares, pagosMap, manualFacturarMap, pacientesExcluidosIds]);
 
   const resumenFiltrado = useMemo(() => {
     return resumenPorPrestador.filter(item => {
