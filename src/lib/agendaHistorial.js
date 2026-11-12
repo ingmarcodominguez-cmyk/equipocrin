@@ -401,6 +401,17 @@ export async function obtenerSesionesPacienteParaPeriodo(uuidPaciente, periodoYY
     })
   ));
 
+  // Si el período solicitado es el mes en curso (actual), la distribución toma directamente
+  // las sesiones ACTIVAS vigentes de la agenda (reflejando inmediatamente cualquier alta/baja actual)
+  if (periodoYYYYMM === obtenerPeriodoActual() && activas.length > 0) {
+    return {
+      sesiones: activas,
+      origen: huboCambioMitadMes ? 'CAMBIO_AGENDA' : 'ACTIVO_VIGENTE',
+      periodo: periodoYYYYMM,
+      huboCambiosEnMes: huboCambioMitadMes
+    };
+  }
+
   if (snapshotsMes.length > 0) {
     return {
       sesiones: snapshotsMes,

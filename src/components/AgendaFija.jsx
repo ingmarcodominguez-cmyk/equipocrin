@@ -260,6 +260,7 @@ function AgendaFija({ userData }) {
 
         if (data) setSesiones(prev => [...prev, ...data]);
       }
+      try { await sincronizarSnapshotMesPaciente(p.id, obtenerPeriodoActual()); } catch (_) {}
       setModalEdicionAbierto(false);
       alert(`✅ Sesión guardada (vigente desde ${vigenciaFinal}, con historial protegido)`);
     } catch (e) {
@@ -277,6 +278,7 @@ function AgendaFija({ userData }) {
         const archivoCreado = await archivarCambioSesion(s, 'ELIMINADO');
         const { error } = await supabase.from('sesiones_fijas').delete().eq('id', s.id);
         if (error) throw error;
+        try { await sincronizarSnapshotMesPaciente(s.paciente_id, obtenerPeriodoActual()); } catch (_) {}
         setSesiones(prev => {
           const sinBorrada = prev.filter(item => item.id !== s.id);
           return archivoCreado ? [...sinBorrada, archivoCreado] : sinBorrada;
@@ -316,6 +318,7 @@ function AgendaFija({ userData }) {
         .update(updateFields)
         .eq('id', s.id);
       if (error) throw error;
+      try { await sincronizarSnapshotMesPaciente(s.paciente_id, obtenerPeriodoActual()); } catch (_) {}
 
       setSesiones(prev => {
         const updated = prev.map(item => item.id === s.id ? { ...item, ...updateFields } : item);
