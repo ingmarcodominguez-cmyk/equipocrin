@@ -5,7 +5,7 @@ import {
   ACUERDO_FACTURA_RECIBIDA,
   FECHA_INICIO_FACTURACION_PRESTADORES,
   calcularMontoFacturarMovimiento,
-  esVivianaJimenezNombre,
+  esPrestadorExcluidoFacturacion,
   fetchMapaPagosPorIds
 } from '../lib/facturacionPrestadores';
 
@@ -438,7 +438,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
         '';
 
       let pagosMap = {};
-      if (!esVivianaJimenezNombre(nombrePrestador)) {
+      if (!esPrestadorExcluidoFacturacion(nombrePrestador)) {
         const idPagosNov = filtered
           .filter(
             m =>
@@ -972,9 +972,9 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                 <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#7e22ce', textTransform: 'uppercase' }}>
                   🧾 A Facturar (Nov+)
                 </span>
-                {esVivianaJimenezNombre(prestadorSeleccionado?.nombre_prestador) ? (
+                {esPrestadorExcluidoFacturacion(prestadorSeleccionado?.nombre_prestador) ? (
                   <span style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', color: '#6b21a8', marginTop: '8px' }}>
-                    Excluida (Receptora CRIN)
+                    Excluida de facturación
                   </span>
                 ) : (
                   <span style={{ display: 'block', fontSize: '20px', fontWeight: 'bold', color: '#6b21a8', marginTop: '6px' }}>

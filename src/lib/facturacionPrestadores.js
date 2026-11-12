@@ -38,6 +38,17 @@ export function esVivianaJimenezNombre(nombre) {
   return n.includes('VIVIANA') && n.includes('JIMENEZ');
 }
 
+export function esPrestadorExcluidoFacturacion(nombre) {
+  const n = String(nombre || '')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return (
+    (n.includes('VIVIANA') && n.includes('JIMENEZ')) ||
+    (n.includes('VALERIA') && n.includes('MEDINA'))
+  );
+}
+
 /**
  * Calcula la proporción [0..1] de un registro de pagos_motor que corresponde
  * a medios bancarizados / electrónicos (Transferencia, Depósito, QR Mercado Pago),
@@ -119,10 +130,10 @@ export async function fetchMapaPagosPorIds(idPagos = []) {
 
 /**
  * Calcula el importe que debe facturar el prestador por un movimiento individual.
- * Solo aplica desde FECHA_INICIO_FACTURACION_PRESTADORES ('2026-11-01') y excluye a Viviana Jiménez.
+ * Solo aplica desde FECHA_INICIO_FACTURACION_PRESTADORES ('2026-11-01') y excluye a prestadores exceptuados (Viviana Jiménez, Dra. Valeria Medina).
  */
 export function calcularMontoFacturarMovimiento(mov, pagosMap, nombrePrestador) {
-  if (!mov || esVivianaJimenezNombre(nombrePrestador)) return 0;
+  if (!mov || esPrestadorExcluidoFacturacion(nombrePrestador)) return 0;
   if (mov.acuerdo === ACUERDO_FACTURA_RECIBIDA) return 0;
   const fecha = String(mov.fecha || '').slice(0, 10);
   if (!fecha || fecha < FECHA_INICIO_FACTURACION_PRESTADORES) return 0;

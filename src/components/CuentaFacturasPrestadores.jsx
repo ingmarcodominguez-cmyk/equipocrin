@@ -4,7 +4,7 @@ import {
   FECHA_INICIO_FACTURACION_PRESTADORES,
   ACUERDO_FACTURA_RECIBIDA,
   parsearDecimalSeguro,
-  esVivianaJimenezNombre,
+  esPrestadorExcluidoFacturacion,
   fetchMapaPagosPorIds,
   calcularMontoFacturarMovimiento
 } from '../lib/facturacionPrestadores';
@@ -20,7 +20,7 @@ export default function CuentaFacturasPrestadores({
   const [movsDesdeNov, setMovsDesdeNov] = useState([]);
   const [pagosMap, setPagosMap] = useState({});
   const [prestadorFocusId, setPrestadorFocusId] = useState(
-    prestadorInicial && !esVivianaJimenezNombre(prestadorInicial.nombre_prestador)
+    prestadorInicial && !esPrestadorExcluidoFacturacion(prestadorInicial.nombre_prestador)
       ? String(prestadorInicial.id_prestador)
       : ''
   );
@@ -40,7 +40,7 @@ export default function CuentaFacturasPrestadores({
   const [guardandoFactura, setGuardandoFactura] = useState(false);
 
   const prestadoresObligados = useMemo(
-    () => (prestadores || []).filter(p => !esVivianaJimenezNombre(p.nombre_prestador)),
+    () => (prestadores || []).filter(p => !esPrestadorExcluidoFacturacion(p.nombre_prestador)),
     [prestadores]
   );
 
@@ -337,7 +337,7 @@ export default function CuentaFacturasPrestadores({
             🧾 Cuenta Corriente de Facturación de Prestadores
           </h3>
           <p style={{ margin: '4px 0 0 0', fontSize: '12.5px', color: '#6b21a8' }}>
-            Control de lo que cada profesional debe facturar al Centro CRIN (Transferencias + QR Mercado Pago desde <strong>01/11/2026</strong>) vs. facturas recibidas. Excluye a Viviana Jiménez.
+            Control de lo que cada profesional debe facturar al Centro CRIN (Transferencias + QR Mercado Pago desde <strong>01/11/2026</strong>) vs. facturas recibidas. Excluye a Viviana Jiménez y Dra. Valeria Medina.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
