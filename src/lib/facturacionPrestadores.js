@@ -49,6 +49,34 @@ export function esPrestadorExcluidoFacturacion(nombre) {
   );
 }
 
+export function esPacienteExcluidoFacturacion(texto) {
+  const n = String(texto || '')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return n.includes('QUEVEDO') && n.includes('GUADALUPE');
+}
+
+export async function fetchIdsPacientesExcluidosFacturacion() {
+  try {
+    const { data, error } = await supabase
+      .from('pacientes_motor')
+      .select('id_paciente, nombre_apellido')
+      .ilike('nombre_apellido', '%QUEVEDO%');
+    if (error) throw error;
+    const ids = new Set();
+    (data || []).forEach(p => {
+      if (esPacienteExcluidoFacturacion(p.nombre_apellido)) {
+        ids.add(String(p.id_paciente));
+      }
+    });
+    return ids;
+  } catch (err) {
+    console.warn('No se pudieron consultar pacientes excluidos de facturación:', err);
+    return new Set();
+  }
+}
+
 /**
  * Calcula la proporción [0..1] de un registro de pagos_motor que corresponde
  * a medios bancarizados / electrónicos (Transferencia, Depósito, QR Mercado Pago),
@@ -130,11 +158,21 @@ export async function fetchMapaPagosPorIds(idPagos = []) {
 
 /**
  * Calcula el importe que debe facturar el prestador por un movimiento individual.
- * Solo aplica desde FECHA_INICIO_FACTURACION_PRESTADORES ('2026-11-01') y excluye a prestadores exceptuados (Viviana Jiménez, Dra. Valeria Medina).
+ * Solo aplica desde FECHA_INICIO_FACTURACION_PRESTADORES ('2026-11-01') y excluye a prestadores/pacientes exceptuados
+ * (Viviana Jiménez, Dra. Valeria Medina y paciente Quevedo Guadalupe).
  */
-export function calcularMontoFacturarMovimiento(mov, pagosMap, nombrePrestador) {
+export function calcularMontoFacturarMovimiento(mov, pagosMap, nombrePrestador, pacientesExcluidosIds = null) {
   if (!mov || esPrestadorExcluidoFacturacion(nombrePrestador)) return 0;
   if (mov.acuerdo === ACUERDO_FACTURA_RECIBIDA) return 0;
+  if (esPacienteExcluidoFacturacion(mov.concepto)) return 0;
+  if (
+    pacientesExcluidosIds &&
+    mov.id_paciente !== null &&
+    mov.id_paciente !== undefined &&
+    pacientesExcluidosIds.has(String(mov.id_paciente))
+  ) {
+    return 0;
+  }
   const fecha = String(mov.fecha || '').slice(0, 10);
   if (!fecha || fecha < FECHA_INICIO_FACTURACION_PRESTADORES) return 0;
   const haber = parsearDecimalSeguro(mov.haber);

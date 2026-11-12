@@ -6,6 +6,7 @@ import {
   parsearDecimalSeguro,
   esPrestadorExcluidoFacturacion,
   fetchMapaPagosPorIds,
+  fetchIdsPacientesExcluidosFacturacion,
   calcularMontoFacturarMovimiento
 } from '../lib/facturacionPrestadores';
 
@@ -19,6 +20,7 @@ export default function CuentaFacturasPrestadores({
   const [cargando, setCargando] = useState(true);
   const [movsDesdeNov, setMovsDesdeNov] = useState([]);
   const [pagosMap, setPagosMap] = useState({});
+  const [pacientesExcluidosIds, setPacientesExcluidosIds] = useState(() => new Set());
   const [prestadorFocusId, setPrestadorFocusId] = useState(
     prestadorInicial && !esPrestadorExcluidoFacturacion(prestadorInicial.nombre_prestador)
       ? String(prestadorInicial.id_prestador)
@@ -79,8 +81,12 @@ export default function CuentaFacturasPrestadores({
         .filter(m => parsearDecimalSeguro(m.haber) > 0 && m.id_pago)
         .map(m => m.id_pago);
 
-      const mapaPagos = await fetchMapaPagosPorIds(idPagos);
+      const [mapaPagos, idsPacExcluidos] = await Promise.all([
+        fetchMapaPagosPorIds(idPagos),
+        fetchIdsPacientesExcluidosFacturacion()
+      ]);
       setPagosMap(mapaPagos);
+      setPacientesExcluidosIds(idsPacExcluidos);
       setMovsDesdeNov(limpios);
     } catch (err) {
       console.error('Error cargando cuenta de facturas:', err);
@@ -131,7 +137,12 @@ export default function CuentaFacturasPrestadores({
       const haber = parsearDecimalSeguro(m.haber);
       if (haber > 0 && String(m.fecha || '').slice(0, 10) >= FECHA_INICIO_FACTURACION_PRESTADORES) {
         entry.totalHonorariosNov = Math.round((entry.totalHonorariosNov + haber) * 100) / 100;
-        const aFacturar = calcularMontoFacturarMovimiento(m, pagosMap, entry.prestador.nombre_prestador);
+        const aFacturar = calcularMontoFacturarMovimiento(
+          m,
+          pagosMap,
+          entry.prestador.nombre_prestador,
+          pacientesExcluidosIds
+        );
         if (aFacturar > 0) {
           entry.totalDebeFacturar = Math.round((entry.totalDebeFacturar + aFacturar) * 100) / 100;
           entry.movimientosCuenta.push({
@@ -337,7 +348,7 @@ export default function CuentaFacturasPrestadores({
             🧾 Cuenta Corriente de Facturación de Prestadores
           </h3>
           <p style={{ margin: '4px 0 0 0', fontSize: '12.5px', color: '#6b21a8' }}>
-            Control de lo que cada profesional debe facturar al Centro CRIN (Transferencias + QR Mercado Pago desde <strong>01/11/2026</strong>) vs. facturas recibidas. Excluye a Viviana Jiménez y Dra. Valeria Medina.
+            Control de lo que cada profesional debe facturar al Centro CRIN (Transferencias + QR Mercado Pago desde <strong>01/11/2026</strong>) vs. facturas recibidas. Excluye a Viviana Jiménez, Dra. Valeria Medina y paciente Quevedo Guadalupe.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>

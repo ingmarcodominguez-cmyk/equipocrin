@@ -6,7 +6,8 @@ import {
   FECHA_INICIO_FACTURACION_PRESTADORES,
   calcularMontoFacturarMovimiento,
   esPrestadorExcluidoFacturacion,
-  fetchMapaPagosPorIds
+  fetchMapaPagosPorIds,
+  fetchIdsPacientesExcluidosFacturacion
 } from '../lib/facturacionPrestadores';
 
 export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
@@ -438,6 +439,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
         '';
 
       let pagosMap = {};
+      let pacientesExcluidosIds = new Set();
       if (!esPrestadorExcluidoFacturacion(nombrePrestador)) {
         const idPagosNov = filtered
           .filter(
@@ -448,7 +450,12 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
           )
           .map(m => m.id_pago);
         if (idPagosNov.length > 0) {
-          pagosMap = await fetchMapaPagosPorIds(idPagosNov);
+          const [mapaP, idsPacExcl] = await Promise.all([
+            fetchMapaPagosPorIds(idPagosNov),
+            fetchIdsPacientesExcluidosFacturacion()
+          ]);
+          pagosMap = mapaP;
+          pacientesExcluidosIds = idsPacExcl;
         }
       }
 
@@ -458,7 +465,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
         const debe = parsearDecimal(m.debe);
         const haber = parsearDecimal(m.haber);
         saldoAcumulado += (haber - debe);
-        const montoFacturar = calcularMontoFacturarMovimiento(m, pagosMap, nombrePrestador);
+        const montoFacturar = calcularMontoFacturarMovimiento(m, pagosMap, nombrePrestador, pacientesExcluidosIds);
         return {
           ...m,
           saldoAcumulado: saldoAcumulado,
