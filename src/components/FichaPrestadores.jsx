@@ -1,5 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import CuentaFacturasPrestadores from './CuentaFacturasPrestadores';
+import {
+  ACUERDO_FACTURA_RECIBIDA,
+  FECHA_INICIO_FACTURACION_PRESTADORES,
+  calcularMontoFacturarMovimiento,
+  esVivianaJimenezNombre,
+  fetchMapaPagosPorIds
+} from '../lib/facturacionPrestadores';
 
 export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
   const parsearDecimal = (val) => {
@@ -61,6 +69,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
   const [cargandoGlobal, setCargandoGlobal] = useState(false);
   const [busquedaRealizada, setBusquedaRealizada] = useState(false);
   const [esCelular, setEsCelular] = useState(() => typeof window !== 'undefined' ? window.innerWidth <= 768 : false);
+  const [vistaFacturacion, setVistaFacturacion] = useState(false);
 
   useEffect(() => {
     const handleResize = () => setEsCelular(window.innerWidth <= 768);
@@ -132,7 +141,9 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
           revertedPagoIds.add(m.id_pago);
         }
       });
-      const filtered = allData.filter(m => !m.id_pago || !revertedPagoIds.has(m.id_pago));
+      const filtered = allData.filter(
+        m => m.acuerdo !== ACUERDO_FACTURA_RECIBIDA && (!m.id_pago || !revertedPagoIds.has(m.id_pago))
+      );
 
       setGlobalResults(filtered);
       setBusquedaRealizada(true);
@@ -292,7 +303,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
 
   useEffect(() => {
     if (prestadorSeleccionado) {
-      cargarMovimientos(prestadorSeleccionado.id_prestador);
+      cargarMovimientos(prestadorSeleccionado.id_prestador, prestadorSeleccionado.nombre_prestador);
     }
   }, [prestadorSeleccionado]);
 
@@ -380,7 +391,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
   };
 
   // Cargar movimientos detallados del prestador seleccionado
-  const cargarMovimientos = async (idPrestador) => {
+  const cargarMovimientos = async (idPrestador, nombrePrestadorParam = '') => {
     setCargandoMovimientos(true);
     try {
       let data = [];
@@ -416,7 +427,30 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
         }
       });
 
-      const filtered = (data || []).filter(m => !m.id_pago || !revertedPagoIds.has(m.id_pago));
+      const filtered = (data || []).filter(
+        m => m.acuerdo !== ACUERDO_FACTURA_RECIBIDA && (!m.id_pago || !revertedPagoIds.has(m.id_pago))
+      );
+
+      const nombrePrestador =
+        nombrePrestadorParam ||
+        prestadores.find(p => p.id_prestador === idPrestador)?.nombre_prestador ||
+        prestadorSeleccionado?.nombre_prestador ||
+        '';
+
+      let pagosMap = {};
+      if (!esVivianaJimenezNombre(nombrePrestador)) {
+        const idPagosNov = filtered
+          .filter(
+            m =>
+              m.id_pago &&
+              String(m.fecha || '').slice(0, 10) >= FECHA_INICIO_FACTURACION_PRESTADORES &&
+              parsearDecimal(m.haber) > 0
+          )
+          .map(m => m.id_pago);
+        if (idPagosNov.length > 0) {
+          pagosMap = await fetchMapaPagosPorIds(idPagosNov);
+        }
+      }
 
       // Calcular saldo acumulado cronológicamente
       let saldoAcumulado = 0;
@@ -424,9 +458,11 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
         const debe = parsearDecimal(m.debe);
         const haber = parsearDecimal(m.haber);
         saldoAcumulado += (haber - debe);
+        const montoFacturar = calcularMontoFacturarMovimiento(m, pagosMap, nombrePrestador);
         return {
           ...m,
-          saldoAcumulado: saldoAcumulado
+          saldoAcumulado: saldoAcumulado,
+          montoFacturar
         };
       });
 
@@ -445,11 +481,12 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
     const BOM = "\uFEFF";
     let csv = "sep=;\n";
     csv += `Historial Completo - Profesional: ${nombrePrestador}\n\n`;
-    csv += "Fecha;Concepto;Acuerdo;Debe ($);Haber ($);Saldo Acumulado ($)\r\n";
+    csv += "Fecha;Concepto;Acuerdo;Debe ($);Haber ($);Saldo Acumulado ($);A Facturar ($)\r\n";
 
     movs.forEach(m => {
       const valDebe = parsearDecimal(m.debe);
       const valHaber = parsearDecimal(m.haber);
+      const valFacturar = parsearDecimal(m.montoFacturar);
 
       const fecha = m.fecha ? new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR') : 'S/D';
       const concepto = (m.concepto || '').replace(/;/g, ',');
@@ -457,8 +494,9 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
       const debeStr = valDebe > 0 ? valDebe.toFixed(2).replace('.', ',') : '';
       const haberStr = valHaber > 0 ? valHaber.toFixed(2).replace('.', ',') : '';
       const saldoStr = (m.saldoAcumulado !== undefined ? m.saldoAcumulado : 0).toFixed(2).replace('.', ',');
+      const facturarStr = valFacturar > 0 ? valFacturar.toFixed(2).replace('.', ',') : '';
       
-      csv += `${fecha};${concepto};${acuerdo};${debeStr};${haberStr};${saldoStr}\r\n`;
+      csv += `${fecha};${concepto};${acuerdo};${debeStr};${haberStr};${saldoStr};${facturarStr}\r\n`;
     });
 
     // Descargar el archivo
@@ -604,6 +642,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
   const totalHaber = movimientos.reduce((acc, m) => acc + parsearDecimal(m.haber), 0);
   const totalDebe = movimientos.reduce((acc, m) => acc + parsearDecimal(m.debe), 0);
   const saldoFinal = totalHaber - totalDebe;
+  const totalAFacturar = movimientos.reduce((acc, m) => acc + parsearDecimal(m.montoFacturar), 0);
 
   const movimientosFiltrados = movimientos.filter(m => {
     if (!filtroConcepto.trim()) return true;
@@ -616,10 +655,23 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
   const totalDebeFiltrado = movimientosFiltrados.reduce((sum, m) => sum + parsearDecimal(m.debe), 0);
   const totalHaberFiltrado = movimientosFiltrados.reduce((sum, m) => sum + parsearDecimal(m.haber), 0);
   const balanceFiltrado = totalHaberFiltrado - totalDebeFiltrado;
+  const totalAFacturarFiltrado = movimientosFiltrados.reduce((sum, m) => sum + parsearDecimal(m.montoFacturar), 0);
 
   const globalTotalDebe = globalResults.reduce((sum, m) => sum + parsearDecimal(m.debe), 0);
   const globalTotalHaber = globalResults.reduce((sum, m) => sum + parsearDecimal(m.haber), 0);
   const globalBalance = globalTotalHaber - globalTotalDebe;
+
+  if (vistaFacturacion) {
+    return (
+      <CuentaFacturasPrestadores
+        prestadores={prestadores}
+        prestadorInicial={prestadorSeleccionado}
+        usuario={usuario}
+        esCelular={esCelular}
+        onVolverExtracto={() => setVistaFacturacion(false)}
+      />
+    );
+  }
 
   return (
     <div style={{ background: '#ffffff', padding: esCelular ? '14px 10px' : '30px', borderRadius: esCelular ? '12px' : '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b', boxSizing: 'border-box', overflowX: 'hidden', width: '100%', maxWidth: '100%' }}>
@@ -631,7 +683,15 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
           </h2>
           <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>Gestioná honorarios, pagos, gastos y saldos corrientes de los profesionales.</p>
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexDirection: esCelular ? 'column' : 'row' }}>
+        <div style={{ display: 'flex', gap: '10px', flexDirection: esCelular ? 'column' : 'row', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setVistaFacturacion(true)}
+            style={{ background: '#7e22ce', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', transition: 'background 0.2s' }}
+            onMouseOver={(e) => e.target.style.background = '#6b21a8'}
+            onMouseOut={(e) => e.target.style.background = '#7e22ce'}
+          >
+            🧾 Cuenta de Facturas
+          </button>
           {tieneAccesoReporte && (
             <button
               onClick={() => {
@@ -869,7 +929,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
 
       {prestadorSeleccionado && (
         <div>
-          <div style={{ display: 'grid', gridTemplateColumns: esCelular ? '1fr' : '1fr 1fr 1fr', gap: esCelular ? '12px' : '20px', marginBottom: '25px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: esCelular ? '1fr' : 'repeat(4, 1fr)', gap: esCelular ? '12px' : '20px', marginBottom: '25px' }}>
             
             <div style={{ padding: '20px', borderRadius: '12px', background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '1px solid #bfdbfe', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -905,6 +965,29 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
               <span style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginTop: '4px' }}>
                 Adelantos + Liquidaciones + Ajustes de débito
               </span>
+            </div>
+
+            <div style={{ padding: '20px', borderRadius: '12px', background: '#faf5ff', border: '1px solid #d8b4fe', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#7e22ce', textTransform: 'uppercase' }}>
+                  🧾 A Facturar (Nov+)
+                </span>
+                {esVivianaJimenezNombre(prestadorSeleccionado?.nombre_prestador) ? (
+                  <span style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', color: '#6b21a8', marginTop: '8px' }}>
+                    Excluida (Receptora CRIN)
+                  </span>
+                ) : (
+                  <span style={{ display: 'block', fontSize: '20px', fontWeight: 'bold', color: '#6b21a8', marginTop: '6px' }}>
+                    ${totalAFacturar.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => setVistaFacturacion(true)}
+                style={{ marginTop: '8px', background: '#7e22ce', color: '#fff', border: 'none', padding: '5px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold', alignSelf: 'flex-start' }}
+              >
+                Ver Cuenta de Facturas →
+              </button>
             </div>
           </div>
 
@@ -1071,7 +1154,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                 )}
               </div>
               {filtroConcepto && (
-                <div style={{ display: 'grid', gridTemplateColumns: esCelular ? '1fr' : '1fr 1fr 1fr', gap: '10px', marginTop: '5px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: esCelular ? '1fr' : 'repeat(4, 1fr)', gap: '10px', marginTop: '5px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
                   <div style={{ background: '#fff', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
                     <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Total Debe (Filtro)</span>
                     <h4 style={{ margin: '4px 0 0 0', fontSize: '15px', color: '#b91c1c', fontWeight: 'bold' }}>
@@ -1088,6 +1171,12 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                     <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Saldo Neto (Filtro)</span>
                     <h4 style={{ margin: '4px 0 0 0', fontSize: '15px', color: balanceFiltrado >= 0 ? '#15803d' : '#b91c1c', fontWeight: 'bold' }}>
                       ${balanceFiltrado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </h4>
+                  </div>
+                  <div style={{ background: '#faf5ff', padding: '10px', borderRadius: '8px', border: '1px solid #d8b4fe', textAlign: 'center' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#7e22ce', textTransform: 'uppercase' }}>A Facturar (Filtro)</span>
+                    <h4 style={{ margin: '4px 0 0 0', fontSize: '15px', color: '#6b21a8', fontWeight: 'bold' }}>
+                      ${totalAFacturarFiltrado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </h4>
                   </div>
                 </div>
@@ -1110,6 +1199,7 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                       <th style={{ padding: '12px 10px' }}>Acuerdo / Ref</th>
                       <th style={{ padding: '12px 10px', textAlign: 'right' }}>Debe (Pagos/Gastos)</th>
                       <th style={{ padding: '12px 10px', textAlign: 'right' }}>Haber (Honorarios)</th>
+                      <th style={{ padding: '12px 10px', textAlign: 'right', color: '#7e22ce' }}>Facturar (Nov+)</th>
                       <th style={{ padding: '12px 10px', textAlign: 'right' }}>Saldo Acumulado</th>
                       <th style={{ padding: '12px 10px', textAlign: 'center', width: '90px' }}>Acciones</th>
                     </tr>
@@ -1135,7 +1225,10 @@ export default function FichaPrestadores({ onVolver, usuario, userEmail }) {
                             {valDebe > 0 ? `$${valDebe.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
                           </td>
                           <td style={{ padding: '10px', textAlign: 'right', color: valHaber > 0 ? '#15803d' : '#94a3b8', fontWeight: '600' }}>
-                            {valHaber > 0 ? `$${valHaber.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                            {valHaber > 0 ? `${valHaber.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                          </td>
+                          <td style={{ padding: '10px', textAlign: 'right', color: m.montoFacturar > 0 ? '#7e22ce' : '#94a3b8', fontWeight: m.montoFacturar > 0 ? '700' : '400' }}>
+                            {m.montoFacturar > 0 ? `${m.montoFacturar.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
                           </td>
                           <td style={{ padding: '10px', textAlign: 'right', color: m.saldoAcumulado >= 0 ? '#15803d' : '#b91c1c', fontWeight: 'bold' }}>
                             ${m.saldoAcumulado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
