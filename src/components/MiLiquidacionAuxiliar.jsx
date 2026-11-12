@@ -386,7 +386,7 @@ export default function MiLiquidacionAuxiliar({ userData, onVolver, esModal = fa
 
       if (error) throw error;
 
-      const movs = data || [];
+      const movs = (data || []).filter(m => m.periodo !== 'FACTURA_RECIBIDA');
       let saldoAcumulado = 0;
       const movsConSaldo = movs.map(m => {
         const debe = parsearDecimal(m.debe) || 0;

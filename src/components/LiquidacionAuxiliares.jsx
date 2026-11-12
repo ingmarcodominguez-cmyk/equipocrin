@@ -260,7 +260,9 @@ export default function LiquidacionAuxiliares({ onVolver, usuario }) {
       if (error) throw error;
 
       let saldoAcumulado = 0;
-      const conSaldo = (data || []).map(m => {
+      const conSaldo = (data || [])
+        .filter(m => m.periodo !== 'FACTURA_RECIBIDA')
+        .map(m => {
         const debe = parsearDecimal(m.debe) || 0;
         const haber = parsearDecimal(m.haber) || 0;
         saldoAcumulado += (debe - haber);

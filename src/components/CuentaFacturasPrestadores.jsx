@@ -5,6 +5,9 @@ import {
   ACUERDO_FACTURA_RECIBIDA,
   parsearDecimalSeguro,
   esPrestadorExcluidoFacturacion,
+  esAuxiliarIncluidoFacturacion,
+  esPeriodoAuxiliarFacturable,
+  formatearConceptoLiquidacionAuxiliar,
   fetchMapaPagosPorIds,
   fetchIdsPacientesExcluidosFacturacion,
   calcularMontoFacturarMovimiento
@@ -19,11 +22,13 @@ export default function CuentaFacturasPrestadores({
 }) {
   const [cargando, setCargando] = useState(true);
   const [movsDesdeNov, setMovsDesdeNov] = useState([]);
+  const [auxiliaresFacturables, setAuxiliaresFacturables] = useState([]);
+  const [movsAuxiliares, setMovsAuxiliares] = useState([]);
   const [pagosMap, setPagosMap] = useState({});
   const [pacientesExcluidosIds, setPacientesExcluidosIds] = useState(() => new Set());
   const [prestadorFocusId, setPrestadorFocusId] = useState(
     prestadorInicial && !esPrestadorExcluidoFacturacion(prestadorInicial.nombre_prestador)
-      ? String(prestadorInicial.id_prestador)
+      ? `P_${prestadorInicial.id_prestador}`
       : ''
   );
   const [busqueda, setBusqueda] = useState('');
@@ -81,12 +86,30 @@ export default function CuentaFacturasPrestadores({
         .filter(m => parsearDecimalSeguro(m.haber) > 0 && m.id_pago)
         .map(m => m.id_pago);
 
-      const [mapaPagos, idsPacExcluidos] = await Promise.all([
+      const [mapaPagos, idsPacExcluidos, auxResp] = await Promise.all([
         fetchMapaPagosPorIds(idPagos),
-        fetchIdsPacientesExcluidosFacturacion()
+        fetchIdsPacientesExcluidosFacturacion(),
+        supabase.from('auxiliares_motor').select('*').order('nombre', { ascending: true })
       ]);
+
+      const auxIncluidos = (auxResp.data || []).filter(esAuxiliarIncluidoFacturacion);
+      let movsAux = [];
+      if (auxIncluidos.length > 0) {
+        const idsAux = auxIncluidos.map(a => a.id_auxiliar);
+        const { data: dataMovsAux, error: errMovsAux } = await supabase
+          .from('movauxiliares_motor')
+          .select('*')
+          .in('id_auxiliar', idsAux)
+          .order('fecha', { ascending: true })
+          .order('id_mov', { ascending: true });
+        if (errMovsAux) throw errMovsAux;
+        movsAux = dataMovsAux || [];
+      }
+
       setPagosMap(mapaPagos);
       setPacientesExcluidosIds(idsPacExcluidos);
+      setAuxiliaresFacturables(auxIncluidos);
+      setMovsAuxiliares(movsAux);
       setMovsDesdeNov(limpios);
     } catch (err) {
       console.error('Error cargando cuenta de facturas:', err);
@@ -103,7 +126,11 @@ export default function CuentaFacturasPrestadores({
   const resumenPorPrestador = useMemo(() => {
     const mapa = {};
     prestadoresObligados.forEach(p => {
-      mapa[String(p.id_prestador)] = {
+      const rowKey = `P_${p.id_prestador}`;
+      mapa[rowKey] = {
+        rowKey,
+        tipoEntidad: 'PRESTADOR',
+        idEntidad: p.id_prestador,
         prestador: p,
         totalHonorariosNov: 0,
         totalDebeFacturar: 0,
@@ -114,8 +141,32 @@ export default function CuentaFacturasPrestadores({
       };
     });
 
+    auxiliaresFacturables.forEach(aux => {
+      const rowKey = `A_${aux.id_auxiliar}`;
+      const nombreUpper = String(aux.nombre || '').toUpperCase();
+      const sufijoTipo = aux.tipo_liq && !nombreUpper.includes(String(aux.tipo_liq).toUpperCase())
+        ? ` (${aux.tipo_liq})`
+        : '';
+      mapa[rowKey] = {
+        rowKey,
+        tipoEntidad: 'AUXILIAR',
+        idEntidad: aux.id_auxiliar,
+        prestador: {
+          id_prestador: rowKey,
+          nombre_prestador: `${aux.nombre || 'AUXILIAR'}${sufijoTipo}`,
+          especialidad: 'Auxiliar · Liquidación mensual (mes vencido desde 10/2026)'
+        },
+        totalHonorariosNov: 0,
+        totalDebeFacturar: 0,
+        totalFacturado: 0,
+        pendienteFacturar: 0,
+        cantFacturas: 0,
+        movimientosCuenta: []
+      };
+    });
+
     movsDesdeNov.forEach(m => {
-      const pid = String(m.id_prestador);
+      const pid = `P_${m.id_prestador}`;
       const entry = mapa[pid];
       if (!entry) return;
 
@@ -155,6 +206,43 @@ export default function CuentaFacturasPrestadores({
       }
     });
 
+    movsAuxiliares.forEach(m => {
+      const aid = `A_${m.id_auxiliar}`;
+      const entry = mapa[aid];
+      if (!entry) return;
+
+      if (m.periodo === ACUERDO_FACTURA_RECIBIDA || String(m.concepto || '').startsWith('Factura Recibida')) {
+        const montoRec = parsearDecimalSeguro(m.saldo) || parsearDecimalSeguro(m.debe) || parsearDecimalSeguro(m.haber);
+        if (montoRec > 0) {
+          entry.totalFacturado = Math.round((entry.totalFacturado + montoRec) * 100) / 100;
+          entry.cantFacturas += 1;
+          entry.movimientosCuenta.push({
+            ...m,
+            tipoFila: 'FACTURA_RECIBIDA',
+            debeFacturar: 0,
+            facturaRecibida: montoRec
+          });
+        }
+        return;
+      }
+
+      if ((m.concepto || '').toUpperCase().includes('LIQUIDACION') && esPeriodoAuxiliarFacturable(m.periodo)) {
+        const montoLiq = parsearDecimalSeguro(m.debe);
+        if (montoLiq > 0) {
+          entry.totalHonorariosNov = Math.round((entry.totalHonorariosNov + montoLiq) * 100) / 100;
+          entry.totalDebeFacturar = Math.round((entry.totalDebeFacturar + montoLiq) * 100) / 100;
+          entry.movimientosCuenta.push({
+            ...m,
+            concepto: formatearConceptoLiquidacionAuxiliar(m.periodo),
+            acuerdo: `Período ${m.periodo}`,
+            tipoFila: 'DEBE_FACTURAR',
+            debeFacturar: montoLiq,
+            facturaRecibida: 0
+          });
+        }
+      }
+    });
+
     return Object.values(mapa)
       .map(item => {
         const pendiente = Math.round((item.totalDebeFacturar - item.totalFacturado) * 100) / 100;
@@ -170,7 +258,7 @@ export default function CuentaFacturasPrestadores({
         };
       })
       .sort((a, b) => b.pendienteFacturar - a.pendienteFacturar || a.prestador.nombre_prestador.localeCompare(b.prestador.nombre_prestador));
-  }, [prestadoresObligados, movsDesdeNov, pagosMap]);
+  }, [prestadoresObligados, auxiliaresFacturables, movsDesdeNov, movsAuxiliares, pagosMap, pacientesExcluidosIds]);
 
   const resumenFiltrado = useMemo(() => {
     return resumenPorPrestador.filter(item => {
@@ -195,7 +283,7 @@ export default function CuentaFacturasPrestadores({
 
   const cuentaFocus = useMemo(() => {
     if (!prestadorFocusId) return null;
-    return resumenPorPrestador.find(r => String(r.prestador.id_prestador) === String(prestadorFocusId)) || null;
+    return resumenPorPrestador.find(r => r.rowKey === String(prestadorFocusId)) || null;
   }, [prestadorFocusId, resumenPorPrestador]);
 
   const movimientosDetalleFiltrados = useMemo(() => {
@@ -214,7 +302,7 @@ export default function CuentaFacturasPrestadores({
 
   const abrirModalCargarFactura = (item = cuentaFocus) => {
     if (item) {
-      setPrestadorFocusId(String(item.prestador.id_prestador));
+      setPrestadorFocusId(item.rowKey);
     }
     setFechaFactura(localStorage.getItem('crin_fecha_trabajo_simulada') || new Date().toISOString().split('T')[0]);
     setNroFactura('');
@@ -238,19 +326,47 @@ export default function CuentaFacturasPrestadores({
 
     setGuardandoFactura(true);
     try {
-      const registro = {
-        id_prestador: cuentaFocus.prestador.id_prestador,
-        fecha: fechaFactura || new Date().toISOString().split('T')[0],
-        concepto: `Factura Recibida #${nroFactura.trim()}${obsFactura.trim() ? ` (${obsFactura.trim()})` : ''}`,
-        debe: '0',
-        haber: '0',
-        saldo: montoNum.toFixed(2),
-        usuario: usuario || 'Sistema',
-        acuerdo: ACUERDO_FACTURA_RECIBIDA
-      };
+      const fechaReg = fechaFactura || new Date().toISOString().split('T')[0];
+      const conceptoFact = `Factura Recibida #${nroFactura.trim()}${obsFactura.trim() ? ` (${obsFactura.trim()})` : ''}`;
 
-      const { error } = await supabase.from('movprestadores_motor').insert([registro]);
-      if (error) throw error;
+      if (cuentaFocus.tipoEntidad === 'AUXILIAR') {
+        const { data: maxMovData, error: errMax } = await supabase
+          .from('movauxiliares_motor')
+          .select('id_mov')
+          .order('id_mov', { ascending: false })
+          .limit(1);
+        if (errMax) throw errMax;
+        const nextId = (maxMovData && maxMovData[0]?.id_mov ? maxMovData[0].id_mov : 0) + 1;
+
+        const registroAux = {
+          id_mov: nextId,
+          id_auxiliar: Number(cuentaFocus.idEntidad),
+          fecha: fechaReg,
+          concepto: conceptoFact,
+          periodo: ACUERDO_FACTURA_RECIBIDA,
+          debe: 0,
+          haber: 0,
+          saldo: montoNum,
+          fecha_registro: new Date().toISOString()
+        };
+
+        const { error } = await supabase.from('movauxiliares_motor').insert([registroAux]);
+        if (error) throw error;
+      } else {
+        const registro = {
+          id_prestador: cuentaFocus.idEntidad,
+          fecha: fechaReg,
+          concepto: conceptoFact,
+          debe: '0',
+          haber: '0',
+          saldo: montoNum.toFixed(2),
+          usuario: usuario || 'Sistema',
+          acuerdo: ACUERDO_FACTURA_RECIBIDA
+        };
+
+        const { error } = await supabase.from('movprestadores_motor').insert([registro]);
+        if (error) throw error;
+      }
 
       setFormFacturaAbierto(false);
       mostrarAlerta(`Factura #${nroFactura.trim()} ($${montoNum.toLocaleString('es-AR', { minimumFractionDigits: 2 })}) registrada en la cuenta de ${cuentaFocus.prestador.nombre_prestador}.`, 'exito');
@@ -269,7 +385,8 @@ export default function CuentaFacturasPrestadores({
       return;
     }
     try {
-      const { error } = await supabase.from('movprestadores_motor').delete().eq('id_mov', mov.id_mov);
+      const tabla = cuentaFocus?.tipoEntidad === 'AUXILIAR' ? 'movauxiliares_motor' : 'movprestadores_motor';
+      const { error } = await supabase.from(tabla).delete().eq('id_mov', mov.id_mov);
       if (error) throw error;
       mostrarAlerta('Factura eliminada de la cuenta.', 'exito');
       await cargarDatosFacturacion();
@@ -279,7 +396,10 @@ export default function CuentaFacturasPrestadores({
   };
 
   const copiarReclamoWhatsApp = (item) => {
-    const msg = `Hola ${item.prestador.nombre_prestador}, te paso el detalle de facturación al Centro CRIN (desde 01/11/2026 por transferencias y QR Mercado Pago):\n• Total a facturar: $${item.totalDebeFacturar.toLocaleString('es-AR', { minimumFractionDigits: 2 })}\n• Facturas presentadas: $${item.totalFacturado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}\n• Pendiente de facturar: $${item.pendienteFacturar.toLocaleString('es-AR', { minimumFractionDigits: 2 })}\n¡Gracias!`;
+    const detallePeriodo = item.tipoEntidad === 'AUXILIAR'
+      ? 'liquidaciones mensuales cerradas desde 10/2026 (mes vencido)'
+      : 'desde 01/11/2026 por transferencias y QR Mercado Pago';
+    const msg = `Hola ${item.prestador.nombre_prestador}, te paso el detalle de facturación al Centro CRIN (${detallePeriodo}):\n• Total a facturar: $${item.totalDebeFacturar.toLocaleString('es-AR', { minimumFractionDigits: 2 })}\n• Facturas presentadas: $${item.totalFacturado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}\n• Pendiente de facturar: $${item.pendienteFacturar.toLocaleString('es-AR', { minimumFractionDigits: 2 })}\n¡Gracias!`;
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(msg);
       mostrarAlerta('Resumen copiado para enviar por WhatsApp.', 'exito');
@@ -438,7 +558,7 @@ export default function CuentaFacturasPrestadores({
                 {resumenFiltrado.map(item => {
                   const debeMas = item.pendienteFacturar > 0.01;
                   return (
-                    <tr key={item.prestador.id_prestador} style={{ borderBottom: '1px solid #e2e8f0', background: debeMas ? '#fffdf7' : '#fff' }}>
+                    <tr key={item.rowKey} style={{ borderBottom: '1px solid #e2e8f0', background: debeMas ? '#fffdf7' : '#fff' }}>
                       <td style={{ padding: '10px 12px', fontWeight: 'bold', color: '#0f172a' }}>
                         {item.prestador.nombre_prestador}
                         {item.prestador.especialidad && (
@@ -463,7 +583,7 @@ export default function CuentaFacturasPrestadores({
                       <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                         <button
                           type="button"
-                          onClick={() => setPrestadorFocusId(String(item.prestador.id_prestador))}
+                          onClick={() => setPrestadorFocusId(item.rowKey)}
                           style={{ padding: '5px 10px', background: '#ede9fe', color: '#5b21b6', border: '1px solid #c4b5fd', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', marginRight: '6px' }}
                         >
                           📋 Ver Cuenta

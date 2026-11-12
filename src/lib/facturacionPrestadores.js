@@ -2,6 +2,7 @@ import { supabase } from './supabase.js';
 
 export const FECHA_INICIO_FACTURACION_PRESTADORES = '2026-11-01';
 export const ACUERDO_FACTURA_RECIBIDA = 'FACTURA_RECIBIDA';
+export const PERIODO_INICIO_FACTURACION_AUXILIARES = { mes: 10, anio: 2026 }; // Oct 2026 cerrada -> se factura en Nov 2026
 
 export function parsearDecimalSeguro(val) {
   if (val === null || val === undefined || val === '') return 0;
@@ -55,6 +56,56 @@ export function esPacienteExcluidoFacturacion(texto) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
   return n.includes('QUEVEDO') && n.includes('GUADALUPE');
+}
+
+export function esAuxiliarIncluidoFacturacion(aux) {
+  if (!aux) return false;
+  const n = String(aux.nombre || '')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const tipo = String(aux.tipo_liq || '').toUpperCase().trim();
+
+  if (n.includes('LUCIA') && n.includes('SORANE')) {
+    return n.includes('HORA') || tipo === 'HORA';
+  }
+  if (n.includes('OLIVERA') && n.includes('MARINA')) {
+    return true;
+  }
+  if (n.includes('MASCARE') && n.includes('HUGO')) {
+    return true;
+  }
+  return false;
+}
+
+export function esPeriodoAuxiliarFacturable(periodo) {
+  const str = String(periodo || '').trim();
+  const match = str.match(/^(\d{1,2})\/(\d{4})$/);
+  if (!match) return false;
+  const mes = parseInt(match[1], 10);
+  const anio = parseInt(match[2], 10);
+  if (isNaN(mes) || isNaN(anio)) return false;
+  return (
+    anio > PERIODO_INICIO_FACTURACION_AUXILIARES.anio ||
+    (anio === PERIODO_INICIO_FACTURACION_AUXILIARES.anio && mes >= PERIODO_INICIO_FACTURACION_AUXILIARES.mes)
+  );
+}
+
+export function formatearConceptoLiquidacionAuxiliar(periodo) {
+  const str = String(periodo || '').trim();
+  const match = str.match(/^(\d{1,2})\/(\d{4})$/);
+  if (!match) return `Liquidación Cerrada Auxiliar (${str})`;
+  let mes = parseInt(match[1], 10);
+  let anio = parseInt(match[2], 10);
+  let mesSig = mes + 1;
+  let anioSig = anio;
+  if (mesSig > 12) {
+    mesSig = 1;
+    anioSig += 1;
+  }
+  const mm = String(mes).padStart(2, '0');
+  const mmSig = String(mesSig).padStart(2, '0');
+  return `Liquidación Cerrada ${mm}/${anio} (a facturar en ${mmSig}/${anioSig})`;
 }
 
 export async function fetchIdsPacientesExcluidosFacturacion() {
