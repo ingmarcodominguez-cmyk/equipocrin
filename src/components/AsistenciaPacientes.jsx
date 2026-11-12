@@ -101,12 +101,18 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
     if (!s || !fechaStr) return false;
     const estadoUpper = (s.estado || 'ACTIVO').toUpperCase();
     const meta = parsearMetadataSesion(s);
+    const periodoF = fechaStr.slice(0, 7);
+    const dHoy = new Date();
+    const anioH = dHoy.getFullYear();
+    const mesH = String(dHoy.getMonth() + 1).padStart(2, '0');
+    const diaH = String(dHoy.getDate()).padStart(2, '0');
+    const hoyStr = `${anioH}-${mesH}-${diaH}`;
+    const periodoActual = hoyStr.slice(0, 7);
 
     if (estadoUpper === 'ACTIVO') {
-      if (meta.categoria === 'VIGENCIA' && meta.desde && fechaStr < meta.desde) {
-        return false;
-      }
-      return true;
+      // La sesión activa solo rige a partir de su vigencia o fecha de creación (nunca hacia atrás en el pasado)
+      const fechaInicio = meta.desde || (s.created_at ? String(s.created_at).slice(0, 10) : '2026-01-01');
+      return fechaStr >= fechaInicio;
     }
 
     if (estadoUpper === 'HISTORICO') {
@@ -116,15 +122,11 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
         return fechaStr >= desde && fechaStr <= hasta;
       }
       if (meta.categoria === 'HIST_MES') {
-        if (meta.periodo !== fechaStr.slice(0, 7)) return false;
-        const fueBajaAntes = bajasSesiones.some(b =>
-          b.dia === s.dia_semana &&
-          b.hora === s.hora &&
-          String(b.profesional_id) === String(s.profesional_id) &&
-          (!b.paciente_id || String(b.paciente_id) === String(s.paciente_id)) &&
-          b.hasta && b.hasta < fechaStr
-        );
-        return !fueBajaAntes;
+        // En meses históricos cerrados anteriores al mes en curso, el consolidado mensual define el cronograma
+        if (meta.periodo === periodoF && periodoF < periodoActual) {
+          return true;
+        }
+        return false;
       }
     }
 
