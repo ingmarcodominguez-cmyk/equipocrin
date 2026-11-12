@@ -9,6 +9,7 @@ import {
   calcularHastaAnterior,
   sincronizarSnapshotMesPaciente,
   obtenerFechaHoyISO,
+  obtenerFechaMananaISO,
   obtenerPeriodoActual,
   formatearPeriodoNombre
 } from '../lib/agendaHistorial.js';
@@ -29,14 +30,14 @@ function AgendaFija({ userData }) {
   const [horarioManual, setHorarioManual] = useState('');
   const [pacienteSeleccionado, setPacienteSeleccionado] = useState('');
   const [prestadorSeleccionado, setPrestadorSeleccionado] = useState('');
-  const [fechaVigencia, setFechaVigencia] = useState(obtenerFechaHoyISO());
+  const [fechaVigencia, setFechaVigencia] = useState(obtenerFechaMananaISO());
   const [editId, setEditId] = useState(null);
   const [modalCambioModalidad, setModalCambioModalidad] = useState({
     abierto: false,
     pacienteId: '',
     pacienteNombre: '',
     cantidadTurnos: 0,
-    fechaVigencia: obtenerFechaHoyISO()
+    fechaVigencia: obtenerFechaMananaISO()
   });
 
   // Filtros
@@ -187,8 +188,8 @@ function AgendaFija({ userData }) {
     const horaFinal = /^\d:\d{2}$/.test(horaBase) ? `0${horaBase}` : horaBase;
 
     setGuardando(true);
-    const hoy = obtenerFechaHoyISO();
-    const vigenciaFinal = fechaVigencia && /^\d{4}-\d{2}-\d{2}$/.test(fechaVigencia) ? fechaVigencia : hoy;
+    const manana = obtenerFechaMananaISO();
+    const vigenciaFinal = fechaVigencia && /^\d{4}-\d{2}-\d{2}$/.test(fechaVigencia) ? fechaVigencia : manana;
     const payload = {
       paciente_id: p.id,
       paciente_nombre: p.nombre,
@@ -306,7 +307,8 @@ function AgendaFija({ userData }) {
       if (!estaSuspendido) {
         archivoCreado = await archivarCambioSesion(s, 'SUSPENDIDO');
       } else {
-        updateFields.observaciones = construirObservacionVigencia(hoy);
+        const manana = obtenerFechaMananaISO();
+        updateFields.observaciones = construirObservacionVigencia(manana);
       }
 
       const { error } = await supabase
@@ -337,7 +339,7 @@ function AgendaFija({ userData }) {
       pacienteId: String(pacienteId),
       pacienteNombre: nombrePac,
       cantidadTurnos: sesionesDelPaciente.length,
-      fechaVigencia: obtenerFechaHoyISO()
+      fechaVigencia: obtenerFechaMananaISO()
     });
   }
 
@@ -349,9 +351,10 @@ function AgendaFija({ userData }) {
       return;
     }
 
+    const manana = obtenerFechaMananaISO();
     const vigenciaFinal = fechaModalidad && /^\d{4}-\d{2}-\d{2}$/.test(fechaModalidad)
       ? fechaModalidad
-      : obtenerFechaHoyISO();
+      : manana;
 
     try {
       setGuardando(true);
@@ -425,7 +428,7 @@ function AgendaFija({ userData }) {
   function iniciarEdicion(s) {
     setEditId(s.id); setDia(s.dia_semana); setHora(s.hora); setHorarioManual('');
     setPacienteSeleccionado(String(s.paciente_id)); setPrestadorSeleccionado(String(s.profesional_id));
-    setFechaVigencia(obtenerFechaHoyISO());
+    setFechaVigencia(obtenerFechaMananaISO());
   }
 
   // Separar sesiones vigentes (ACTIVO / SUSPENDIDO) de registros históricos (HISTORICO)

@@ -32,6 +32,22 @@ export function obtenerPeriodoActual() {
   return obtenerFechaHoyISO().slice(0, 7);
 }
 
+export function sumarUnDiaISO(fechaYYYYMMDD) {
+  const base = fechaYYYYMMDD && /^\d{4}-\d{2}-\d{2}$/.test(fechaYYYYMMDD)
+    ? fechaYYYYMMDD
+    : obtenerFechaHoyISO();
+  const d = new Date(`${base}T12:00:00`);
+  d.setDate(d.getDate() + 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function obtenerFechaMananaISO() {
+  return sumarUnDiaISO(obtenerFechaHoyISO());
+}
+
 export function obtenerUltimoDiaMesISO(periodoYYYYMM) {
   if (!periodoYYYYMM || !/^\d{4}-\d{2}$/.test(periodoYYYYMM)) return `${obtenerPeriodoActual()}-28`;
   const [anio, mes] = periodoYYYYMM.split('-').map(Number);
@@ -52,7 +68,7 @@ export function restarUnDiaISO(fechaYYYYMMDD) {
 export function calcularHastaAnterior(fechaNuevaVigencia, fechaDesdeOriginal) {
   const base = fechaNuevaVigencia && /^\d{4}-\d{2}-\d{2}$/.test(fechaNuevaVigencia)
     ? fechaNuevaVigencia
-    : obtenerFechaHoyISO();
+    : obtenerFechaMananaISO();
   const diaAnterior = restarUnDiaISO(base);
   if (fechaDesdeOriginal && /^\d{4}-\d{2}-\d{2}$/.test(fechaDesdeOriginal) && diaAnterior < fechaDesdeOriginal) {
     return fechaDesdeOriginal;
