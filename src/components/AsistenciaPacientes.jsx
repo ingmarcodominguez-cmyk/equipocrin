@@ -353,20 +353,14 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
     setGuardando(true);
     setMensaje({ texto: '', tipo: '' });
     try {
-      const pacientesAEnviar = pacientesCargados.filter(p => {
-        const estadoCambiado = p.estado !== 'Pendiente';
-        const tieneObs = Boolean(p.obs && p.obs.trim());
-        const yaExisteEnBD = pacientesGuardadosIds.has(p.id_paciente);
-        return estadoCambiado || tieneObs || yaExisteEnBD;
-      });
-
-      if (pacientesAEnviar.length === 0) {
-        setMensaje({ texto: "No hay asistencias marcadas para guardar.", tipo: "exito" });
+      if (pacientesCargados.length === 0) {
+        setMensaje({ texto: "No hay pacientes en la planilla para guardar.", tipo: "exito" });
         setGuardando(false);
         return;
       }
 
-      const recordsToUpsert = pacientesAEnviar.map(p => ({
+      // Guardar foto inmutable de todos los pacientes programados en este día
+      const recordsToUpsert = pacientesCargados.map(p => ({
         fecha: fechaTrabajo,
         id_paciente: p.id_paciente,
         paciente_nombre: p.paciente_nombre,
