@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { parsearMetadataSesion } from '../lib/agendaHistorial.js';
 
 export default function AsistenciaPacientes({ onVolver, usuario }) {
   const [fechaTrabajo, setFechaTrabajo] = useState(
@@ -96,6 +97,40 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
 
   const diaSemanaNombre = getDiaSemana(fechaTrabajo);
 
+  const sesionValidaEnFecha = (s, fechaStr, bajasSesiones = []) => {
+    if (!s || !fechaStr) return false;
+    const estadoUpper = (s.estado || 'ACTIVO').toUpperCase();
+    const meta = parsearMetadataSesion(s);
+
+    if (estadoUpper === 'ACTIVO') {
+      if (meta.categoria === 'VIGENCIA' && meta.desde && fechaStr < meta.desde) {
+        return false;
+      }
+      return true;
+    }
+
+    if (estadoUpper === 'HISTORICO') {
+      if (meta.categoria === 'HIST_CAMBIO') {
+        const desde = meta.desde || '2020-01-01';
+        const hasta = meta.hasta || '2099-12-31';
+        return fechaStr >= desde && fechaStr <= hasta;
+      }
+      if (meta.categoria === 'HIST_MES') {
+        if (meta.periodo !== fechaStr.slice(0, 7)) return false;
+        const fueBajaAntes = bajasSesiones.some(b =>
+          b.dia === s.dia_semana &&
+          b.hora === s.hora &&
+          String(b.profesional_id) === String(s.profesional_id) &&
+          (!b.paciente_id || String(b.paciente_id) === String(s.paciente_id)) &&
+          b.hasta && b.hasta < fechaStr
+        );
+        return !fueBajaAntes;
+      }
+    }
+
+    return false;
+  };
+
   // Carga inicial y suscripción en tiempo real (Realtime)
   useEffect(() => {
     cargarDatos();
@@ -156,18 +191,46 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
       });
       setPacientesMap(listadoMapeado);
 
-      // 3. Cargar las sesiones fijas para el día de la semana correspondiente
+      // 3. Cargar sesiones fijas para el día de la semana correspondiente (activas e históricas)
       const { data: sesionesData, error: errS } = await supabase
         .from('sesiones_fijas')
         .select('*')
-        .eq('dia_semana', diaSemanaNombre)
-        .eq('estado', 'ACTIVO');
+        .eq('dia_semana', diaSemanaNombre);
 
       if (errS) throw errS;
 
+      const bajasDelDia = (sesionesData || [])
+        .filter(s => (s.observaciones || '').startsWith('HIST_CAMBIO|'))
+        .map(s => {
+          const meta = parsearMetadataSesion(s);
+          return {
+            dia: s.dia_semana,
+            hora: s.hora,
+            profesional_id: s.profesional_id,
+            paciente_id: s.paciente_id,
+            hasta: meta.hasta
+          };
+        });
+
+      // Priorizar ACTIVO y HIST_CAMBIO sobre HIST_MES
+      const ordenadasParaDia = [...(sesionesData || [])].sort((a, b) => {
+        const rank = s => (s.estado === 'ACTIVO' ? 1 : (s.observaciones?.startsWith('HIST_CAMBIO') ? 2 : 3));
+        return rank(a) - rank(b);
+      });
+
+      const sesionesVigentes = [];
+      const vistasMap = new Set();
+      ordenadasParaDia.forEach(s => {
+        if (!sesionValidaEnFecha(s, fechaTrabajo, bajasDelDia)) return;
+        const k = `${s.paciente_id}_${s.hora}_${s.profesional_id}`;
+        if (vistasMap.has(k)) return;
+        vistasMap.add(k);
+        sesionesVigentes.push(s);
+      });
+
       // Agrupar sesiones fijas por paciente y mapear a pacientes_motor
       const mapaPacientesAgrupados = {};
-      (sesionesData || []).forEach(s => {
+      sesionesVigentes.forEach(s => {
         const pInfo = patientLookup[s.paciente_id];
         if (!pInfo) return; // Si no se encuentra mapeado, omitir
 
@@ -199,16 +262,28 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
       const idsGuardadosBD = new Set((asistenciasData || []).map(a => a.id_paciente));
       setPacientesGuardadosIds(idsGuardadosBD);
 
-      // Sobrescribir estado, observaciones y sesiones si ya fueron grabados
+      // Sobrescribir estado, observaciones y sesiones si ya fueron grabados (y conservar pacientes con asistencia aunque no tengan turno activo hoy)
       (asistenciasData || []).forEach(a => {
+        const { sesiones: sesSnapshot, obs: obsLimpia } = desempaquetarObsYSesiones(
+          a.obs,
+          mapaPacientesAgrupados[a.id_paciente]?.sesiones || []
+        );
+
         if (mapaPacientesAgrupados[a.id_paciente]) {
           mapaPacientesAgrupados[a.id_paciente].estado = a.estado;
-          const { sesiones: sesSnapshot, obs: obsLimpia } = desempaquetarObsYSesiones(
-            a.obs,
-            mapaPacientesAgrupados[a.id_paciente].sesiones
-          );
           mapaPacientesAgrupados[a.id_paciente].sesiones = sesSnapshot;
           mapaPacientesAgrupados[a.id_paciente].obs = obsLimpia;
+        } else {
+          const pUuid = '00000000-0000-0000-0000-' + String(a.id_paciente).padStart(12, '0');
+          const pInfo = patientLookup[pUuid] || listadoMapeado.find(p => p.id_paciente === a.id_paciente);
+          mapaPacientesAgrupados[a.id_paciente] = {
+            id_paciente: a.id_paciente,
+            paciente_nombre: a.paciente_nombre || pInfo?.nombre_apellido || 'Paciente',
+            dni: pInfo?.dni || '',
+            sesiones: sesSnapshot,
+            estado: a.estado,
+            obs: obsLimpia
+          };
         }
       });
 
@@ -375,12 +450,11 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
         throw new Error("No se pudo asociar la ficha del paciente para buscar su agenda.");
       }
 
-      // 1. Intentar cargar sesiones fijas activas
-      const { data: sesionesPac, error: errS } = await supabase
+      // 1. Cargar todas las sesiones del paciente (activas e históricas para contemplar cambios dentro del mes)
+      const { data: todasSesionesPac, error: errS } = await supabase
         .from('sesiones_fijas')
         .select('*')
-        .eq('paciente_id', mappedPac.id_uuid)
-        .eq('estado', 'ACTIVO');
+        .eq('paciente_id', mappedPac.id_uuid);
 
       if (errS) throw errS;
 
@@ -409,27 +483,93 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
       const diaLocal = String(dHoy.getDate()).padStart(2, '0');
       const hoyStr = `${anioLocal}-${mesLocal}-${diaLocal}`;
 
-      let fechasEsperadas = [];
-      const sesionesPorDiaSemana = {};
-
-      if (sesionesPac && sesionesPac.length > 0) {
-        const diasSemanaPac = [...new Set(sesionesPac.map(s => s.dia_semana))];
-        sesionesPac.forEach(s => {
-          if (!sesionesPorDiaSemana[s.dia_semana]) {
-            sesionesPorDiaSemana[s.dia_semana] = [];
-          }
-          sesionesPorDiaSemana[s.dia_semana].push({
+      // Bajas de agenda del paciente para evitar revivir turnos eliminados en fechas futuras
+      const bajasDelPaciente = (todasSesionesPac || [])
+        .filter(s => (s.observaciones || '').startsWith('HIST_CAMBIO|'))
+        .map(s => {
+          const meta = parsearMetadataSesion(s);
+          return {
+            dia: s.dia_semana,
             hora: s.hora,
-            profesional: mapaPrestadores[s.profesional_id] || 'Sin prof.'
-          });
+            profesional_id: s.profesional_id,
+            hasta: meta.hasta
+          };
         });
-        fechasEsperadas = getFechasSemanaEnMes(reporteMes, diasSemanaPac);
-      } else {
-        // Paciente inactivo o sin sesiones fijas activas: usar las fechas registradas en el historial de asistencia del mes
-        fechasEsperadas = Object.keys(mapaAsistencias).sort();
+
+      // Generar días hábiles del mes
+      const [anioR, mesR] = reporteMes.split('-').map(Number);
+      const diasEnMes = new Date(anioR, mesR, 0).getDate();
+      const fechasMes = [];
+      for (let dia = 1; dia <= diasEnMes; dia++) {
+        const fStr = `${reporteMes}-${String(dia).padStart(2, '0')}`;
+        const diaNom = getDiaSemana(fStr);
+        if (diaNom === 'Sábado' || diaNom === 'Domingo') continue;
+        fechasMes.push(fStr);
       }
 
-      if (fechasEsperadas.length === 0) {
+      // Ordenar sesiones dando prioridad a ACTIVO y HIST_CAMBIO sobre HIST_MES
+      const ordenadasSes = [...(todasSesionesPac || [])].sort((a, b) => {
+        const rank = s => (s.estado === 'ACTIVO' ? 1 : (s.observaciones?.startsWith('HIST_CAMBIO') ? 2 : 3));
+        return rank(a) - rank(b);
+      });
+
+      // Determinar fechas a incluir: las que tienen asistencia guardada O tenían turnos programados en esa fecha
+      const listadoFechas = [];
+      fechasMes.forEach(f => {
+        const diaSem = getDiaSemana(f);
+        const sesFallback = [];
+        const vistasSes = new Set();
+
+        ordenadasSes.forEach(s => {
+          if (s.dia_semana !== diaSem) return;
+          if (!sesionValidaEnFecha(s, f, bajasDelPaciente)) return;
+          const k = `${s.hora}_${s.profesional_id}`;
+          if (vistasSes.has(k)) return;
+          vistasSes.add(k);
+          sesFallback.push({
+            hora: s.hora,
+            profesional: mapaPrestadores[s.profesional_id] || 'Sin prof.',
+            profesional_nombre: mapaPrestadores[s.profesional_id] || 'Sin prof.'
+          });
+        });
+
+        const registroAsist = mapaAsistencias[f];
+        const tieneAsistencia = !!registroAsist;
+        const tieneSesiones = sesFallback.length > 0;
+
+        if (!tieneAsistencia && !tieneSesiones) return;
+
+        let est = 'Pendiente';
+        let obs = '';
+        let ses = sesFallback;
+
+        if (registroAsist) {
+          est = registroAsist.estado;
+          const { sesiones: sesSnapshot, obs: obsLimpia } = desempaquetarObsYSesiones(
+            registroAsist.obs,
+            sesFallback
+          );
+          ses = sesSnapshot;
+          obs = obsLimpia;
+
+          if (ses.length === 0 && registroAsist.usuario) {
+            ses.push({ hora: '-', profesional: `Reg: ${registroAsist.usuario}` });
+          }
+        }
+
+        const esFuturo = f > hoyStr;
+
+        listadoFechas.push({
+          fecha: f,
+          dia_semana: diaSem,
+          sesiones: ordenarSesionesPorHora(ses),
+          estado: est,
+          obs: obs,
+          esFuturo
+        });
+      });
+
+      if (listadoFechas.length === 0) {
         setDatosReporte([]);
         setKpiReporte({
           totalEsperados: 0,
@@ -452,54 +592,21 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
       let totalEsperadosTranscurridos = 0;
       let countFuturos = 0;
 
-      const listadoFechas = fechasEsperadas.map(f => {
-        const diaSem = getDiaSemana(f);
-        const sesFallback = [...(sesionesPorDiaSemana[diaSem] || [])];
-        const registroAsist = mapaAsistencias[f];
-
-        let est = 'Pendiente';
-        let obs = '';
-        let ses = sesFallback;
-
-        if (registroAsist) {
-          est = registroAsist.estado;
-          const { sesiones: sesSnapshot, obs: obsLimpia } = desempaquetarObsYSesiones(
-            registroAsist.obs,
-            sesFallback
-          );
-          ses = sesSnapshot;
-          obs = obsLimpia;
-
-          if (ses.length === 0 && registroAsist.usuario) {
-            ses.push({ hora: '-', profesional: `Reg: ${registroAsist.usuario}` });
-          }
-        }
-
-        const esFuturo = f > hoyStr;
-
-        if (esFuturo) {
+      listadoFechas.forEach(item => {
+        if (item.esFuturo) {
           countFuturos++;
         } else {
           totalEsperadosTranscurridos++;
-          if (est === 'Presente') {
+          if (item.estado === 'Presente') {
             countPresente++;
-          } else if (est === 'Ausente con Aviso') {
+          } else if (item.estado === 'Ausente con Aviso') {
             countConAviso++;
-          } else if (est === 'Ausente sin Aviso') {
+          } else if (item.estado === 'Ausente sin Aviso') {
             countSinAviso++;
           } else {
             countPendiente++;
           }
         }
-
-        return {
-          fecha: f,
-          dia_semana: diaSem,
-          sesiones: ordenarSesionesPorHora(ses),
-          estado: est,
-          obs: obs,
-          esFuturo
-        };
       });
 
       listadoFechas.sort((a, b) => a.fecha.localeCompare(b.fecha));
@@ -510,7 +617,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
 
       setDatosReporte(listadoFechas);
       setKpiReporte({
-        totalEsperados: fechasEsperadas.length,
+        totalEsperados: listadoFechas.length,
         totalTranscurridos: totalEsperadosTranscurridos,
         presentes: countPresente,
         conAviso: countConAviso,
@@ -616,16 +723,16 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
         if (sesPac.length === 0) return;
 
         const diasSemanaPac = [...new Set(sesPac.map(s => s.dia_semana))];
+        const asistPac = asistenciasPorPaciente[pac.id_paciente] || {};
         const fechasEsperadas = getFechasSemanaEnMes(alertaMes, diasSemanaPac);
-        const fechasTranscurridas = fechasEsperadas.filter(f => f <= hoyStr);
+        const fechasConAsistPac = Object.keys(asistPac).filter(f => f <= hoyStr);
+        const fechasTranscurridas = Array.from(new Set([...fechasEsperadas.filter(f => f <= hoyStr), ...fechasConAsistPac])).sort();
         if (fechasTranscurridas.length === 0) return;
 
         let countPresente = 0;
         let countConAviso = 0;
         let countSinAviso = 0;
         let countPendiente = 0;
-        const asistPac = asistenciasPorPaciente[pac.id_paciente] || {};
-
         fechasTranscurridas.forEach(f => {
           const est = asistPac[f] || 'Pendiente';
           if (est === 'Presente') {
