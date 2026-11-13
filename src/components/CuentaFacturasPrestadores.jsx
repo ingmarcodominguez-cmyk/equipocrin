@@ -39,6 +39,14 @@ export default function CuentaFacturasPrestadores({
   const [filtroDetalle, setFiltroDetalle] = useState('TODOS'); // 'TODOS' | 'DEBE_FACTURAR' | 'FACTURAS'
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' });
 
+  useEffect(() => {
+    if (prestadorInicial && !esPrestadorExcluidoFacturacion(prestadorInicial.nombre_prestador)) {
+      setPrestadorFocusId(`P_${prestadorInicial.id_prestador}`);
+    } else if (!prestadorInicial) {
+      setPrestadorFocusId('');
+    }
+  }, [prestadorInicial]);
+
   // Modal / Formulario Cargar Factura Recibida
   const [formFacturaAbierto, setFormFacturaAbierto] = useState(false);
   const [fechaFactura, setFechaFactura] = useState(
@@ -622,8 +630,9 @@ export default function CuentaFacturasPrestadores({
               onChange={(e) => { setPrestadorFocusId(e.target.value); setFormFacturaAbierto(false); }}
               style={{ flex: 1, minWidth: '240px', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', fontWeight: 'bold', background: '#fff' }}
             >
+              <option value="">👥 -- Ver Todos los Profesionales --</option>
               {resumenPorPrestador.map(r => (
-                <option key={r.prestador.id_prestador} value={r.prestador.id_prestador}>
+                <option key={r.rowKey} value={r.rowKey}>
                   {r.prestador.nombre_prestador} — Pendiente de facturar: ${r.pendienteFacturar.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                 </option>
               ))}
