@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { extraerPeriodoDeFacturaOS, obtenerSesionesPacienteParaPeriodo, formatearPeriodoNombre } from '../lib/agendaHistorial.js';
+import CargaMasivaAcuerdosOS from './CargaMasivaAcuerdosOS.jsx';
 
 // Helper para limpiar "(ID xxx)" del concepto visible
 const limpiarConceptoOS = (texto) => {
@@ -26,6 +27,7 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
   const [obraSocialSeleccionada, setObraSocialSeleccionada] = useState('TODAS');
   const [busqueda, setBusqueda] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('TODOS');
+  const [vistaCargaMasiva, setVistaCargaMasiva] = useState(false);
 
   // Estados para Modal de Cobro a O.S.
   const [modalCobroAbierto, setModalCobroAbierto] = useState(false);
@@ -1333,6 +1335,18 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
     }
   };
 
+  if (vistaCargaMasiva) {
+    return (
+      <CargaMasivaAcuerdosOS
+        onVolver={() => setVistaCargaMasiva(false)}
+        usuario={usuario}
+        onExito={() => {
+          cargarDatos();
+        }}
+      />
+    );
+  }
+
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '20px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       
@@ -1466,6 +1480,26 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
           }}>
             {acuerdosOSPendientes.length}
           </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setVistaCargaMasiva(true)}
+          style={{
+            background: '#ecfdf5',
+            color: '#047857',
+            border: '1px solid #6ee7b7',
+            padding: '10px 18px',
+            borderRadius: '8px',
+            fontWeight: 'bold',
+            fontSize: '13.5px',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}
+        >
+          <span>⚡</span> Carga Masiva O.S.
         </button>
       </div>
 
@@ -2078,6 +2112,30 @@ export default function CuentasObrasSociales({ onVolver, usuario, onAbrirFicha }
       {/* VISTA DE ACUERDOS DE OBRA SOCIAL */}
       {tabActiva === 'pendientes' && (
         <div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+            <button
+              type="button"
+              onClick={() => setVistaCargaMasiva(true)}
+              style={{
+                background: '#059669',
+                color: '#fff',
+                border: 'none',
+                padding: '10px 18px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: '800',
+                fontSize: '13.5px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 3px 8px rgba(5,150,105,0.25)',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <span>⚡</span> Cargar Acuerdos Masivos de Obra Social
+            </button>
+          </div>
+
           {/* TARJETAS RESUMEN DE ACUERDOS */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '15px', marginBottom: '20px' }}>
             <div style={{ background: '#fff', padding: '18px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>

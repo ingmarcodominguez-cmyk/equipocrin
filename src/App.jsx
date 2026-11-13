@@ -20,6 +20,7 @@ import PresupuestoPublico from './components/PresupuestoPublico.jsx'
 import PlanillaGastos from './components/PlanillaGastos.jsx'
 import BotonPantallaCompleta from './components/BotonPantallaCompleta.jsx'
 import CuentasObrasSociales from './components/CuentasObrasSociales.jsx'
+import CargaMasivaAcuerdosOS from './components/CargaMasivaAcuerdosOS.jsx'
 import ListadoPacientes from './components/ListadoPacientes.jsx'
 
 // Locks para evitar ejecuciones concurrentes de los motores
@@ -1821,6 +1822,30 @@ function App() {
         {crinAccion === 'NUEVO_ACUERDO' && !pacienteSeleccionado && (
           <div style={{ width: '100%', maxWidth: '600px', background: '#ffffff', padding: '30px', borderRadius: '20px', border: '1px solid #e2e8f0', boxShadow: '0 10px 25px rgba(0,0,0,0.08)' }}>
             <h3 style={{ marginTop: 0, color: '#22543d', fontSize: '20px', marginBottom: '15px' }}>🤝 Seleccioná el paciente para el Nuevo Acuerdo</h3>
+            <div style={{ marginBottom: '18px', background: '#ecfdf5', border: '1.5px solid #a7f3d0', padding: '12px 16px', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+              <div>
+                <strong style={{ fontSize: '13px', color: '#065f46', display: 'block' }}>¿Carga de Obra Social a varios pacientes?</strong>
+                <span style={{ fontSize: '12px', color: '#047857' }}>Asigná el acuerdo masivamente sin costo para el paciente.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCrinAccion('ACUERDOS_MASIVOS_OS')}
+                style={{
+                  background: '#059669',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  fontWeight: '800',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 2px 4px rgba(5,150,105,0.2)'
+                }}
+              >
+                ⚡ Carga Masiva O.S.
+              </button>
+            </div>
             <input 
               type="text" 
               placeholder="Buscar por nombre o DNI..." 
@@ -1994,6 +2019,16 @@ function App() {
         {crinAccion === 'PLANILLA_EXPENSAS' && (
           <div style={{ width: '100%', maxWidth: '1200px' }}>
             <PlanillaGastos onVolver={() => setCrinAccion(null)} usuario={userData?.nombre || session?.user?.email || 'Usuario'} />
+          </div>
+        )}
+
+        {crinAccion === 'ACUERDOS_MASIVOS_OS' && (
+          <div style={{ width: '100%', maxWidth: '1100px' }}>
+            <CargaMasivaAcuerdosOS
+              onVolver={() => setCrinAccion(null)}
+              usuario={{ nombre: userData?.nombre || session?.user?.email || 'Usuario' }}
+              onExito={() => {}}
+            />
           </div>
         )}
 

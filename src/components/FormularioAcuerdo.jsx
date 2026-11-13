@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
+import CargaMasivaAcuerdosOS from './CargaMasivaAcuerdosOS.jsx'
 
 export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePreseleccionado, onGuardadoExitoso }) {
   const [form, setForm] = useState(acuerdoAEditar || {
@@ -23,6 +24,7 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
   const [pacienteSeleccionadoObj, setPacienteSeleccionadoObj] = useState(null)
   const [prestacionSeleccionada, setPrestacionSeleccionada] = useState(null)
   const [guardando, setGuardando] = useState(false)
+  const [vistaCargaMasiva, setVistaCargaMasiva] = useState(false)
 
   // Estados para creación rápida de prestación
   const [modalNuevaPrestacion, setModalNuevaPrestacion] = useState(false)
@@ -476,11 +478,46 @@ export default function FormularioAcuerdo({ onVolver, acuerdoAEditar, pacientePr
     }
   }
 
+  if (vistaCargaMasiva) {
+    return (
+      <CargaMasivaAcuerdosOS
+        onVolver={() => setVistaCargaMasiva(false)}
+        usuario={{ nombre: form.usuario || 'Admin' }}
+        onExito={() => {
+          if (onGuardadoExitoso) onGuardadoExitoso();
+        }}
+      />
+    );
+  }
+
   return (
     <div style={{ maxWidth: '850px', margin: '0 auto', padding: '30px', background: '#fff', borderRadius: '12px', color: '#1e293b', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-      <h2 style={{ marginBottom: '20px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>
-        {acuerdoAEditar ? 'Editar Acuerdo de Prestación' : 'Registrar Nuevo Acuerdo (Prestación a Paciente)'}
-      </h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px', flexWrap: 'wrap', gap: '10px' }}>
+        <h2 style={{ margin: 0 }}>
+          {acuerdoAEditar ? 'Editar Acuerdo de Prestación' : 'Registrar Nuevo Acuerdo (Prestación a Paciente)'}
+        </h2>
+        {!acuerdoAEditar && (
+          <button
+            type="button"
+            onClick={() => setVistaCargaMasiva(true)}
+            style={{
+              background: '#059669',
+              color: '#fff',
+              border: 'none',
+              padding: '8px 14px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '12.5px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <span>⚡</span> Carga Masiva O.S. (Varios Pacientes)
+          </button>
+        )}
+      </div>
 
       <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         
