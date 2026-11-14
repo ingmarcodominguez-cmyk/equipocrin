@@ -1,6 +1,34 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase.js';
 
+// Helper de coincidencia inteligente de Obra Social
+function coincideObraSocial(pacienteOS, targetOS) {
+  if (!targetOS || targetOS === 'TODAS') return true;
+  if (targetOS === 'SIN_OS') return !pacienteOS || !pacienteOS.trim();
+  if (!pacienteOS) return false;
+
+  const normPac = pacienteOS.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const normTarget = targetOS.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+  if (normPac.includes(normTarget) || normTarget.includes(normPac)) return true;
+
+  // Casos comunes de abreviaturas
+  if (normTarget.includes('SUBSIDIO') || normTarget.includes('SALUD')) {
+    if (normPac.includes('SUBSIDIO') || normPac.includes('S.SALUD') || normPac.includes('SUB.SALUD') || normPac.includes('IPSSPT')) {
+      return true;
+    }
+  }
+  if (normTarget.includes('BOREAL')) {
+    if (normPac.includes('BOREAL') || normPac.includes('COBERTURA DE SALUD')) return true;
+  }
+  if (normTarget.includes('OSMATA') && normPac.includes('OSMATA')) return true;
+  if (normTarget.includes('OSDE') && normPac.includes('OSDE')) return true;
+  if (normTarget.includes('OSECAC') && normPac.includes('OSECAC')) return true;
+  if (normTarget.includes('SANCOR') && normPac.includes('SANCOR')) return true;
+
+  return false;
+}
+
 export default function CargaMasivaAcuerdosOS({ onVolver, usuario, onExito }) {
   const [cargando, setCargando] = useState(true);
   const [pacientes, setPacientes] = useState([]);
@@ -14,7 +42,7 @@ export default function CargaMasivaAcuerdosOS({ onVolver, usuario, onExito }) {
   });
   const [observacionManual, setObservacionManual] = useState('');
 
-  // Filtros de pacientes
+  // Filtros de pacientes: POR DEFECTO "TODAS" PARA QUE NUNCA SE OCULTE NINGÚN PACIENTE
   const [filtroObraSocial, setFiltroObraSocial] = useState('TODAS');
   const [busquedaPaciente, setBusquedaPaciente] = useState('');
   const [pacientesSeleccionados, setPacientesSeleccionados] = useState(new Set());
@@ -111,25 +139,28 @@ export default function CargaMasivaAcuerdosOS({ onVolver, usuario, onExito }) {
     return '';
   }, [prestacionSeleccionada]);
 
-  // Cuando cambia la prestación seleccionada, autoseleccionar el filtro de Obra Social si coincide
-  useEffect(() => {
-    if (obraSocialDetectada) {
-      // Buscar coincidencia en la lista de Obras Sociales de pacientes
-      const existe = pacientes.some(p => (p.obra_social || '').toUpperCase().includes(obraSocialDetectada));
-      if (existe) {
-        setFiltroObraSocial(obraSocialDetectada);
-      }
-    }
-  }, [obraSocialDetectada, pacientes]);
+  // Cantidad de pacientes que coinciden con la Obra Social de la prestación
+  const cantidadSugeridosOS = useMemo(() => {
+    if (!obraSocialDetectada) return 0;
+    return pacientes.filter(p => coincideObraSocial(p.obra_social, obraSocialDetectada)).length;
+  }, [pacientes, obraSocialDetectada]);
 
-  // Lista única de Obras Sociales de pacientes para el desplegable
+  // Lista agrupada de Obras Sociales de pacientes para el desplegable con contador
   const listaObrasSocialesPacientes = useMemo(() => {
-    const setOS = new Set();
+    const mapa = {};
     pacientes.forEach(p => {
       const os = (p.obra_social || '').trim().toUpperCase();
-      if (os) setOS.add(os);
+      if (os) {
+        mapa[os] = (mapa[os] || 0) + 1;
+      }
     });
-    return Array.from(setOS).sort();
+    return Object.entries(mapa)
+      .map(([nombre, cantidad]) => ({ nombre, cantidad }))
+      .sort((a, b) => b.cantidad - a.cantidad || a.nombre.localeCompare(b.nombre));
+  }, [pacientes]);
+
+  const pacientesSinOSCount = useMemo(() => {
+    return pacientes.filter(p => !p.obra_social || !p.obra_social.trim()).length;
   }, [pacientes]);
 
   // Set de IDs de pacientes que ya tienen esta prestación activa
@@ -152,9 +183,8 @@ export default function CargaMasivaAcuerdosOS({ onVolver, usuario, onExito }) {
 
     return pacientes.filter(p => {
       // Filtro OS
-      if (osFiltro !== 'TODAS') {
-        const pOS = (p.obra_social || '').toUpperCase();
-        if (!pOS.includes(osFiltro)) return false;
+      if (!coincideObraSocial(p.obra_social, osFiltro)) {
+        return false;
       }
       // Filtro texto
       if (term) {
@@ -180,7 +210,7 @@ export default function CargaMasivaAcuerdosOS({ onVolver, usuario, onExito }) {
     setPacientesSeleccionados(prev => {
       const next = new Set(prev);
       pacientesFiltrados.forEach(p => {
-        // No auto-seleccionar si ya tiene el acuerdo activo (a menos que el usuario lo tilde a mano)
+        // No auto-seleccionar si ya tiene el acuerdo activo
         if (!pacientesConPrestacionActiva.has(p.id_paciente)) {
           next.add(p.id_paciente);
         }
@@ -614,10 +644,10 @@ export default function CargaMasivaAcuerdosOS({ onVolver, usuario, onExito }) {
             }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>
-                  3. Seleccioná los Pacientes ({pacientesSeleccionados.size} seleccionados)
+                  3. Seleccioná los Pacientes ({pacientesSeleccionados.size} seleccionados de {pacientesFiltrados.length} visibles)
                 </h3>
                 <span style={{ fontSize: '12.5px', color: '#64748b' }}>
-                  Filtrá por la Obra Social del paciente para tildarlos rápidamente.
+                  Mostrando {pacientesFiltrados.length} de {pacientes.length} pacientes registrados en total.
                 </span>
               </div>
 
@@ -675,67 +705,199 @@ export default function CargaMasivaAcuerdosOS({ onVolver, usuario, onExito }) {
               </div>
             </div>
 
-            {/* FILTROS DE PACIENTES */}
+            {/* BARRA DE FILTROS Y CHIPS SUGERIDOS */}
             <div style={{
-              display: 'flex',
-              gap: '12px',
-              flexWrap: 'wrap',
-              marginBottom: '14px',
               background: '#f8fafc',
-              padding: '12px',
-              borderRadius: '8px',
-              border: '1px solid #e2e8f0'
+              padding: '14px',
+              borderRadius: '10px',
+              border: '1px solid #e2e8f0',
+              marginBottom: '14px'
             }}>
-              <div style={{ minWidth: '240px', flex: 1 }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>
-                  Filtrar por Obra Social del Paciente:
-                </label>
-                <select
-                  value={filtroObraSocial}
-                  onChange={e => setFiltroObraSocial(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    borderRadius: '6px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '13.5px',
-                    fontWeight: 'bold',
-                    background: '#fff'
-                  }}
-                >
-                  <option value="TODAS">-- TODAS LAS OBRAS SOCIALES --</option>
-                  {listaObrasSocialesPacientes.map(os => (
-                    <option key={os} value={os}>
-                      {os}
-                    </option>
-                  ))}
-                </select>
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+                flexWrap: 'wrap',
+                alignItems: 'flex-end',
+                marginBottom: '10px'
+              }}>
+                <div style={{ minWidth: '280px', flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>
+                    Filtrar por Obra Social del Paciente:
+                  </label>
+                  <select
+                    value={filtroObraSocial}
+                    onChange={e => setFiltroObraSocial(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '13.5px',
+                      fontWeight: 'bold',
+                      background: '#fff'
+                    }}
+                  >
+                    <option value="TODAS">👥 TODAS LAS OBRAS SOCIALES ({pacientes.length} pacientes)</option>
+                    <option value="SIN_OS">⚠️ Sin Obra Social en su ficha ({pacientesSinOSCount} pacientes)</option>
+                    <optgroup label="Obras Sociales">
+                      {listaObrasSocialesPacientes.map(os => (
+                        <option key={os.nombre} value={os.nombre}>
+                          {os.nombre} ({os.cantidad} pacientes)
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </div>
+
+                <div style={{ minWidth: '260px', flex: 2 }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>
+                    Buscar por Nombre o DNI:
+                  </label>
+                  <input
+                    type="text"
+                    value={busquedaPaciente}
+                    onChange={e => setBusquedaPaciente(e.target.value)}
+                    placeholder="Escribí nombre, apellido o DNI..."
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '13.5px',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
               </div>
 
-              <div style={{ minWidth: '260px', flex: 2 }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>
-                  Buscar por Nombre o DNI:
-                </label>
-                <input
-                  type="text"
-                  value={busquedaPaciente}
-                  onChange={e => setBusquedaPaciente(e.target.value)}
-                  placeholder="Ej: Pérez, 45123999..."
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    borderRadius: '6px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '13.5px',
-                    boxSizing: 'border-box'
+              {/* CHIPS DE ACCESO RÁPIDO */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: '11.5px', fontWeight: 'bold', color: '#64748b' }}>Accesos rápidos:</span>
+                
+                {obraSocialDetectada && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFiltroObraSocial(obraSocialDetectada);
+                      setBusquedaPaciente('');
+                    }}
+                    style={{
+                      background: filtroObraSocial === obraSocialDetectada ? '#065f46' : '#ecfdf5',
+                      color: filtroObraSocial === obraSocialDetectada ? '#fff' : '#065f46',
+                      border: '1px solid #6ee7b7',
+                      padding: '3px 10px',
+                      borderRadius: '12px',
+                      fontSize: '11.5px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🎯 Filtrar sólo {obraSocialDetectada} ({cantidadSugeridosOS})
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFiltroObraSocial('TODAS');
+                    setBusquedaPaciente('');
                   }}
-                />
+                  style={{
+                    background: filtroObraSocial === 'TODAS' && !busquedaPaciente ? '#334155' : '#fff',
+                    color: filtroObraSocial === 'TODAS' && !busquedaPaciente ? '#fff' : '#475569',
+                    border: '1px solid #cbd5e1',
+                    padding: '3px 10px',
+                    borderRadius: '12px',
+                    fontSize: '11.5px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  👥 Ver todos ({pacientes.length})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFiltroObraSocial('SIN_OS');
+                    setBusquedaPaciente('');
+                  }}
+                  style={{
+                    background: filtroObraSocial === 'SIN_OS' ? '#92400e' : '#fffbeb',
+                    color: filtroObraSocial === 'SIN_OS' ? '#fff' : '#92400e',
+                    border: '1px solid #fde68a',
+                    padding: '3px 10px',
+                    borderRadius: '12px',
+                    fontSize: '11.5px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ⚠️ Sin OS ({pacientesSinOSCount})
+                </button>
+
+                {(filtroObraSocial !== 'TODAS' || busquedaPaciente) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFiltroObraSocial('TODAS');
+                      setBusquedaPaciente('');
+                    }}
+                    style={{
+                      background: '#fee2e2',
+                      color: '#b91c1c',
+                      border: '1px solid #fca5a5',
+                      padding: '3px 8px',
+                      borderRadius: '12px',
+                      fontSize: '11px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ✖ Quitar filtros
+                  </button>
+                )}
               </div>
             </div>
 
+            {/* AVISO INFORMATIVO DE FILTRO ACTIVO */}
+            {filtroObraSocial !== 'TODAS' && (
+              <div style={{
+                background: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                marginBottom: '12px',
+                fontSize: '12.5px',
+                color: '#1e40af',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <span>
+                  🔍 Mostrando únicamente pacientes con Obra Social <strong>"{filtroObraSocial}"</strong> ({pacientesFiltrados.length} encontrados).
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFiltroObraSocial('TODAS')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#2563eb',
+                    textDecoration: 'underline',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '12px'
+                  }}
+                >
+                  Mostrar todos los {pacientes.length} pacientes
+                </button>
+              </div>
+            )}
+
             {/* LISTA DE PACIENTES */}
             <div style={{
-              maxHeight: '380px',
+              maxHeight: '400px',
               overflowY: 'auto',
               border: '1px solid #e2e8f0',
               borderRadius: '8px'
@@ -743,13 +905,22 @@ export default function CargaMasivaAcuerdosOS({ onVolver, usuario, onExito }) {
               {pacientesFiltrados.length === 0 ? (
                 <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8', fontSize: '13.5px' }}>
                   No se encontraron pacientes que coincidan con los filtros aplicados.
+                  <div style={{ marginTop: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => { setFiltroObraSocial('TODAS'); setBusquedaPaciente(''); }}
+                      style={{ padding: '6px 12px', background: '#059669', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      Ver todos los {pacientes.length} pacientes
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
                   <thead style={{ position: 'sticky', top: 0, background: '#f1f5f9', zIndex: 1 }}>
                     <tr style={{ borderBottom: '1px solid #cbd5e1', color: '#475569' }}>
                       <th style={{ padding: '10px 12px', width: '40px', textAlign: 'center' }}>✓</th>
-                      <th style={{ padding: '10px 12px' }}>Paciente</th>
+                      <th style={{ padding: '10px 12px' }}>Paciente ({pacientesFiltrados.length})</th>
                       <th style={{ padding: '10px 12px' }}>DNI</th>
                       <th style={{ padding: '10px 12px' }}>Obra Social en Ficha</th>
                       <th style={{ padding: '10px 12px' }}>Estado Previo</th>
