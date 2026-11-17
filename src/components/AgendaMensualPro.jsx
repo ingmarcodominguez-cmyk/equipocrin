@@ -978,15 +978,15 @@ function AgendaMensualPro({ userData }) {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', backgroundColor: '#ffffff', borderTop: '1px solid #ddd', flex: 1, width: '100%' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', backgroundColor: '#ffffff', borderTop: '1px solid #ddd', flex: 1, width: '100%' }}>
         {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => (
-          <div key={d} style={{ textAlign: 'center', background: '#f8f9fa', padding: '10px', fontWeight: 'bold', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }}>{d}</div>
+          <div key={d} style={{ textAlign: 'center', background: '#f8f9fa', padding: '10px 4px', fontWeight: 'bold', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd', minWidth: 0, overflow: 'hidden' }}>{d}</div>
         ))}
-        {[...Array(offset)].map((_, i) => <div key={`off-${i}`} style={{ background: '#fcfcfc', minHeight: '100px', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }} />)}
+        {[...Array(offset)].map((_, i) => <div key={`off-${i}`} style={{ background: '#fcfcfc', minHeight: '100px', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd', minWidth: 0 }} />)}
         {[...Array(diasEnMes)].map((_, i) => {
           const dN = i + 1;
           if (filtroFecha && dN !== filtroFecha) {
-             return <div key={i} style={{ background: '#f9f9f9', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }} />;
+             return <div key={i} style={{ background: '#f9f9f9', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd', minWidth: 0 }} />;
           }
 
           const tD = (turnosVisibles || []).filter(t => {
@@ -994,9 +994,9 @@ function AgendaMensualPro({ userData }) {
             return f.getUTCDate() === dN && f.getUTCMonth() === mesActual.getMonth() && f.getUTCFullYear() === mesActual.getFullYear();
           });
           return (
-            <div key={i} style={{ minHeight: '100px', background: '#ffffff', padding: '5px', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd', position: 'relative' }}>
+            <div key={i} style={{ minHeight: '100px', background: '#ffffff', padding: '5px', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd', position: 'relative', minWidth: 0, overflow: 'hidden' }}>
               <div onClick={() => { setDiaSeleccionado(dN); setTurnoEditando(null); setForm({...form, paciente_nombre: '', estado: 'pendiente', horario_especial: '', observaciones: ''}); }} style={{ cursor: 'pointer', color: '#007bff', fontWeight: 'bold' }}>{dN} +</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
                 {tD.sort((a,b) => (a.observaciones?.split(']')[0] || '').localeCompare(b.observaciones?.split(']')[0] || '')).map(t => {
                   const parts = t.observaciones?.split(']') || [];
                   const hora = parts[0]?.replace('[', '').trim() || '--:--';
@@ -1047,37 +1047,37 @@ function AgendaMensualPro({ userData }) {
                         cursor: 'pointer', 
                         borderRadius: '4px',
                         boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                        transition: 'transform 0.1s'
+                        transition: 'transform 0.1s',
+                        minWidth: 0,
+                        overflow: 'hidden'
                       }}
                     >
-                      <div style={{ color: textNombreColor, fontWeight: 'bold', fontSize: '12px', textDecoration: decoracionTexto }}>
+                      <div style={{ color: textNombreColor, fontWeight: 'bold', fontSize: '11.5px', textDecoration: decoracionTexto, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={t.paciente_nombre}>
                         {t.paciente_nombre.toUpperCase()} {est === 'cancelado' ? '❌ (CANCELADO)' : ''}
                       </div>
-                      <div style={{ color: est === 'cancelado' ? '#721c24' : '#333' }}>
+                      <div style={{ color: est === 'cancelado' ? '#721c24' : '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '10.5px' }}>
                         <strong>{hora}</strong> | {prest} | <b>{prof}</b>
                       </div>
                       {extraerNotasLibres(t.observaciones) && (
                         <div 
                           style={{ 
                             marginTop: '3px', 
-                            fontSize: '10px', 
+                            fontSize: '9.5px', 
                             color: '#92400e', 
                             background: '#fef3c7', 
                             border: '1px solid #fde68a', 
-                            padding: '2px 4px', 
+                            padding: '2px 5px', 
                             borderRadius: '3px',
                             whiteSpace: 'nowrap', 
                             overflow: 'hidden', 
                             textOverflow: 'ellipsis',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '3px',
+                            maxWidth: '100%',
+                            display: 'block',
                             fontWeight: '600'
                           }}
                           title={`Observación: ${extraerNotasLibres(t.observaciones)}`}
                         >
-                          <span>💬</span>
-                          <span>{extraerNotasLibres(t.observaciones)}</span>
+                          💬 {extraerNotasLibres(t.observaciones)}
                         </div>
                       )}
                     </div>
