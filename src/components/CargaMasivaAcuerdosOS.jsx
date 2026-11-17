@@ -60,12 +60,39 @@ export default function CargaMasivaAcuerdosOS({ onVolver, usuario, onExito }) {
   const [resultadoExito, setResultadoExito] = useState(null);
   const [mensajeError, setMensajeError] = useState('');
 
+  // Función para obtener todos los acuerdos activos con paginación (evita límite de 1000 filas de Supabase)
+  const obtenerTodosAcuerdosActivos = async () => {
+    let todos = [];
+    let desde = 0;
+    const paso = 1000;
+    let continuar = true;
+    while (continuar) {
+      const { data, error } = await supabase
+        .from('acuerdos_motor')
+        .select('id_acuerdo, id_paciente, id_prestacion, estado')
+        .eq('estado', 'ACTIVO')
+        .range(desde, desde + paso - 1);
+      if (error) throw error;
+      if (data && data.length > 0) {
+        todos = todos.concat(data);
+        if (data.length < paso) {
+          continuar = false;
+        } else {
+          desde += paso;
+        }
+      } else {
+        continuar = false;
+      }
+    }
+    return todos;
+  };
+
   // Cargar datos
   const cargarDatos = async () => {
     setCargando(true);
     setMensajeError('');
     try {
-      const [pacResp, presResp, acResp] = await Promise.all([
+      const [pacResp, presResp, acuerdosData] = await Promise.all([
         supabase
           .from('pacientes_motor')
           .select('id_paciente, nombre_apellido, dni, obra_social, estado')
@@ -74,18 +101,14 @@ export default function CargaMasivaAcuerdosOS({ onVolver, usuario, onExito }) {
           .from('prestaciones_motor')
           .select('*')
           .order('nombre_prestacion', { ascending: true }),
-        supabase
-          .from('acuerdos_motor')
-          .select('id_acuerdo, id_paciente, id_prestacion, estado')
-          .eq('estado', 'ACTIVO')
+        obtenerTodosAcuerdosActivos()
       ]);
 
       if (pacResp.error) throw pacResp.error;
       if (presResp.error) throw presResp.error;
-      if (acResp.error) throw acResp.error;
 
       setPacientes(pacResp.data || []);
-      setAcuerdosExistentes(acResp.data || []);
+      setAcuerdosExistentes(acuerdosData || []);
 
       // Filtrar prestaciones de Obra Social
       const esOS = p => {
@@ -117,6 +140,31 @@ export default function CargaMasivaAcuerdosOS({ onVolver, usuario, onExito }) {
   useEffect(() => {
     cargarDatos();
   }, []);
+
+  // Recarga complementaria de acuerdos de la prestación activa seleccionada
+  useEffect(() => {
+    if (!prestacionId) return;
+    const recargarAcuerdosPrestacion = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('acuerdos_motor')
+          .select('id_acuerdo, id_paciente, id_prestacion, estado')
+          .eq('id_prestacion', Number(prestacionId))
+          .eq('estado', 'ACTIVO');
+        if (!error && data) {
+          setAcuerdosExistentes(prev => {
+            const map = new Map();
+            prev.forEach(a => map.set(a.id_acuerdo, a));
+            data.forEach(a => map.set(a.id_acuerdo, a));
+            return Array.from(map.values());
+          });
+        }
+      } catch (e) {
+        console.warn('Error al verificar acuerdos de la prestación:', e);
+      }
+    };
+    recargarAcuerdosPrestacion();
+  }, [prestacionId]);
 
   // Prestación seleccionada
   const prestacionSeleccionada = useMemo(() => {
@@ -167,10 +215,10 @@ export default function CargaMasivaAcuerdosOS({ onVolver, usuario, onExito }) {
   const pacientesConPrestacionActiva = useMemo(() => {
     if (!prestacionSeleccionada) return new Set();
     const setIds = new Set();
-    const targetPresId = prestacionSeleccionada.id_prestacion;
+    const targetPresId = Number(prestacionSeleccionada.id_prestacion);
     acuerdosExistentes.forEach(ac => {
-      if (ac.id_prestacion === targetPresId && ac.estado === 'ACTIVO') {
-        setIds.add(ac.id_paciente);
+      if (Number(ac.id_prestacion) === targetPresId && (ac.estado || '').toUpperCase() === 'ACTIVO') {
+        setIds.add(Number(ac.id_paciente));
       }
     });
     return setIds;
@@ -211,7 +259,7 @@ export default function CargaMasivaAcuerdosOS({ onVolver, usuario, onExito }) {
       const next = new Set(prev);
       pacientesFiltrados.forEach(p => {
         // No auto-seleccionar si ya tiene el acuerdo activo
-        if (!pacientesConPrestacionActiva.has(p.id_paciente)) {
+        if (!pacientesConPrestacionActiva.has(Number(p.id_paciente))) {
           next.add(p.id_paciente);
         }
       });
@@ -354,6 +402,15 @@ export default function CargaMasivaAcuerdosOS({ onVolver, usuario, onExito }) {
         insertadosTotal += lote.length;
         setProgreso({ actual: insertadosTotal, total: cantidad });
       }
+
+      // Recargar acuerdos existentes con paginación completa para que inmediatamente figuren como "Ya tiene este acuerdo"
+      try {
+        const acuerdosActualizados = await obtenerTodosAcuerdosActivos();
+        setAcuerdosExistentes(acuerdosActualizados);
+      } catch (recErr) {
+        console.warn('Error al refrescar acuerdos tras inserción:', recErr);
+      }
+      setPacientesSeleccionados(new Set());
 
       setResultadoExito({
         cantidad: insertadosTotal,
@@ -928,7 +985,7 @@ export default function CargaMasivaAcuerdosOS({ onVolver, usuario, onExito }) {
                   </thead>
                   <tbody>
                     {pacientesFiltrados.map(p => {
-                      const yaTiene = pacientesConPrestacionActiva.has(p.id_paciente);
+                      const yaTiene = pacientesConPrestacionActiva.has(Number(p.id_paciente));
                       const tildado = pacientesSeleccionados.has(p.id_paciente);
 
                       return (

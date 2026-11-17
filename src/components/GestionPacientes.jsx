@@ -36,15 +36,78 @@ function GestionPacientes() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
+  const calcularEdad = (fecha) => {
+    if (!fecha) return '';
+    const str = String(fecha).trim();
+    if (!str) return '';
+
+    let dia, mes, anio;
+
+    if (str.includes('/')) {
+      const partes = str.split('/');
+      if (partes.length === 3) {
+        if (partes[0].length === 4) {
+          anio = parseInt(partes[0], 10);
+          mes = parseInt(partes[1], 10) - 1;
+          dia = parseInt(partes[2], 10);
+        } else {
+          dia = parseInt(partes[0], 10);
+          mes = parseInt(partes[1], 10) - 1;
+          anio = parseInt(partes[2], 10);
+        }
+      }
+    } else if (str.includes('-')) {
+      const partes = str.split('-');
+      if (partes.length === 3) {
+        if (partes[0].length === 4) {
+          anio = parseInt(partes[0], 10);
+          mes = parseInt(partes[1], 10) - 1;
+          dia = parseInt(partes[2], 10);
+        } else {
+          dia = parseInt(partes[0], 10);
+          mes = parseInt(partes[1], 10) - 1;
+          anio = parseInt(partes[2], 10);
+        }
+      }
+    }
+
+    if (isNaN(dia) || isNaN(mes) || isNaN(anio) || anio === undefined) {
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        dia = d.getDate();
+        mes = d.getMonth();
+        anio = d.getFullYear();
+      } else {
+        return '';
+      }
+    }
+
+    const anioCompleto = anio < 100 ? (anio > 30 ? 1900 + anio : 2000 + anio) : anio;
+    const hoy = new Date();
+    let edad = hoy.getFullYear() - anioCompleto;
+    const mesDiff = hoy.getMonth() - mes;
+    if (mesDiff < 0 || (mesDiff === 0 && hoy.getDate() < dia)) {
+      edad--;
+    }
+    return edad >= 0 ? edad : '';
+  };
+
   async function cargarPacientes() {
     const { data } = await supabase.from('pacientes_motor').select('*').order('nombre_apellido', { ascending: true });
     if (data) {
-      setPacientes(data.map(p => ({
-        ...p,
-        id: p.id_paciente,
-        nombre: p.nombre_apellido,
-        telefono: p.tel_padres || p.tel_alternativo || ''
-      })));
+      setPacientes(data.map(p => {
+        const edadDinamica = calcularEdad(p.fecha_nacimiento);
+        const edadFinal = (edadDinamica !== '' && edadDinamica !== null && edadDinamica !== undefined)
+          ? String(edadDinamica)
+          : (p.edad || '');
+        return {
+          ...p,
+          id: p.id_paciente,
+          nombre: p.nombre_apellido,
+          telefono: p.tel_padres || p.tel_alternativo || '',
+          edad: edadFinal
+        };
+      }));
     }
   }
 
@@ -122,15 +185,7 @@ function GestionPacientes() {
         (p.dni && p.dni.includes(busqueda))
       );
 
-  const calcularEdad = (fecha) => {
-    if (!fecha) return 0;
-    const hoy = new Date();
-    const nacimiento = new Date(fecha);
-    let edad = hoy.getFullYear() - nacimiento.getFullYear();
-    const m = hoy.getMonth() - nacimiento.getMonth();
-    if (m < 0 || (m === 0 && hoy.getDate() < nacimiento.getDate())) edad--;
-    return edad;
-  };
+
 
   function iniciarEdicion(p) {
     setEditId(p.id);

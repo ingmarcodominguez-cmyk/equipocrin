@@ -32,29 +32,59 @@ export default function FormularioPaciente({ onVolver, pacienteAEditar }) {
 
   const [guardando, setGuardando] = useState(false)
 
-  // Función para calcular la edad interpretando el formato DD/MM/AAAA
+  // Función para calcular la edad interpretando cualquier formato (DD/MM/AAAA o AAAA-MM-DD)
   function calcularEdad(fechaStr) {
     if (!fechaStr) return ''
-    
-    const partes = fechaStr.split(/[\/\-\.]/)
-    if (partes.length !== 3) return ''
+    const str = String(fechaStr).trim()
+    if (!str) return ''
 
-    const dia = parseInt(partes[0], 10)
-    const mes = parseInt(partes[1], 10) - 1
-    const anio = parseInt(partes[2], 10)
+    let dia, mes, anio
 
-    if (isNaN(dia) || isNaN(mes) || isNaN(anio)) return ''
+    if (str.includes('/')) {
+      const partes = str.split('/')
+      if (partes.length === 3) {
+        if (partes[0].length === 4) {
+          anio = parseInt(partes[0], 10)
+          mes = parseInt(partes[1], 10) - 1
+          dia = parseInt(partes[2], 10)
+        } else {
+          dia = parseInt(partes[0], 10)
+          mes = parseInt(partes[1], 10) - 1
+          anio = parseInt(partes[2], 10)
+        }
+      }
+    } else if (str.includes('-')) {
+      const partes = str.split('-')
+      if (partes.length === 3) {
+        if (partes[0].length === 4) {
+          anio = parseInt(partes[0], 10)
+          mes = parseInt(partes[1], 10) - 1
+          dia = parseInt(partes[2], 10)
+        } else {
+          dia = parseInt(partes[0], 10)
+          mes = parseInt(partes[1], 10) - 1
+          anio = parseInt(partes[2], 10)
+        }
+      }
+    }
+
+    if (isNaN(dia) || isNaN(mes) || isNaN(anio) || anio === undefined) {
+      const d = new Date(str)
+      if (!isNaN(d.getTime())) {
+        dia = d.getDate()
+        mes = d.getMonth()
+        anio = d.getFullYear()
+      } else {
+        return ''
+      }
+    }
 
     const anioCompleto = anio < 100 ? (anio > 30 ? 1900 + anio : 2000 + anio) : anio
-
-    const nacimiento = new Date(anioCompleto, mes, dia)
-    if (isNaN(nacimiento.getTime())) return ''
-
     const hoy = new Date()
-    let edadCalculada = hoy.getFullYear() - nacimiento.getFullYear()
-    const m = hoy.getMonth() - nacimiento.getMonth()
+    let edadCalculada = hoy.getFullYear() - anioCompleto
+    const m = hoy.getMonth() - mes
 
-    if (m < 0 || (m === 0 && hoy.getDate() < nacimiento.getDate())) {
+    if (m < 0 || (m === 0 && hoy.getDate() < dia)) {
       edadCalculada--
     }
 
