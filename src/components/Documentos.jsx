@@ -98,6 +98,49 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
     fetchArchivos();
   }, [fetchArchivos]);
 
+  // Función para optimizar imágenes pesadas de cámaras o escaneos antes de subir
+  const comprimirImagenArchivo = (file) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const MAX_DIM = 1920;
+        let w = img.width;
+        let h = img.height;
+        if (w > MAX_DIM || h > MAX_DIM) {
+          if (w > h) {
+            h = Math.round((h * MAX_DIM) / w);
+            w = MAX_DIM;
+          } else {
+            w = Math.round((w * MAX_DIM) / h);
+            h = MAX_DIM;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob((blob) => {
+          if (!blob) return resolve(file);
+          const nuevoArchivo = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
+            type: 'image/jpeg',
+            lastModified: Date.now()
+          });
+          resolve(nuevoArchivo);
+        }, 'image/jpeg', 0.82);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(file);
+      };
+      img.src = url;
+    });
+  };
+
   // Manejar selección de archivo local en formulario principal
   const onFileChange = (e) => {
     const file = e.target.files && e.target.files[0];
@@ -105,12 +148,37 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
     procesarArchivoSeleccionado(file);
   };
 
-  const procesarArchivoSeleccionado = (file) => {
-    if (file.size > 30 * 1024 * 1024) {
-      alert("El archivo supera el límite de 30 MB. Por favor optimice el archivo antes de subirlo.");
+  const procesarArchivoSeleccionado = async (file) => {
+    if (!file) return;
+
+    let archivoFinal = file;
+    const esImg = file.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp)$/i.test(file.name);
+
+    // Si es una imagen y pesa más de 1.5 MB, la optimizamos automáticamente en el navegador
+    if (esImg && file.size > 1.5 * 1024 * 1024) {
+      try {
+        const optimizado = await comprimirImagenArchivo(file);
+        if (optimizado && optimizado.size < file.size) {
+          archivoFinal = optimizado;
+        }
+      } catch (e) {
+        console.warn("No se pudo optimizar la imagen:", e);
+      }
+    }
+
+    // Límite máximo admitido por Supabase Storage (50 MB)
+    if (archivoFinal.size > 50 * 1024 * 1024) {
+      const pesoMB = (archivoFinal.size / (1024 * 1024)).toFixed(1);
+      alert(
+        `⚠️ El archivo pesa ${pesoMB} MB y supera el tamaño máximo permitido por el servidor de almacenamiento (50 MB).\n\n` +
+        `💡 Sugerencias:\n` +
+        `• Si es un PDF con muchas hojas escaneadas, podés comprimirlo online gratuitamente (ej. en ilovepdf.com/es/comprimir_pdf) antes de subirlo.\n` +
+        `• O dividirlo en 2 partes (ej: "Estudio Parte 1" y "Estudio Parte 2").`
+      );
       return;
     }
-    setArchivoAsubir(file);
+
+    setArchivoAsubir(archivoFinal);
     setMensajeEstado(null);
 
     const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
@@ -261,26 +329,41 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
     }
   };
 
-  // Convertir cualquier imagen local (incluso cámara de móvil o WebP) a JPEG binario compatible con pdf-lib
+  // Convertir cualquier imagen local (incluso cámara de móvil o WebP) a JPEG binario optimizado compatible con pdf-lib
   const convertirImagenAJpegBytes = (file) => {
     return new Promise((resolve, reject) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
       img.onload = () => {
         URL.revokeObjectURL(url);
+
+        // Limitar resolución a 1920px máx para optimizar tamaño y que el PDF no explote en peso
+        const MAX_DIM = 1920;
+        let w = img.width;
+        let h = img.height;
+        if (w > MAX_DIM || h > MAX_DIM) {
+          if (w > h) {
+            h = Math.round((h * MAX_DIM) / w);
+            w = MAX_DIM;
+          } else {
+            w = Math.round((w * MAX_DIM) / h);
+            h = MAX_DIM;
+          }
+        }
+
         const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
+        canvas.width = w;
+        canvas.height = h;
         const ctx = canvas.getContext('2d');
         // Rellenar fondo blanco por si tiene transparencias
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0);
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
 
         canvas.toBlob((blob) => {
           if (!blob) return reject(new Error("Error al procesar la imagen."));
           blob.arrayBuffer().then(buf => resolve(new Uint8Array(buf))).catch(reject);
-        }, 'image/jpeg', 0.92);
+        }, 'image/jpeg', 0.80);
       };
       img.onerror = () => {
         URL.revokeObjectURL(url);
@@ -375,6 +458,12 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
       setProgresoAdosar("4/4 Guardando documento unificado en Supabase...");
       const pdfFinalBytes = await pdfPrincipal.save();
       const totalPaginas = pdfPrincipal.getPageCount();
+
+      // Validar si el PDF final supera el límite de Supabase Storage (50 MB)
+      if (pdfFinalBytes.byteLength > 50 * 1024 * 1024) {
+        const pesoMB = (pdfFinalBytes.byteLength / (1024 * 1024)).toFixed(1);
+        throw new Error(`El PDF unificado resultante pesa ${pesoMB} MB y supera el límite de 50 MB permitido por Supabase. Podés adosar menos hojas o comprimir las fotos/páginas.`);
+      }
 
       // 3. Guardar en Supabase Storage
       const pId = pacienteSeleccionado?.id_paciente_excel || pacienteSeleccionado?.id_paciente || pacienteSeleccionado?.id;
