@@ -290,11 +290,15 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
     });
   };
 
-  // Ejecutar el adosado (PDF Merge)
+  // Ejecutar el adosado (PDF Merge múltiple)
   const handleConfirmarAdosar = async () => {
     if (!modalAdosar?.doc) return;
-    if (!modalAdosar?.archivo) {
-      alert("Por favor seleccione el archivo o foto que desea adosar.");
+    const listaArchivos = modalAdosar.archivos && modalAdosar.archivos.length > 0 
+      ? modalAdosar.archivos 
+      : (modalAdosar.archivo ? [modalAdosar.archivo] : []);
+
+    if (listaArchivos.length === 0) {
+      alert("Por favor seleccione o arrastre al menos un archivo o foto para adosar.");
       return;
     }
 
@@ -313,58 +317,59 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
       setProgresoAdosar("2/4 Cargando motor de documentos PDF...");
       const pdfPrincipal = await PDFDocument.load(bytesOriginal);
 
-      // 2. Procesar el archivo que se va a adosar
-      const archivoNuevo = modalAdosar.archivo;
-      const ext = (archivoNuevo.name.split('.').pop() || '').toLowerCase();
-      const esPdf = (ext === 'pdf');
+      // 2. Procesar todos los archivos que se van a adosar
+      let indiceInsert = 0;
+      const A4_W = 595.28;
+      const A4_H = 841.89;
+      const MARGIN = 20;
+      const maxW = A4_W - MARGIN * 2;
+      const maxH = A4_H - MARGIN * 2;
 
-      setProgresoAdosar("3/4 Anexando nuevas páginas...");
+      for (let i = 0; i < listaArchivos.length; i++) {
+        const archivoNuevo = listaArchivos[i];
+        setProgresoAdosar(`3/4 Anexando hoja ${i + 1} de ${listaArchivos.length} (${archivoNuevo.name})...`);
 
-      if (esPdf) {
-        // Leer el nuevo PDF y copiar todas sus páginas
-        const bytesNuevo = await archivoNuevo.arrayBuffer();
-        const pdfAdicional = await PDFDocument.load(bytesNuevo);
-        const paginasCopiadas = await pdfPrincipal.copyPages(pdfAdicional, pdfAdicional.getPageIndices());
+        const ext = (archivoNuevo.name.split('.').pop() || '').toLowerCase();
+        const esPdf = (ext === 'pdf');
 
-        if (modalAdosar.posicion === 'inicio') {
-          // Insertar al inicio en orden
-          paginasCopiadas.forEach((p, idx) => {
-            pdfPrincipal.insertPage(idx, p);
+        if (esPdf) {
+          // Leer el nuevo PDF y copiar todas sus páginas
+          const bytesNuevo = await archivoNuevo.arrayBuffer();
+          const pdfAdicional = await PDFDocument.load(bytesNuevo);
+          const paginasCopiadas = await pdfPrincipal.copyPages(pdfAdicional, pdfAdicional.getPageIndices());
+
+          if (modalAdosar.posicion === 'inicio') {
+            paginasCopiadas.forEach(p => {
+              pdfPrincipal.insertPage(indiceInsert++, p);
+            });
+          } else {
+            paginasCopiadas.forEach(p => pdfPrincipal.addPage(p));
+          }
+        } else {
+          // Es una imagen (foto de evolución, escaneo JPG, PNG, WebP)
+          const jpegBytes = await convertirImagenAJpegBytes(archivoNuevo);
+          const embeddedImg = await pdfPrincipal.embedJpg(jpegBytes);
+
+          const scale = Math.min(maxW / embeddedImg.width, maxH / embeddedImg.height, 1);
+          const drawW = embeddedImg.width * scale;
+          const drawH = embeddedImg.height * scale;
+          const posX = (A4_W - drawW) / 2;
+          const posY = (A4_H - drawH) / 2;
+
+          let nuevaPagina;
+          if (modalAdosar.posicion === 'inicio') {
+            nuevaPagina = pdfPrincipal.insertPage(indiceInsert++, [A4_W, A4_H]);
+          } else {
+            nuevaPagina = pdfPrincipal.addPage([A4_W, A4_H]);
+          }
+
+          nuevaPagina.drawImage(embeddedImg, {
+            x: posX,
+            y: posY,
+            width: drawW,
+            height: drawH
           });
-        } else {
-          // Anexar al final
-          paginasCopiadas.forEach(p => pdfPrincipal.addPage(p));
         }
-      } else {
-        // Es una imagen (foto de evolución, escaneo JPG, PNG, WebP)
-        const jpegBytes = await convertirImagenAJpegBytes(archivoNuevo);
-        const embeddedImg = await pdfPrincipal.embedJpg(jpegBytes);
-
-        // Ajustar a tamaño A4 estándar proporcionalmente
-        const A4_W = 595.28;
-        const A4_H = 841.89;
-        const MARGIN = 20;
-        const maxW = A4_W - MARGIN * 2;
-        const maxH = A4_H - MARGIN * 2;
-        const scale = Math.min(maxW / embeddedImg.width, maxH / embeddedImg.height, 1);
-        const drawW = embeddedImg.width * scale;
-        const drawH = embeddedImg.height * scale;
-        const posX = (A4_W - drawW) / 2;
-        const posY = (A4_H - drawH) / 2;
-
-        let nuevaPagina;
-        if (modalAdosar.posicion === 'inicio') {
-          nuevaPagina = pdfPrincipal.insertPage(0, [A4_W, A4_H]);
-        } else {
-          nuevaPagina = pdfPrincipal.addPage([A4_W, A4_H]);
-        }
-
-        nuevaPagina.drawImage(embeddedImg, {
-          x: posX,
-          y: posY,
-          width: drawW,
-          height: drawH
-        });
       }
 
       setProgresoAdosar("4/4 Guardando documento unificado en Supabase...");
@@ -442,7 +447,7 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
 
       setMensajeEstado({
         tipo: 'exito',
-        texto: `¡Hoja adosada con éxito! El documento "${docBase.nombre_archivo}" ahora cuenta con ${totalPaginas} páginas.`
+        texto: `¡${listaArchivos.length} hoja(s) adosada(s) con éxito! El documento "${docBase.nombre_archivo}" ahora cuenta con ${totalPaginas} páginas.`
       });
 
       setModalAdosar(null);
@@ -943,7 +948,7 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                             onClick={() => {
                               setModalAdosar({
                                 doc,
-                                archivo: null,
+                                archivos: [],
                                 posicion: 'final',
                                 guardarNuevo: false,
                                 tituloNuevo: `${doc.nombre_archivo} (Actualizado)`
@@ -1283,25 +1288,26 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
               </p>
             </div>
 
-            {/* Dropzone para la nueva hoja */}
+            {/* Dropzone y Lista para adosar hojas (Permite selección múltiple) */}
             <div
               onDragOver={(e) => { e.preventDefault(); setArrastrandoAdosar(true); }}
               onDragLeave={() => setArrastrandoAdosar(false)}
               onDrop={(e) => {
                 e.preventDefault();
                 setArrastrandoAdosar(false);
-                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                  setModalAdosar(prev => ({ ...prev, archivo: e.dataTransfer.files[0] }));
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                  const nuevos = Array.from(e.dataTransfer.files);
+                  setModalAdosar(prev => ({
+                    ...prev,
+                    archivos: [...(prev.archivos || []), ...nuevos]
+                  }));
                 }
               }}
-              onClick={() => fileInputAdosarRef.current && fileInputAdosarRef.current.click()}
               style={{
-                border: `2px dashed ${arrastrandoAdosar ? '#c084fc' : modalAdosar.archivo ? '#10b981' : '#64748b'}`,
-                background: arrastrandoAdosar ? '#3b0764' : modalAdosar.archivo ? '#064e3b20' : '#0f172a',
+                border: `2px dashed ${arrastrandoAdosar ? '#c084fc' : (modalAdosar.archivos && modalAdosar.archivos.length > 0) ? '#10b981' : '#64748b'}`,
+                background: arrastrandoAdosar ? '#3b0764' : (modalAdosar.archivos && modalAdosar.archivos.length > 0) ? '#064e3b15' : '#0f172a',
                 borderRadius: '12px',
-                padding: '24px 16px',
-                textAlign: 'center',
-                cursor: 'pointer',
+                padding: '16px',
                 marginBottom: '16px',
                 transition: 'all 0.15s'
               }}
@@ -1309,38 +1315,134 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
               <input
                 ref={fileInputAdosarRef}
                 type="file"
+                multiple
                 onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    setModalAdosar(prev => ({ ...prev, archivo: e.target.files[0] }));
+                  if (e.target.files && e.target.files.length > 0) {
+                    const nuevos = Array.from(e.target.files);
+                    setModalAdosar(prev => ({
+                      ...prev,
+                      archivos: [...(prev.archivos || []), ...nuevos]
+                    }));
+                    e.target.value = '';
                   }
                 }}
                 accept=".pdf,.jpg,.jpeg,.png,.webp"
                 style={{ display: 'none' }}
               />
 
-              {modalAdosar.archivo ? (
+              {modalAdosar.archivos && modalAdosar.archivos.length > 0 ? (
                 <div>
-                  <span style={{ fontSize: '32px' }}>
-                    {modalAdosar.archivo.name.toLowerCase().endsWith('.pdf') ? '📕' : '🖼️'}
-                  </span>
-                  <p style={{ margin: '6px 0 2px 0', fontSize: '14px', fontWeight: 'bold', color: '#10b981' }}>
-                    {modalAdosar.archivo.name}
-                  </p>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>
-                    {(modalAdosar.archivo.size / (1024 * 1024)).toFixed(2)} MB • {modalAdosar.archivo.type || 'Archivo listo'}
-                  </p>
-                  <p style={{ margin: '6px 0 0 0', fontSize: '11px', color: '#c084fc', textDecoration: 'underline' }}>
-                    Clic para seleccionar otra hoja
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#10b981', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>✅</span> {modalAdosar.archivos.length} hoja(s) seleccionada(s) para adosar
+                    </span>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => fileInputAdosarRef.current && fileInputAdosarRef.current.click()}
+                        style={{
+                          background: '#7c3aed',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          fontSize: '11px',
+                          fontWeight: 'bold',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ➕ Agregar más
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setModalAdosar(prev => ({ ...prev, archivos: [] }))}
+                        style={{
+                          background: '#ef4444',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          fontSize: '11px',
+                          fontWeight: 'bold',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Limpiar
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Lista de archivos a anexar */}
+                  <div style={{ maxHeight: '160px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {modalAdosar.archivos.map((arch, idx) => {
+                      const esArchPdf = arch.name.toLowerCase().endsWith('.pdf');
+                      return (
+                        <div
+                          key={idx}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            background: '#1e293b',
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid #334155',
+                            fontSize: '12px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                            <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'bold' }}>#{idx + 1}</span>
+                            <span>{esArchPdf ? '📕' : '🖼️'}</span>
+                            <span style={{ color: '#f8fafc', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '280px' }} title={arch.name}>
+                              {arch.name}
+                            </span>
+                            <span style={{ color: '#64748b', fontSize: '11px' }}>
+                              ({(arch.size / (1024 * 1024)).toFixed(2)} MB)
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalAdosar(prev => ({
+                                ...prev,
+                                archivos: prev.archivos.filter((_, i) => i !== idx)
+                              }));
+                            }}
+                            title="Quitar esta hoja"
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#ef4444',
+                              cursor: 'pointer',
+                              fontWeight: 'bold',
+                              fontSize: '13px',
+                              padding: '2px 6px'
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: '#94a3b8', textAlign: 'center' }}>
+                    💡 Se anexarán en el orden mostrado arriba. Podés arrastrar más archivos aquí en cualquier momento.
                   </p>
                 </div>
               ) : (
-                <div>
-                  <span style={{ fontSize: '32px' }}>📄</span>
+                <div
+                  onClick={() => fileInputAdosarRef.current && fileInputAdosarRef.current.click()}
+                  style={{ cursor: 'pointer', textAlign: 'center', padding: '16px 8px' }}
+                >
+                  <span style={{ fontSize: '36px' }}>📑</span>
                   <p style={{ margin: '6px 0 2px 0', fontSize: '14px', fontWeight: 'bold', color: '#cbd5e1' }}>
-                    Seleccione la hoja nueva a anexar
+                    Hacé clic o arrastrá aquí las hojas a adosar
                   </p>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>
-                    Puede ser otro PDF (varias hojas) o una Foto / Escaneo (JPG, PNG)
+                  <p style={{ margin: 0, fontSize: '12px', color: '#38bdf8', fontWeight: 'bold' }}>
+                    ✨ Podés seleccionar múltiples fotos o PDFs al mismo tiempo
+                  </p>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#94a3b8' }}>
+                    Formatos admitidos: PDF, JPG, PNG, WebP
                   </p>
                 </div>
               )}
@@ -1472,16 +1574,16 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
               <button
                 type="button"
                 onClick={handleConfirmarAdosar}
-                disabled={procesandoAdosar || !modalAdosar.archivo}
+                disabled={procesandoAdosar || (!modalAdosar.archivos?.length && !modalAdosar.archivo)}
                 style={{
-                  background: procesandoAdosar || !modalAdosar.archivo 
+                  background: procesandoAdosar || (!modalAdosar.archivos?.length && !modalAdosar.archivo) 
                     ? '#475569' 
                     : 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)',
                   color: '#fff',
                   border: 'none',
                   padding: '10px 22px',
                   borderRadius: '8px',
-                  cursor: procesandoAdosar || !modalAdosar.archivo ? 'not-allowed' : 'pointer',
+                  cursor: procesandoAdosar || (!modalAdosar.archivos?.length && !modalAdosar.archivo) ? 'not-allowed' : 'pointer',
                   fontWeight: 'bold',
                   fontSize: '13px',
                   display: 'flex',
@@ -1489,7 +1591,7 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                   gap: '6px'
                 }}
               >
-                <span>🚀</span> {procesandoAdosar ? 'Uniendo...' : 'Unir y Guardar'}
+                <span>🚀</span> {procesandoAdosar ? 'Adosando hojas...' : `Confirmar y Adosar ${modalAdosar.archivos?.length ? `(${modalAdosar.archivos.length} hojas)` : ''}`}
               </button>
             </div>
           </div>
