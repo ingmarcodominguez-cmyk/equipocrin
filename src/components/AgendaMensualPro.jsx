@@ -1,6 +1,11 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 
+function extraerNotasLibres(obs) {
+  if (!obs) return '';
+  return String(obs).replace(/^(\[\s*[^\]]+\]\s*)+/, '').trim();
+}
+
 function AgendaMensualPro({ userData }) {
   const [turnos, setTurnos] = useState([])
   const [users, setUsers] = useState([])
@@ -914,6 +919,26 @@ function AgendaMensualPro({ userData }) {
                       <span style={{ fontSize: '12px', fontWeight: '600', color: '#1e40af' }}>
                         👤 {prof}
                       </span>
+                      {extraerNotasLibres(t.observaciones) && (
+                        <span 
+                          style={{ 
+                            fontSize: '11.5px', 
+                            color: '#92400e', 
+                            background: '#fef3c7', 
+                            border: '1px solid #fde68a',
+                            padding: '2px 8px', 
+                            borderRadius: '4px', 
+                            maxWidth: '320px', 
+                            whiteSpace: 'nowrap', 
+                            overflow: 'hidden', 
+                            textOverflow: 'ellipsis',
+                            fontWeight: '600' 
+                          }} 
+                          title={`Observación: ${extraerNotasLibres(t.observaciones)}`}
+                        >
+                          💬 {extraerNotasLibres(t.observaciones)}
+                        </span>
+                      )}
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -926,7 +951,7 @@ function AgendaMensualPro({ userData }) {
                           setMesActual(new Date(f.getUTCFullYear(), f.getUTCMonth(), 1));
                           setDiaSeleccionado(f.getUTCDate());
                           setTurnoEditando(t);
-                          setForm({ ...t, hora, prestacion: prest });
+                          setForm({ ...t, hora, prestacion: prest, observaciones: extraerNotasLibres(t.observaciones) });
                         }}
                         style={{
                           background: '#0284c7',
@@ -970,7 +995,7 @@ function AgendaMensualPro({ userData }) {
           });
           return (
             <div key={i} style={{ minHeight: '100px', background: '#ffffff', padding: '5px', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd', position: 'relative' }}>
-              <div onClick={() => { setDiaSeleccionado(dN); setTurnoEditando(null); setForm({...form, paciente_nombre: '', estado: 'pendiente', horario_especial: ''}); }} style={{ cursor: 'pointer', color: '#007bff', fontWeight: 'bold' }}>{dN} +</div>
+              <div onClick={() => { setDiaSeleccionado(dN); setTurnoEditando(null); setForm({...form, paciente_nombre: '', estado: 'pendiente', horario_especial: '', observaciones: ''}); }} style={{ cursor: 'pointer', color: '#007bff', fontWeight: 'bold' }}>{dN} +</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 {tD.sort((a,b) => (a.observaciones?.split(']')[0] || '').localeCompare(b.observaciones?.split(']')[0] || '')).map(t => {
                   const parts = t.observaciones?.split(']') || [];
@@ -1011,7 +1036,7 @@ function AgendaMensualPro({ userData }) {
                       onClick={(e) => { 
                         e.stopPropagation(); 
                         setTurnoEditando(t); 
-                        setForm({...t, hora: hora, prestacion: prest}); 
+                        setForm({...t, hora: hora, prestacion: prest, observaciones: extraerNotasLibres(t.observaciones)}); 
                         setDiaSeleccionado(dN); 
                       }} 
                       style={{ 
@@ -1031,6 +1056,30 @@ function AgendaMensualPro({ userData }) {
                       <div style={{ color: est === 'cancelado' ? '#721c24' : '#333' }}>
                         <strong>{hora}</strong> | {prest} | <b>{prof}</b>
                       </div>
+                      {extraerNotasLibres(t.observaciones) && (
+                        <div 
+                          style={{ 
+                            marginTop: '3px', 
+                            fontSize: '10px', 
+                            color: '#92400e', 
+                            background: '#fef3c7', 
+                            border: '1px solid #fde68a', 
+                            padding: '2px 4px', 
+                            borderRadius: '3px',
+                            whiteSpace: 'nowrap', 
+                            overflow: 'hidden', 
+                            textOverflow: 'ellipsis',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            fontWeight: '600'
+                          }}
+                          title={`Observación: ${extraerNotasLibres(t.observaciones)}`}
+                        >
+                          <span>💬</span>
+                          <span>{extraerNotasLibres(t.observaciones)}</span>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1042,20 +1091,44 @@ function AgendaMensualPro({ userData }) {
 
       {diaSeleccionado && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#ffffff', padding: '20px', width: '320px', borderRadius: '15px' }}>
-            <h3>{turnoEditando ? 'Editar Turno' : 'Nuevo Turno'}</h3>
+          <div style={{ background: '#ffffff', padding: '20px', width: '350px', maxWidth: '92vw', borderRadius: '15px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '14px', color: '#0f172a' }}>{turnoEditando ? 'Editar Turno' : 'Nuevo Turno'}</h3>
             <input 
               placeholder="Paciente" 
               list="lista-pacientes-sugerencias"
               value={form.paciente_nombre} 
               onChange={e => setForm({...form, paciente_nombre: e.target.value})} 
-              style={{width: '100%', marginBottom: 10, padding: '8px'}} 
+              style={{width: '100%', marginBottom: 10, padding: '8px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #cbd5e1'}} 
             />
-            <select value={form.prestacion} onChange={e => setForm({...form, prestacion: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}}>{prestaciones.map(p => <option key={p} value={p}>{p}</option>)}</select>
-            <select value={form.profesional_id} onChange={e => setForm({...form, profesional_id: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}}><option value="">Profesional...</option>{users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
-            <input placeholder="Ej: 13:15" value={form.horario_especial} onChange={e => setForm({...form, horario_especial: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}} />
-            <select value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}}>{listaHorarios.map(h => <option key={h} value={h}>{h}</option>)}</select>
-            <select value={form.estado} onChange={e => setForm({...form, estado: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px'}}><option value="pendiente">⏳ Pendiente</option><option value="realizado">✅ Realizado</option><option value="cancelado">❌ Cancelado</option></select>
+            <select value={form.prestacion} onChange={e => setForm({...form, prestacion: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #cbd5e1'}}>{prestaciones.map(p => <option key={p} value={p}>{p}</option>)}</select>
+            <select value={form.profesional_id} onChange={e => setForm({...form, profesional_id: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #cbd5e1'}}><option value="">Profesional...</option>{users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
+            <input placeholder="Ej: 13:15" value={form.horario_especial} onChange={e => setForm({...form, horario_especial: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #cbd5e1'}} />
+            <select value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #cbd5e1'}}>{listaHorarios.map(h => <option key={h} value={h}>{h}</option>)}</select>
+            <select value={form.estado} onChange={e => setForm({...form, estado: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #cbd5e1'}}><option value="pendiente">⏳ Pendiente</option><option value="realizado">✅ Realizado</option><option value="cancelado">❌ Cancelado</option></select>
+            
+            {/* Campo de Observaciones / Novedades */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#475569', marginBottom: 4 }}>
+                Observaciones / Novedad:
+              </label>
+              <textarea 
+                placeholder="Ej: Viviana hoy no pudo por enfermedad, la evaluación la hizo sólo Ana Jiménez..." 
+                value={form.observaciones || ''} 
+                onChange={e => setForm({...form, observaciones: e.target.value})} 
+                rows={3}
+                style={{
+                  width: '100%', 
+                  padding: '8px 10px', 
+                  borderRadius: '6px', 
+                  border: '1px solid #cbd5e1', 
+                  fontSize: '12px', 
+                  boxSizing: 'border-box', 
+                  fontFamily: 'inherit',
+                  resize: 'vertical',
+                  outline: 'none'
+                }} 
+              />
+            </div>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'flex', gap: '10px' }}>
@@ -1077,7 +1150,8 @@ function AgendaMensualPro({ userData }) {
                       diasSemana: [diaSemanaNum],
                       hora: form.hora,
                       horario_especial: form.horario_especial,
-                      estado: form.estado || 'pendiente'
+                      estado: form.estado || 'pendiente',
+                      observaciones: form.observaciones || ''
                     });
                     setDiaSeleccionado(null);
                   }}
