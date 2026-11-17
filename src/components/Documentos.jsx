@@ -141,6 +141,28 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
     });
   };
 
+  // Función para procesar y optimizar lote de archivos al adosar
+  const agregarArchivosAdosar = async (nuevos) => {
+    const listaOptimizada = [];
+    for (const f of nuevos) {
+      const esImg = f.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp)$/i.test(f.name);
+      if (esImg && f.size > 300 * 1024) {
+        try {
+          const comp = await comprimirImagenArchivo(f);
+          listaOptimizada.push(comp || f);
+        } catch {
+          listaOptimizada.push(f);
+        }
+      } else {
+        listaOptimizada.push(f);
+      }
+    }
+    setModalAdosar(prev => ({
+      ...prev,
+      archivos: [...(prev.archivos || []), ...listaOptimizada]
+    }));
+  };
+
   // Manejar selección de archivo local en formulario principal
   const onFileChange = (e) => {
     const file = e.target.files && e.target.files[0];
@@ -154,8 +176,8 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
     let archivoFinal = file;
     const esImg = file.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp)$/i.test(file.name);
 
-    // Si es una imagen y pesa más de 1.5 MB, la optimizamos automáticamente en el navegador
-    if (esImg && file.size > 1.5 * 1024 * 1024) {
+    // Si es una imagen y pesa más de 300 KB, la optimizamos automáticamente en el navegador
+    if (esImg && file.size > 300 * 1024) {
       try {
         const optimizado = await comprimirImagenArchivo(file);
         if (optimizado && optimizado.size < file.size) {
@@ -1381,15 +1403,11 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
             <div
               onDragOver={(e) => { e.preventDefault(); setArrastrandoAdosar(true); }}
               onDragLeave={() => setArrastrandoAdosar(false)}
-              onDrop={(e) => {
+              onDrop={async (e) => {
                 e.preventDefault();
                 setArrastrandoAdosar(false);
                 if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                  const nuevos = Array.from(e.dataTransfer.files);
-                  setModalAdosar(prev => ({
-                    ...prev,
-                    archivos: [...(prev.archivos || []), ...nuevos]
-                  }));
+                  await agregarArchivosAdosar(Array.from(e.dataTransfer.files));
                 }
               }}
               style={{
@@ -1405,14 +1423,11 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                 ref={fileInputAdosarRef}
                 type="file"
                 multiple
-                onChange={(e) => {
+                onChange={async (e) => {
                   if (e.target.files && e.target.files.length > 0) {
                     const nuevos = Array.from(e.target.files);
-                    setModalAdosar(prev => ({
-                      ...prev,
-                      archivos: [...(prev.archivos || []), ...nuevos]
-                    }));
                     e.target.value = '';
+                    await agregarArchivosAdosar(nuevos);
                   }
                 }}
                 accept=".pdf,.jpg,.jpeg,.png,.webp"
@@ -1485,9 +1500,14 @@ export default function Documentos({ pacientePreseleccionado = null, onVolver = 
                             <span style={{ color: '#f8fafc', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '280px' }} title={arch.name}>
                               {arch.name}
                             </span>
-                            <span style={{ color: '#64748b', fontSize: '11px' }}>
-                              ({(arch.size / (1024 * 1024)).toFixed(2)} MB)
+                            <span style={{ color: arch.size < 1024 * 1024 ? '#34d399' : '#94a3b8', fontSize: '11px', fontWeight: 'bold' }}>
+                              ({arch.size < 1024 * 1024 ? `${Math.round(arch.size / 1024)} KB` : `${(arch.size / (1024 * 1024)).toFixed(2)} MB`})
                             </span>
+                            {!esArchPdf && (
+                              <span style={{ fontSize: '10px', background: '#064e3b', color: '#6ee7b7', padding: '1px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+                                ✨ Optimizada
+                              </span>
+                            )}
                           </div>
                           <button
                             type="button"
