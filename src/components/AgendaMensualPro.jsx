@@ -91,6 +91,29 @@ function AgendaMensualPro({ userData }) {
     return ids;
   };
 
+  const esVivianaJimenez = (id, nombre) => {
+    const idStr = String(id || '').trim();
+    if (idStr === '9deae0ae-c2c8-4167-bf49-0380f35f32c1') return true;
+    const n = (nombre || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return n.includes('VIVIANA') && n.includes('JIMENEZ');
+  };
+
+  const obtenerHorariosPermitidosProf = (profId, profNombre, diaSemanaNum, horariosDisponibles = listaHorarios) => {
+    if (esVivianaJimenez(profId, profNombre)) {
+      // Lunes (1), Martes (2) y Viernes (5): desde las 09:00 hasta las 14:45
+      if (diaSemanaNum === 1 || diaSemanaNum === 2 || diaSemanaNum === 5) {
+        return horariosDisponibles.filter(h => h >= '09:00' && h <= '14:45');
+      }
+      // Miércoles (3) y Jueves (4): desde las 14:00 hs en adelante
+      if (diaSemanaNum === 3 || diaSemanaNum === 4) {
+        return horariosDisponibles.filter(h => h >= '14:00');
+      }
+      // Sábado (6) y Domingo (0): Viviana no atiende
+      return [];
+    }
+    return horariosDisponibles;
+  };
+
   useEffect(() => {
     if (!esAdmin && userData?.id) {
       setFiltroProfesional(String(userData.id));
@@ -559,11 +582,14 @@ function AgendaMensualPro({ userData }) {
           if (hr) mapaOcupados[hr] = t.paciente_nombre || 'Ocupado';
         });
 
-        const libres = horariosBase.filter(h => !mapaOcupados[h]);
-        const ocupados = horariosBase.filter(h => mapaOcupados[h]).map(h => ({ hora: h, paciente: mapaOcupados[h] }));
+        // Filtrar según los horarios posibles del profesional para este día de la semana (ej: Viviana Jiménez)
+        const horariosPosiblesProf = obtenerHorariosPermitidosProf(prof.id, prof.nombre, diaSemanaNum, horariosBase);
+
+        const libres = horariosPosiblesProf.filter(h => !mapaOcupados[h]);
+        const ocupados = horariosPosiblesProf.filter(h => mapaOcupados[h]).map(h => ({ hora: h, paciente: mapaOcupados[h] }));
 
         totalLibres += libres.length;
-        return { prof, libres, ocupados };
+        return { prof, libres, ocupados, horariosPosiblesCount: horariosPosiblesProf.length };
       });
 
       diasResultado.push({
@@ -995,7 +1021,16 @@ function AgendaMensualPro({ userData }) {
           });
           return (
             <div key={i} style={{ minHeight: '100px', background: '#ffffff', padding: '5px', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd', position: 'relative', minWidth: 0, overflow: 'hidden' }}>
-              <div onClick={() => { setDiaSeleccionado(dN); setTurnoEditando(null); setForm({...form, paciente_nombre: '', estado: 'pendiente', horario_especial: '', observaciones: ''}); }} style={{ cursor: 'pointer', color: '#007bff', fontWeight: 'bold' }}>{dN} +</div>
+              <div onClick={() => { 
+                const fechaUtc = new Date(Date.UTC(mesActual.getFullYear(), mesActual.getMonth(), dN, 12, 0, 0));
+                const diaSem = fechaUtc.getUTCDay();
+                const profObj = users.find(u => String(u.id) === String(form.profesional_id));
+                const permitidos = obtenerHorariosPermitidosProf(form.profesional_id, profObj?.nombre, diaSem, listaHorarios);
+                const horaInicial = permitidos.length > 0 ? (permitidos.includes(form.hora) ? form.hora : permitidos[0]) : form.hora;
+                setDiaSeleccionado(dN); 
+                setTurnoEditando(null); 
+                setForm({...form, hora: horaInicial, paciente_nombre: '', estado: 'pendiente', horario_especial: '', observaciones: ''}); 
+              }} style={{ cursor: 'pointer', color: '#007bff', fontWeight: 'bold' }}>{dN} +</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
                 {tD.sort((a,b) => (a.observaciones?.split(']')[0] || '').localeCompare(b.observaciones?.split(']')[0] || '')).map(t => {
                   const parts = t.observaciones?.split(']') || [];
@@ -1101,9 +1136,85 @@ function AgendaMensualPro({ userData }) {
               style={{width: '100%', marginBottom: 10, padding: '8px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #cbd5e1'}} 
             />
             <select value={form.prestacion} onChange={e => setForm({...form, prestacion: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #cbd5e1'}}>{prestaciones.map(p => <option key={p} value={p}>{p}</option>)}</select>
-            <select value={form.profesional_id} onChange={e => setForm({...form, profesional_id: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #cbd5e1'}}><option value="">Profesional...</option>{users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
+            <select 
+              value={form.profesional_id} 
+              onChange={e => {
+                const nuevoProfId = e.target.value;
+                const diaSem = diaSeleccionado ? new Date(Date.UTC(mesActual.getFullYear(), mesActual.getMonth(), diaSeleccionado, 12, 0, 0)).getUTCDay() : null;
+                const profObj = users.find(u => String(u.id) === String(nuevoProfId));
+                let nuevaHora = form.hora;
+                if (diaSem !== null) {
+                  const permitidos = obtenerHorariosPermitidosProf(nuevoProfId, profObj?.nombre, diaSem, listaHorarios);
+                  if (permitidos.length > 0 && !permitidos.includes(form.hora)) {
+                    nuevaHora = permitidos[0];
+                  }
+                }
+                setForm({...form, profesional_id: nuevoProfId, hora: nuevaHora});
+              }} 
+              style={{width: '100%', marginBottom: 10, padding: '8px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #cbd5e1'}}
+            >
+              <option value="">Profesional...</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+            </select>
+
+            {(() => {
+              const diaSem = diaSeleccionado ? new Date(Date.UTC(mesActual.getFullYear(), mesActual.getMonth(), diaSeleccionado, 12, 0, 0)).getUTCDay() : null;
+              const profObj = users.find(u => String(u.id) === String(form.profesional_id));
+              const esViviana = esVivianaJimenez(form.profesional_id, profObj?.nombre);
+              if (!esViviana) return null;
+              const diaTexto = diasSemanaOpciones.find(d => d.id === diaSem)?.label || '';
+              return (
+                <div style={{
+                  marginBottom: 10,
+                  padding: '7px 10px',
+                  borderRadius: '6px',
+                  background: '#f0fdf4',
+                  border: '1px solid #86efac',
+                  fontSize: '11px',
+                  color: '#166534',
+                  lineHeight: '1.4'
+                }}>
+                  <strong>⏰ Horarios de Viviana Jiménez {diaTexto ? `(${diaTexto})` : ''}:</strong><br />
+                  • Lun, Mar y Vie: <strong>09:00 a 14:45 hs</strong><br />
+                  • Mié y Jue: <strong>desde las 14:00 hs en adelante</strong>
+                  {(diaSem === 0 || diaSem === 6) && (
+                    <div style={{ color: '#b91c1c', fontWeight: 'bold', marginTop: '2px' }}>
+                      ⚠️ No atiende los fines de semana.
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             <input placeholder="Ej: 13:15" value={form.horario_especial} onChange={e => setForm({...form, horario_especial: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #cbd5e1'}} />
-            <select value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #cbd5e1'}}>{listaHorarios.map(h => <option key={h} value={h}>{h}</option>)}</select>
+
+            {(() => {
+              const diaSem = diaSeleccionado ? new Date(Date.UTC(mesActual.getFullYear(), mesActual.getMonth(), diaSeleccionado, 12, 0, 0)).getUTCDay() : null;
+              const profObj = users.find(u => String(u.id) === String(form.profesional_id));
+              const permitidos = diaSem !== null ? obtenerHorariosPermitidosProf(form.profesional_id, profObj?.nombre, diaSem, listaHorarios) : listaHorarios;
+              
+              const horasAMostrar = [...permitidos];
+              if (form.hora && !horasAMostrar.includes(form.hora)) {
+                horasAMostrar.unshift(form.hora);
+              }
+
+              return (
+                <select 
+                  value={form.hora} 
+                  onChange={e => setForm({...form, hora: e.target.value})} 
+                  style={{width: '100%', marginBottom: 10, padding: '8px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #cbd5e1'}}
+                >
+                  {horasAMostrar.map(h => (
+                    <option key={h} value={h}>
+                      {h} hs {!permitidos.includes(h) ? '(Fuera de franja)' : ''}
+                    </option>
+                  ))}
+                  {horasAMostrar.length === 0 && (
+                    <option value="">Sin horarios disponibles este día</option>
+                  )}
+                </select>
+              );
+            })()}
             <select value={form.estado} onChange={e => setForm({...form, estado: e.target.value})} style={{width: '100%', marginBottom: 10, padding: '8px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #cbd5e1'}}><option value="pendiente">⏳ Pendiente</option><option value="realizado">✅ Realizado</option><option value="cancelado">❌ Cancelado</option></select>
             
             {/* Campo de Observaciones / Novedades */}
@@ -1277,6 +1388,26 @@ function AgendaMensualPro({ userData }) {
                     <option key={u.id} value={u.id}>{u.nombre}</option>
                   ))}
                 </select>
+                {(() => {
+                  const profObj = users.find(u => String(u.id) === String(formMasivo.profesional_id));
+                  if (!esVivianaJimenez(formMasivo.profesional_id, profObj?.nombre)) return null;
+                  return (
+                    <div style={{
+                      marginTop: '6px',
+                      padding: '7px 10px',
+                      borderRadius: '6px',
+                      background: '#f0fdf4',
+                      border: '1px solid #86efac',
+                      fontSize: '11px',
+                      color: '#166534',
+                      lineHeight: '1.4'
+                    }}>
+                      <strong>⏰ Horarios de atención de Viviana Jiménez:</strong><br />
+                      • Lunes, Martes y Viernes: de <strong>09:00 a 14:45 hs</strong><br />
+                      • Miércoles y Jueves: desde las <strong>14:00 hs en adelante</strong>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Mes y Año */}
@@ -1912,7 +2043,7 @@ function AgendaMensualPro({ userData }) {
                       </div>
 
                       <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: "12px" }}>
-                        {diaObj.porProfesional.map(({ prof, libres, ocupados }) => (
+                        {diaObj.porProfesional.map(({ prof, libres, ocupados, horariosPosiblesCount }) => (
                           <div key={prof.id} style={{ borderBottom: "1px dashed #e2e8f0", paddingBottom: "10px" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
                               <span style={{ fontWeight: "700", fontSize: "13px", color: "#1e293b" }}>👤 {prof.nombreLimpio}</span>
@@ -1921,12 +2052,20 @@ function AgendaMensualPro({ userData }) {
                                 fontWeight: "700",
                                 padding: "2px 8px",
                                 borderRadius: "10px",
-                                background: libres.length > 0 ? "#dcfce7" : "#fee2e2",
-                                color: libres.length > 0 ? "#166534" : "#991b1b"
+                                background: libres.length > 0 ? "#dcfce7" : (horariosPosiblesCount === 0 ? "#f1f5f9" : "#fee2e2"),
+                                color: libres.length > 0 ? "#166534" : (horariosPosiblesCount === 0 ? "#64748b" : "#991b1b")
                               }}>
-                                {libres.length > 0 ? `${libres.length} disponibles` : "Sin turnos libres"}
+                                {libres.length > 0 
+                                  ? `${libres.length} disponibles` 
+                                  : (horariosPosiblesCount === 0 ? "No atiende este día" : "Sin turnos libres")}
                               </span>
                             </div>
+
+                            {libres.length === 0 && horariosPosiblesCount === 0 && (
+                              <div style={{ fontSize: "11px", color: "#94a3b8", fontStyle: "italic", marginTop: "2px" }}>
+                                ℹ️ No tiene horarios de atención configurados para este día.
+                              </div>
+                            )}
 
                             <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
                               {libres.map(hr => (
