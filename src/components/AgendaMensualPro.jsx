@@ -1100,13 +1100,24 @@ function AgendaMensualPro({ userData }) {
                         {t.paciente_nombre.toUpperCase()} {est === 'cancelado' ? '❌ (CANCELADO)' : ''}
                       </div>
                       <div style={{ 
-                        color: est === 'cancelado' ? '#721c24' : '#333', 
+                        color: est === 'cancelado' ? '#721c24' : '#475569', 
                         fontSize: '10.5px',
                         wordBreak: 'break-word',
                         whiteSpace: 'normal',
-                        lineHeight: '1.3'
+                        lineHeight: '1.25'
                       }}>
-                        <strong>{hora}</strong> | {prest} | <b>{prof}</b>
+                        <strong>{hora}</strong> | {prest}
+                      </div>
+                      <div style={{ 
+                        color: est === 'cancelado' ? '#991b1b' : '#1e3a8a', 
+                        fontSize: '11px',
+                        fontWeight: 'bold',
+                        marginTop: '2px',
+                        wordBreak: 'break-word',
+                        whiteSpace: 'normal',
+                        lineHeight: '1.25'
+                      }}>
+                        👤 {prof}
                       </div>
                       {extraerNotasLibres(t.observaciones) && (
                         <div 
