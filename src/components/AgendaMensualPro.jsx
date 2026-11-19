@@ -1004,7 +1004,8 @@ function AgendaMensualPro({ userData }) {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', backgroundColor: '#ffffff', borderTop: '1px solid #ddd', flex: 1, width: '100%' }}>
+      <div style={{ width: '100%', overflowX: 'auto', WebkitOverflowScrolling: 'touch', flex: 1, backgroundColor: '#ffffff' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(140px, 1fr))', minWidth: '980px', width: '100%', backgroundColor: '#ffffff', borderTop: '1px solid #ddd' }}>
         {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => (
           <div key={d} style={{ textAlign: 'center', background: '#f8f9fa', padding: '10px 4px', fontWeight: 'bold', borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd', minWidth: 0, overflow: 'hidden' }}>{d}</div>
         ))}
@@ -1087,10 +1088,24 @@ function AgendaMensualPro({ userData }) {
                         overflow: 'hidden'
                       }}
                     >
-                      <div style={{ color: textNombreColor, fontWeight: 'bold', fontSize: '11.5px', textDecoration: decoracionTexto, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={t.paciente_nombre}>
+                      <div style={{ 
+                        color: textNombreColor, 
+                        fontWeight: 'bold', 
+                        fontSize: '11.5px', 
+                        textDecoration: decoracionTexto,
+                        wordBreak: 'break-word',
+                        whiteSpace: 'normal',
+                        lineHeight: '1.25'
+                      }} title={t.paciente_nombre}>
                         {t.paciente_nombre.toUpperCase()} {est === 'cancelado' ? '❌ (CANCELADO)' : ''}
                       </div>
-                      <div style={{ color: est === 'cancelado' ? '#721c24' : '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '10.5px' }}>
+                      <div style={{ 
+                        color: est === 'cancelado' ? '#721c24' : '#333', 
+                        fontSize: '10.5px',
+                        wordBreak: 'break-word',
+                        whiteSpace: 'normal',
+                        lineHeight: '1.3'
+                      }}>
                         <strong>{hora}</strong> | {prest} | <b>{prof}</b>
                       </div>
                       {extraerNotasLibres(t.observaciones) && (
@@ -1103,9 +1118,9 @@ function AgendaMensualPro({ userData }) {
                             border: '1px solid #fde68a', 
                             padding: '2px 5px', 
                             borderRadius: '3px',
-                            whiteSpace: 'nowrap', 
-                            overflow: 'hidden', 
-                            textOverflow: 'ellipsis',
+                            wordBreak: 'break-word',
+                            whiteSpace: 'normal',
+                            lineHeight: '1.3',
                             maxWidth: '100%',
                             display: 'block',
                             fontWeight: '600'
@@ -1122,11 +1137,12 @@ function AgendaMensualPro({ userData }) {
             </div>
           )
         })}
+        </div>
       </div>
 
       {diaSeleccionado && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#ffffff', padding: '20px', width: '350px', maxWidth: '92vw', borderRadius: '15px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)' }}>
+          <div style={{ background: '#ffffff', padding: '20px', width: '350px', maxWidth: '92vw', maxHeight: '90vh', overflowY: 'auto', borderRadius: '15px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)' }}>
             <h3 style={{ marginTop: 0, marginBottom: '14px', color: '#0f172a' }}>{turnoEditando ? 'Editar Turno' : 'Nuevo Turno'}</h3>
             <input 
               placeholder="Paciente" 
