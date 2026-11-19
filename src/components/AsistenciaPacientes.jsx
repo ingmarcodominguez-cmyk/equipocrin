@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { parsearMetadataSesion } from '../lib/agendaHistorial.js';
 
@@ -15,6 +15,32 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
   // Listados de mapeo para usuarios (prestadores)
   const [mapaPrestadores, setMapaPrestadores] = useState({});
   const [pacientesGuardadosIds, setPacientesGuardadosIds] = useState(new Set());
+  const [realtimeConectado, setRealtimeConectado] = useState(false);
+  
+  const channelRef = useRef(null);
+  const pacientesCargadosRef = useRef(pacientesCargados);
+  const fechaTrabajoRef = useRef(fechaTrabajo);
+  const timerObsRef = useRef({});
+
+  useEffect(() => {
+    pacientesCargadosRef.current = pacientesCargados;
+  }, [pacientesCargados]);
+
+  useEffect(() => {
+    fechaTrabajoRef.current = fechaTrabajo;
+  }, [fechaTrabajo]);
+
+  const enviarBroadcast = (payload) => {
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'asistencia_pacientes_evento',
+        payload
+      }).catch(err => {
+        console.error('Error al enviar broadcast de asistencia:', err);
+      });
+    }
+  };
 
   // --- NUEVO ESTADO DE TABS, REPORTES Y FILTROS ---
   const [activeTab, setActiveTab] = useState('diaria'); // 'diaria' o 'reporte'
@@ -133,25 +159,84 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
     return false;
   };
 
-  // Carga inicial y suscripción en tiempo real (Realtime)
+  // Carga inicial y suscripción en tiempo real (Realtime Broadcast + Fallback Polling)
   useEffect(() => {
     cargarDatos();
 
-    const channel = supabase
-      .channel('asistencia_pacientes_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'asistencia_pacientes_motor' }, () => {
-        cargarDatos();
+    const channelName = 'asistencia_pacientes_realtime_channel';
+    const channel = supabase.channel(channelName, {
+      config: {
+        broadcast: { ack: false }
+      }
+    });
+
+    channelRef.current = channel;
+
+    channel
+      .on('broadcast', { event: 'asistencia_pacientes_evento' }, ({ payload }) => {
+        if (!payload) return;
+
+        // Solo procesar si el evento corresponde a la misma fecha que está viendo el usuario
+        if (payload.fecha && payload.fecha === fechaTrabajoRef.current) {
+          if (payload.tipo === 'cambio_estado_individual') {
+            setPacientesCargados(prev =>
+              prev.map(p =>
+                p.id_paciente === payload.id_paciente
+                  ? { ...p, estado: payload.nuevoEstado }
+                  : p
+              )
+            );
+            setPacientesGuardadosIds(prev => new Set([...prev, payload.id_paciente]));
+          } else if (payload.tipo === 'cambio_obs_individual') {
+            setPacientesCargados(prev =>
+              prev.map(p =>
+                p.id_paciente === payload.id_paciente
+                  ? { ...p, obs: payload.obs }
+                  : p
+              )
+            );
+            setPacientesGuardadosIds(prev => new Set([...prev, payload.id_paciente]));
+          } else if (payload.tipo === 'marcar_todos_presentes') {
+            const setIds = new Set(payload.ids || []);
+            setPacientesCargados(prev =>
+              prev.map(p => (setIds.has(p.id_paciente) ? { ...p, estado: 'Presente' } : p))
+            );
+            setPacientesGuardadosIds(prev => new Set([...prev, ...(payload.ids || [])]));
+          } else {
+            // Guardado completo u otro cambio: recargar silenciosamente
+            cargarDatos(true);
+          }
+        }
       })
-      .subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'asistencia_pacientes_motor' }, () => {
+        cargarDatos(true);
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setRealtimeConectado(true);
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          setRealtimeConectado(false);
+        }
+      });
+
+    // Sincronización automática al enfocar la pestaña o regresar a la ventana
+    const handleFocus = () => {
+      cargarDatos(true);
+    };
+    window.addEventListener('focus', handleFocus);
 
     return () => {
+      window.removeEventListener('focus', handleFocus);
       supabase.removeChannel(channel);
+      channelRef.current = null;
     };
   }, [fechaTrabajo]);
 
-  const cargarDatos = async () => {
-    setCargando(true);
-    setMensaje({ texto: '', tipo: '' });
+  const cargarDatos = async (silencioso = false) => {
+    if (!silencioso) {
+      setCargando(true);
+      setMensaje({ texto: '', tipo: '' });
+    }
     try {
       // 1. Cargar prestadores/usuarios para resolver nombres
       const { data: usersData } = await supabase.from('users').select('id, nombre');
@@ -307,28 +392,121 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
       setPacientesCargados(listadoFinal);
     } catch (err) {
       console.error("Error al cargar asistencias diarias de pacientes:", err);
-      setMensaje({ texto: "Error al cargar la planilla: " + err.message, tipo: "error" });
+      if (!silencioso) {
+        setMensaje({ texto: "Error al cargar la planilla: " + err.message, tipo: "error" });
+      }
     } finally {
-      setCargando(false);
+      if (!silencioso) {
+        setCargando(false);
+      }
     }
   };
 
-  const cambiarEstadoPaciente = (idPaciente, nuevoEstado) => {
+  const cambiarEstadoPaciente = async (idPaciente, nuevoEstado) => {
+    let estadoFinal = nuevoEstado;
+    let pacienteActual = null;
+
     setPacientesCargados(prev =>
       prev.map(p => {
         if (p.id_paciente === idPaciente) {
-          const estadoFinal = p.estado === nuevoEstado ? 'Pendiente' : nuevoEstado;
-          return { ...p, estado: estadoFinal };
+          estadoFinal = p.estado === nuevoEstado ? 'Pendiente' : nuevoEstado;
+          pacienteActual = { ...p, estado: estadoFinal };
+          return pacienteActual;
         }
         return p;
       })
     );
+
+    setPacientesGuardadosIds(prev => new Set([...prev, idPaciente]));
+
+    // Guardado inmediato en la base de datos + Realtime Broadcast a los otros dispositivos
+    try {
+      const p = pacienteActual || pacientesCargadosRef.current.find(x => x.id_paciente === idPaciente);
+      if (!p) return;
+
+      const record = {
+        fecha: fechaTrabajo,
+        id_paciente: p.id_paciente,
+        paciente_nombre: p.paciente_nombre,
+        estado: estadoFinal,
+        obs: empaquetarObsConSesiones(p.sesiones, p.obs),
+        usuario: usuario || 'Usuario'
+      };
+
+      const { error } = await supabase
+        .from('asistencia_pacientes_motor')
+        .upsert([record], { onConflict: 'fecha,id_paciente' });
+
+      if (error) {
+        console.error('Error al guardar asistencia individual:', error);
+      } else {
+        enviarBroadcast({
+          tipo: 'cambio_estado_individual',
+          fecha: fechaTrabajo,
+          id_paciente: idPaciente,
+          nuevoEstado: estadoFinal
+        });
+      }
+    } catch (err) {
+      console.error('Error al persistir estado:', err);
+    }
+  };
+
+  const persistirObs = async (idPaciente, obsTexto) => {
+    try {
+      const p = pacientesCargadosRef.current.find(x => x.id_paciente === idPaciente);
+      if (!p) return;
+
+      const record = {
+        fecha: fechaTrabajo,
+        id_paciente: p.id_paciente,
+        paciente_nombre: p.paciente_nombre,
+        estado: p.estado,
+        obs: empaquetarObsConSesiones(p.sesiones, obsTexto),
+        usuario: usuario || 'Usuario'
+      };
+
+      const { error } = await supabase
+        .from('asistencia_pacientes_motor')
+        .upsert([record], { onConflict: 'fecha,id_paciente' });
+
+      if (!error) {
+        setPacientesGuardadosIds(prev => new Set([...prev, idPaciente]));
+        enviarBroadcast({
+          tipo: 'cambio_obs_individual',
+          fecha: fechaTrabajo,
+          id_paciente: idPaciente,
+          obs: obsTexto
+        });
+      }
+    } catch (err) {
+      console.error('Error al persistir observación:', err);
+    }
   };
 
   const cambiarObsPaciente = (idPaciente, nuevaObs) => {
     setPacientesCargados(prev =>
       prev.map(p => p.id_paciente === idPaciente ? { ...p, obs: nuevaObs } : p)
     );
+
+    if (timerObsRef.current[idPaciente]) {
+      clearTimeout(timerObsRef.current[idPaciente]);
+    }
+
+    timerObsRef.current[idPaciente] = setTimeout(() => {
+      persistirObs(idPaciente, nuevaObs);
+    }, 700);
+  };
+
+  const guardarObsInmediata = (idPaciente) => {
+    if (timerObsRef.current[idPaciente]) {
+      clearTimeout(timerObsRef.current[idPaciente]);
+      delete timerObsRef.current[idPaciente];
+    }
+    const p = pacientesCargadosRef.current.find(x => x.id_paciente === idPaciente);
+    if (p) {
+      persistirObs(idPaciente, p.obs);
+    }
   };
 
   // Horarios de atención únicos del día
@@ -344,11 +522,42 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
     return p.sesiones.some(s => s.hora === filtroHorario);
   });
 
-  const marcarTodosPresentes = () => {
+  const marcarTodosPresentes = async () => {
     const idsSet = new Set(pacientesFiltrados.map(p => p.id_paciente));
-    setPacientesCargados(prev =>
-      prev.map(p => idsSet.has(p.id_paciente) ? { ...p, estado: 'Presente' } : p)
+    const nuevosPacientes = pacientesCargados.map(p =>
+      idsSet.has(p.id_paciente) ? { ...p, estado: 'Presente' } : p
     );
+    setPacientesCargados(nuevosPacientes);
+    setPacientesGuardadosIds(prev => new Set([...prev, ...Array.from(idsSet)]));
+
+    try {
+      const records = nuevosPacientes
+        .filter(p => idsSet.has(p.id_paciente))
+        .map(p => ({
+          fecha: fechaTrabajo,
+          id_paciente: p.id_paciente,
+          paciente_nombre: p.paciente_nombre,
+          estado: 'Presente',
+          obs: empaquetarObsConSesiones(p.sesiones, p.obs),
+          usuario: usuario || 'Usuario'
+        }));
+
+      if (records.length > 0) {
+        const { error } = await supabase
+          .from('asistencia_pacientes_motor')
+          .upsert(records, { onConflict: 'fecha,id_paciente' });
+
+        if (!error) {
+          enviarBroadcast({
+            tipo: 'marcar_todos_presentes',
+            fecha: fechaTrabajo,
+            ids: Array.from(idsSet)
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error al marcar todos presentes:', err);
+    }
   };
 
   const guardarAsistencias = async () => {
@@ -386,8 +595,13 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
 
       setMensaje({ texto: "¡Asistencias guardadas correctamente!", tipo: "exito" });
       
+      enviarBroadcast({
+        tipo: 'guardado_completo',
+        fecha: fechaTrabajo
+      });
+
       // Recargar datos para confirmar consistencia
-      await cargarDatos();
+      await cargarDatos(true);
     } catch (err) {
       console.error("Error al guardar asistencias:", err);
       setMensaje({ texto: "Error al guardar: " + err.message, tipo: "error" });
@@ -806,21 +1020,52 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
     <div style={{ background: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', fontFamily: 'Segoe UI, system-ui, sans-serif', color: '#1e293b' }}>
       
       {/* Cabecera */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '18px', marginBottom: '25px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '18px', marginBottom: '25px', flexWrap: 'wrap', gap: '10px' }}>
         <div>
-          <h2 style={{ color: '#0f172a', margin: 0, fontSize: '22px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            📋 Asistencia Diaria de Pacientes
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <h2 style={{ color: '#0f172a', margin: 0, fontSize: '22px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              📋 Asistencia Diaria de Pacientes
+            </h2>
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '11px',
+              fontWeight: '700',
+              padding: '3px 10px',
+              borderRadius: '20px',
+              background: realtimeConectado ? '#ecfdf5' : '#fef2f2',
+              color: realtimeConectado ? '#047857' : '#b91c1c',
+              border: `1px solid ${realtimeConectado ? '#a7f3d0' : '#fecaca'}`
+            }}>
+              <span style={{
+                width: '7px',
+                height: '7px',
+                borderRadius: '50%',
+                background: realtimeConectado ? '#10b981' : '#ef4444'
+              }}></span>
+              {realtimeConectado ? 'Sincronizado en tiempo real' : 'Conectando tiempo real...'}
+            </span>
+          </div>
           <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>Registrá la asistencia de los pacientes basándote en la Agenda Fija diaria.</p>
         </div>
-        <button
-          onClick={onVolver}
-          style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#475569', transition: 'background 0.2s' }}
-          onMouseOver={(e) => e.target.style.background = '#e2e8f0'}
-          onMouseOut={(e) => e.target.style.background = '#f1f5f9'}
-        >
-          ← Volver al Menú
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            onClick={() => cargarDatos()}
+            title="Recargar datos manualmente"
+            style={{ background: '#f8fafc', border: '1px solid #cbd5e1', padding: '8px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            🔄 Actualizar
+          </button>
+          <button
+            onClick={onVolver}
+            style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#475569', transition: 'background 0.2s' }}
+            onMouseOver={(e) => e.target.style.background = '#e2e8f0'}
+            onMouseOut={(e) => e.target.style.background = '#f1f5f9'}
+          >
+            ← Volver al Menú
+          </button>
+        </div>
       </div>
 
       {/* Banner de Mensajes */}
@@ -1106,6 +1351,7 @@ export default function AsistenciaPacientes({ onVolver, usuario }) {
                               type="text"
                               value={p.obs}
                               onChange={(e) => cambiarObsPaciente(p.id_paciente, e.target.value)}
+                              onBlur={() => guardarObsInmediata(p.id_paciente)}
                               placeholder="Nota (Ej: Faltó por fiebre)..."
                               style={{ width: '100%', padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
                             />
