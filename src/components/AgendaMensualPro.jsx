@@ -114,6 +114,24 @@ function AgendaMensualPro({ userData }) {
     return horariosDisponibles;
   };
 
+  const obtenerMinutosTurno = (t) => {
+    if (!t) return 9999;
+    const obsHora = t.observaciones?.split(']')[0]?.replace('[', '').trim();
+    if (obsHora) {
+      const match = obsHora.match(/^(\d{1,2}):(\d{2})$/);
+      if (match) {
+        return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+      }
+    }
+    if (t.fecha_inicio) {
+      const f = new Date(t.fecha_inicio);
+      if (!isNaN(f.getTime())) {
+        return f.getUTCHours() * 60 + f.getUTCMinutes();
+      }
+    }
+    return 9999;
+  };
+
   useEffect(() => {
     if (!esAdmin && userData?.id) {
       setFiltroProfesional(String(userData.id));
@@ -162,7 +180,10 @@ function AgendaMensualPro({ userData }) {
   }
 
   async function guardarTurno() {
-    const horaSeleccionada = form.horario_especial || form.hora;
+    let horaSeleccionada = (form.horario_especial || form.hora || '').trim();
+    if (/^\d:\d{2}$/.test(horaSeleccionada)) {
+      horaSeleccionada = '0' + horaSeleccionada;
+    }
     const fechaSeleccionada = `${mesActual.getFullYear()}-${String(mesActual.getMonth() + 1).padStart(2, '0')}-${String(diaSeleccionado).padStart(2, '0')}`;
     
     const marinaIds = getMarinaIds();
@@ -405,7 +426,10 @@ function AgendaMensualPro({ userData }) {
 
     setGuardandoMasivo(true);
     try {
-      const horaSeleccionada = formMasivo.horario_especial || formMasivo.hora;
+      let horaSeleccionada = (formMasivo.horario_especial || formMasivo.hora || '').trim();
+      if (/^\d:\d{2}$/.test(horaSeleccionada)) {
+        horaSeleccionada = '0' + horaSeleccionada;
+      }
       const profesionalObj = users.find(u => String(u.id) === String(formMasivo.profesional_id));
       const nombreProf = profesionalObj ? profesionalObj.nombre : 'Sin Prof.';
 
@@ -1033,9 +1057,15 @@ function AgendaMensualPro({ userData }) {
                 setForm({...form, hora: horaInicial, paciente_nombre: '', estado: 'pendiente', horario_especial: '', observaciones: ''}); 
               }} style={{ cursor: 'pointer', color: '#007bff', fontWeight: 'bold' }}>{dN} +</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-                {tD.sort((a,b) => (a.observaciones?.split(']')[0] || '').localeCompare(b.observaciones?.split(']')[0] || '')).map(t => {
+                {tD.slice().sort((a, b) => {
+                  const minA = obtenerMinutosTurno(a);
+                  const minB = obtenerMinutosTurno(b);
+                  if (minA !== minB) return minA - minB;
+                  return (a.paciente_nombre || '').localeCompare(b.paciente_nombre || '');
+                }).map(t => {
                   const parts = t.observaciones?.split(']') || [];
-                  const hora = parts[0]?.replace('[', '').trim() || '--:--';
+                  const rawHora = parts[0]?.replace('[', '').trim() || '--:--';
+                  const hora = /^\d:\d{2}$/.test(rawHora) ? '0' + rawHora : rawHora;
                   const prest = parts[1]?.replace('[', '').trim() || '';
                   const prof = parts[2]?.replace('[', '').trim() || 'N/A';
 
